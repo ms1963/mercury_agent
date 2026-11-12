@@ -1,0 +1,10 @@
+{
+  "name": "sha256_text",
+  "description": "SHA-256 hash of a text (example Go polyglot tool; built on first use, needs the Go toolchain).",
+  "toolset": "polyglot",
+  "risk": "safe",
+  "parameters": { "type": "object", "properties": { "text": { "type": "string" } }, "required": ["text"] },
+  "command": ["./hash"],
+  "build": ["go", "build", "-o", "hash", "main.go"],
+  "requires": ["go"]
+}

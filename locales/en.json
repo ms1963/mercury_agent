@@ -1,0 +1,42 @@
+{
+  "app": { "name": "Mercury", "tagline": "Agentic AI platform", "theme": "Theme", "language": "Language", "logout": "Log out" },
+  "auth": {
+    "login": "Log in", "register": "Create account", "username": "Username", "password": "Password",
+    "firstUser": "No users yet — the first account becomes the administrator.",
+    "switchToRegister": "No account? Register", "switchToLogin": "Have an account? Log in",
+    "failed": "Authentication failed"
+  },
+  "nav": {
+    "chat": "Chat", "sessions": "Sessions", "runs": "Runs", "workflows": "Workflows", "memory": "Memory",
+    "skills": "Skills", "tools": "Tools & MCP", "scheduler": "Scheduler", "integrations": "Integrations",
+    "models": "Models & budgets", "users": "Users", "debug": "Observability", "reflections": "Reflections",
+    "help": "Help", "account": "Account & tokens"
+  },
+  "chat": {
+    "placeholder": "Message Mercury… (Enter to send, Shift+Enter for newline, /help for commands)",
+    "send": "Send", "stop": "Stop", "attach": "Attach", "record": "Record", "stopRecording": "Stop recording",
+    "newSession": "New session", "speak": "Play audio", "thinking": "Working…", "transcribing": "Transcribing…",
+    "model": "Model", "pattern": "Pattern", "personality": "Personality", "default": "default",
+    "approve": "Approve", "deny": "Deny", "approvalNeeded": "Approval needed", "good": "Good answer", "bad": "Bad answer"
+  },
+  "common": {
+    "refresh": "Refresh", "save": "Save", "delete": "Delete", "create": "Create", "run": "Run", "pause": "Pause",
+    "resume": "Resume", "enable": "Enable", "disable": "Disable", "open": "Open", "close": "Close", "search": "Search",
+    "name": "Name", "description": "Description", "status": "Status", "actions": "Actions", "empty": "Nothing here yet.",
+    "error": "Error", "saved": "Saved", "confirmDelete": "Delete this item?", "input": "Input", "output": "Output"
+  },
+  "sessions": { "title": "Sessions", "rename": "Rename", "continue": "Continue in chat" },
+  "runs": { "title": "Agent runs", "events": "Event trace", "children": "Subagents", "live": "Live events" },
+  "workflows": { "title": "Workflows", "templates": "Templates", "runWorkflow": "Run workflow", "steps": "Steps" },
+  "memory": { "title": "Memory", "facts": "Facts", "curated": "Curated memory", "profile": "User model", "add": "Remember", "agentNotes": "Agent notes (MEMORY.md)", "userNotes": "About you (USER.md)" },
+  "skills": { "title": "Skills", "install": "Install from path or URL", "new": "New skill", "body": "Instructions (Markdown)" },
+  "tools": { "title": "Tools", "toolsets": "Toolsets", "mcpServers": "MCP servers", "connect": "Connect", "command": "Command", "url": "URL", "args": "Arguments (JSON)", "risk": "Risk" },
+  "scheduler": { "title": "Scheduled tasks", "when": "When (e.g. \"every weekday at 9am\" or cron)", "task": "Task", "history": "History", "runNow": "Run now", "next": "Next run" },
+  "integrations": { "title": "Integrations", "adapters": "Platform adapters", "pairing": "Pending pairing codes", "pairCode": "Pair a code", "review": "Human review queue", "respond": "Respond", "dismiss": "Dismiss", "identities": "Linked chat identities" },
+  "models": { "title": "Models, router & budgets", "default": "Default model", "providers": "Providers", "route": "Test router", "budgets": "Budgets", "usage": "Usage (30 days)", "decisions": "Jev decisions", "calibration": "Calibration", "tryDecision": "Try a decision" },
+  "users": { "title": "Users", "role": "Role", "disabled": "Disabled", "add": "Add user" },
+  "debug": { "title": "Observability & debugging", "paused": "Paused runs", "breakpoints": "Breakpoints", "audit": "Audit log", "metrics": "Prometheus metrics", "continue": "Continue", "abort": "Abort" },
+  "reflections": { "title": "Reflections", "lessons": "Lessons", "score": "Score" },
+  "help": { "title": "Help", "topics": "Topics" },
+  "account": { "title": "Account", "tokens": "API tokens", "scopes": "Scopes", "newToken": "New token", "tokenShown": "Copy this token now — it is shown only once:" }
+}

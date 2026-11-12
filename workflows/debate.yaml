@@ -1,0 +1,12 @@
+name: debate
+description: Two agents argue for and against, a judge decides (debate).
+type: debate
+agents:
+  - name: proponent
+    role: Argue FOR the proposition with strong, honest arguments.
+  - name: opponent
+    role: Argue AGAINST the proposition with strong, honest arguments.
+  - name: judge
+    role: Weigh both sides impartially and give a verdict with reasons.
+options: { rounds: 2 }
+budget: { maxRuns: 8 }

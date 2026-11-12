@@ -1,0 +1,12 @@
+name: dev-team
+description: A coordinator plans, workers implement and review (coordinator-worker).
+type: coordinator-worker
+agents:
+  - name: coordinator
+    role: Break the request into small, independent tasks and integrate the results.
+  - name: engineer
+    role: Implement the assigned task. Use tools to read and write files and run tests.
+    toolsets: [files, shell, code]
+  - name: reviewer
+    role: Review the engineer's work for bugs and missing tests.
+budget: { maxSubagents: 3, maxDepth: 2, maxRuns: 12 }

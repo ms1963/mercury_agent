@@ -1,0 +1,11 @@
+name: research-report
+description: Research a topic, then write a structured report (pipeline).
+type: pipeline
+agents:
+  - name: researcher
+    role: You are a careful researcher. Collect key facts with sources.
+    task: "Research this topic and list the key facts with sources: {input}"
+  - name: writer
+    role: You are a clear technical writer.
+    task: "Write a concise, well-structured report on '{input}' using these notes:\n{previous}"
+budget: { maxRuns: 4 }

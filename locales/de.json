@@ -1,0 +1,42 @@
+{
+  "app": { "name": "Mercury", "tagline": "Agentische KI-Plattform", "theme": "Design", "language": "Sprache", "logout": "Abmelden" },
+  "auth": {
+    "login": "Anmelden", "register": "Konto erstellen", "username": "Benutzername", "password": "Passwort",
+    "firstUser": "Noch keine Benutzer — das erste Konto wird Administrator.",
+    "switchToRegister": "Kein Konto? Registrieren", "switchToLogin": "Schon ein Konto? Anmelden",
+    "failed": "Anmeldung fehlgeschlagen"
+  },
+  "nav": {
+    "chat": "Chat", "sessions": "Sitzungen", "runs": "Läufe", "workflows": "Workflows", "memory": "Gedächtnis",
+    "skills": "Skills", "tools": "Werkzeuge & MCP", "scheduler": "Zeitplaner", "integrations": "Integrationen",
+    "models": "Modelle & Budgets", "users": "Benutzer", "debug": "Beobachtung", "reflections": "Reflexionen",
+    "help": "Hilfe", "account": "Konto & Tokens"
+  },
+  "chat": {
+    "placeholder": "Nachricht an Mercury… (Enter senden, Umschalt+Enter neue Zeile, /help für Befehle)",
+    "send": "Senden", "stop": "Stopp", "attach": "Anhängen", "record": "Aufnehmen", "stopRecording": "Aufnahme beenden",
+    "newSession": "Neue Sitzung", "speak": "Vorlesen", "thinking": "Arbeite…", "transcribing": "Transkribiere…",
+    "model": "Modell", "pattern": "Muster", "personality": "Persönlichkeit", "default": "Standard",
+    "approve": "Erlauben", "deny": "Ablehnen", "approvalNeeded": "Freigabe erforderlich", "good": "Gute Antwort", "bad": "Schlechte Antwort"
+  },
+  "common": {
+    "refresh": "Aktualisieren", "save": "Speichern", "delete": "Löschen", "create": "Erstellen", "run": "Ausführen", "pause": "Pausieren",
+    "resume": "Fortsetzen", "enable": "Aktivieren", "disable": "Deaktivieren", "open": "Öffnen", "close": "Schließen", "search": "Suchen",
+    "name": "Name", "description": "Beschreibung", "status": "Status", "actions": "Aktionen", "empty": "Noch nichts vorhanden.",
+    "error": "Fehler", "saved": "Gespeichert", "confirmDelete": "Diesen Eintrag löschen?", "input": "Eingabe", "output": "Ausgabe"
+  },
+  "sessions": { "title": "Sitzungen", "rename": "Umbenennen", "continue": "Im Chat fortsetzen" },
+  "runs": { "title": "Agentenläufe", "events": "Ereignisverlauf", "children": "Subagenten", "live": "Live-Ereignisse" },
+  "workflows": { "title": "Workflows", "templates": "Vorlagen", "runWorkflow": "Workflow ausführen", "steps": "Schritte" },
+  "memory": { "title": "Gedächtnis", "facts": "Fakten", "curated": "Kuratiertes Gedächtnis", "profile": "Benutzermodell", "add": "Merken", "agentNotes": "Agentennotizen (MEMORY.md)", "userNotes": "Über dich (USER.md)" },
+  "skills": { "title": "Skills", "install": "Von Pfad oder URL installieren", "new": "Neuer Skill", "body": "Anleitung (Markdown)" },
+  "tools": { "title": "Werkzeuge", "toolsets": "Werkzeuggruppen", "mcpServers": "MCP-Server", "connect": "Verbinden", "command": "Befehl", "url": "URL", "args": "Argumente (JSON)", "risk": "Risiko" },
+  "scheduler": { "title": "Geplante Aufgaben", "when": "Wann (z. B. \"every weekday at 9am\" oder Cron)", "task": "Aufgabe", "history": "Verlauf", "runNow": "Jetzt ausführen", "next": "Nächster Lauf" },
+  "integrations": { "title": "Integrationen", "adapters": "Plattform-Adapter", "pairing": "Offene Kopplungscodes", "pairCode": "Code koppeln", "review": "Prüfwarteschlange", "respond": "Antworten", "dismiss": "Verwerfen", "identities": "Verknüpfte Chat-Identitäten" },
+  "models": { "title": "Modelle, Router & Budgets", "default": "Standardmodell", "providers": "Anbieter", "route": "Router testen", "budgets": "Budgets", "usage": "Verbrauch (30 Tage)", "decisions": "Jev-Entscheidungen", "calibration": "Kalibrierung", "tryDecision": "Entscheidung testen" },
+  "users": { "title": "Benutzer", "role": "Rolle", "disabled": "Deaktiviert", "add": "Benutzer hinzufügen" },
+  "debug": { "title": "Beobachtung & Debugging", "paused": "Pausierte Läufe", "breakpoints": "Haltepunkte", "audit": "Audit-Log", "metrics": "Prometheus-Metriken", "continue": "Weiter", "abort": "Abbrechen" },
+  "reflections": { "title": "Reflexionen", "lessons": "Erkenntnisse", "score": "Bewertung" },
+  "help": { "title": "Hilfe", "topics": "Themen" },
+  "account": { "title": "Konto", "tokens": "API-Tokens", "scopes": "Berechtigungen", "newToken": "Neues Token", "tokenShown": "Token jetzt kopieren — es wird nur einmal angezeigt:" }
+}

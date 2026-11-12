@@ -1,0 +1,12 @@
+name: map-reduce-summary
+description: Split a long text into parts, summarise each in parallel, then merge (map-reduce).
+type: map-reduce
+agents:
+  - name: mapper
+    role: Summarise the given part faithfully in 3-5 bullet points.
+    task: "Summarise:\n{item}"
+  - name: reducer
+    role: Merge partial summaries into one coherent summary.
+    task: "Merge these summaries into one:\n{previous}"
+options: { maxItems: 6 }
+budget: { maxSubagents: 4, maxRuns: 10 }

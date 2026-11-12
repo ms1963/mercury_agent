@@ -1,0 +1,9 @@
+{
+  "name": "word_count",
+  "description": "Count words, lines and characters in a text (example Python polyglot tool).",
+  "toolset": "polyglot",
+  "risk": "safe",
+  "parameters": { "type": "object", "properties": { "text": { "type": "string" } }, "required": ["text"] },
+  "command": ["python3", "main.py"],
+  "requires": ["python3"]
+}

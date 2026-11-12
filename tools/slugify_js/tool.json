@@ -1,0 +1,9 @@
+{
+  "name": "slugify",
+  "description": "Turn a title into a URL-friendly slug (example JavaScript polyglot tool).",
+  "toolset": "polyglot",
+  "risk": "safe",
+  "parameters": { "type": "object", "properties": { "text": { "type": "string" } }, "required": ["text"] },
+  "command": ["node", "main.mjs"],
+  "requires": ["node"]
+}
