@@ -21,12 +21,17 @@ export const BUILTIN_PROFILES: Array<Partial<ModelProfile> & { id: string }> = [
   { id: 'openrouter/openai/gpt-4o-mini', tags: ['general', 'fast', 'cheap'], quality: 0.7, costPer1MInput: 0.15, costPer1MOutput: 0.6, latencyMs: 1000, contextWindow: 128_000, vision: true },
   { id: 'ollama/llama3.1', tags: ['general', 'local', 'private'], quality: 0.55, latencyMs: 2500, contextWindow: 32_768 },
   { id: 'lmstudio/local-model', tags: ['general', 'local', 'private'], quality: 0.5, latencyMs: 2500, contextWindow: 32_768 },
+  // Abacus.AI ChatLLM / RouteLLM. "route-llm" auto-selects the best model per request.
+  { id: 'chatllm/route-llm', tags: ['general', 'code', 'reasoning', 'fast'], quality: 0.88, latencyMs: 1500, contextWindow: 128_000, vision: true },
+  { id: 'chatllm/gpt-4o-mini', tags: ['general', 'fast', 'cheap'], quality: 0.7, latencyMs: 900, contextWindow: 128_000, vision: true },
+  { id: 'chatllm/claude-sonnet-4-5', tags: ['general', 'code', 'reasoning', 'writing'], quality: 0.92, latencyMs: 2000, contextWindow: 200_000, vision: true },
 ];
 
 const ENV_KEYS: Record<string, string> = {
   openai: 'OPENAI_API_KEY',
   anthropic: 'ANTHROPIC_API_KEY',
   openrouter: 'OPENROUTER_API_KEY',
+  chatllm: 'CHATLLM_API_KEY',
 };
 
 export class ProviderRegistry {
@@ -118,7 +123,12 @@ export function normalizeProfile(p: Partial<ModelProfile> & { id: string }): Mod
 }
 
 export function createProvider(id: string, pc: ProviderConfig, timeoutMs: number): LLMProvider {
-  const apiKey = pc.apiKey ?? (pc.apiKeyEnv ? process.env[pc.apiKeyEnv] : undefined) ?? (ENV_KEYS[pc.type] ? process.env[ENV_KEYS[pc.type]!] : undefined);
+  const apiKey =
+    pc.apiKey ??
+    (pc.apiKeyEnv ? process.env[pc.apiKeyEnv] : undefined) ??
+    (ENV_KEYS[pc.type] ? process.env[ENV_KEYS[pc.type]!] : undefined) ??
+    // ChatLLM also accepts the standard Abacus.AI API key.
+    (pc.type === 'chatllm' ? process.env.ABACUS_API_KEY : undefined);
   switch (pc.type) {
     case 'mock':
       return new MockProvider(id);
@@ -128,6 +138,7 @@ export function createProvider(id: string, pc: ProviderConfig, timeoutMs: number
     case 'openrouter':
     case 'lmstudio':
     case 'ollama':
+    case 'chatllm':
     case 'openai-compatible': {
       const baseUrl = pc.baseUrl ?? DEFAULT_BASE_URLS[pc.type];
       if (!baseUrl) throw new MercuryError(`Provider "${id}" needs a baseUrl`, 'config_invalid', 'models');

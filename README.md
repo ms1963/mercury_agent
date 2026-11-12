@@ -41,9 +41,11 @@ configure **one** LLM provider (see [docs/PROVIDERS.md](docs/PROVIDERS.md)) — 
 mercury config set llm.providers.ollama '{"type":"ollama","enabled":true}'
 mercury model ollama/llama3.1
 
-# Or a cloud / OpenAI-compatible / Anthropic / OpenRouter key in ~/.mercury/.env:
-echo 'OPENROUTER_API_KEY=sk-...' >> ~/.mercury/.env   # OPENAI_API_KEY / ANTHROPIC_API_KEY also work
-mercury model openrouter/openai/gpt-4o-mini
+# Or a cloud key in ~/.mercury/.env (ChatLLM / OpenRouter / OpenAI / Anthropic):
+echo 'CHATLLM_API_KEY=s2-...' >> ~/.mercury/.env       # Abacus.AI ChatLLM / RouteLLM
+mercury model chatllm/route-llm
+# …or OPENROUTER_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY — e.g.:
+# mercury model openrouter/openai/gpt-4o-mini
 ```
 
 Setting `OPENROUTER_API_KEY` also enables the **optional** Jev decision model (`typesafe/jev-1.13`).

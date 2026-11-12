@@ -22,6 +22,8 @@ export const DEFAULT_BASE_URLS: Record<string, string> = {
   openrouter: 'https://openrouter.ai/api/v1',
   lmstudio: 'http://localhost:1234/v1',
   ollama: 'http://localhost:11434/v1',
+  // Abacus.AI ChatLLM / RouteLLM OpenAI-compatible endpoint.
+  chatllm: 'https://routellm.abacus.ai/v1',
 };
 
 type WireMessage = Record<string, unknown>;

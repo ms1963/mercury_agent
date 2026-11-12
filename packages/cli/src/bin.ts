@@ -54,8 +54,8 @@ async function setup(m: Mercury, a: Args): Promise<void> {
       else m.users.register(username, password, { role: 'admin' });
       console.log(`✔ admin user "${username}" ready`);
     }
-    const provider = await ask('Provider (openrouter|ollama|lmstudio|openai|anthropic|openai-compatible)', 'openrouter');
-    const defaults: Record<string, string> = { openai: 'openai/gpt-4o-mini', anthropic: 'anthropic/claude-3-5-haiku-latest', openrouter: 'openrouter/openai/gpt-4o-mini', ollama: 'ollama/llama3.1', lmstudio: 'lmstudio/local-model', 'openai-compatible': 'openai-compatible/local-model' };
+    const provider = await ask('Provider (chatllm|openrouter|ollama|lmstudio|openai|anthropic|openai-compatible)', 'openrouter');
+    const defaults: Record<string, string> = { chatllm: 'chatllm/route-llm', openai: 'openai/gpt-4o-mini', anthropic: 'anthropic/claude-3-5-haiku-latest', openrouter: 'openrouter/openai/gpt-4o-mini', ollama: 'ollama/llama3.1', lmstudio: 'lmstudio/local-model', 'openai-compatible': 'openai-compatible/local-model' };
     const model = await ask('Model', defaults[provider] ?? 'openrouter/openai/gpt-4o-mini');
     // Local / self-hosted providers need an explicit provider entry (base URL default is applied);
     // for openai-compatible the user must also set the base URL.
@@ -66,7 +66,7 @@ async function setup(m: Mercury, a: Args): Promise<void> {
     }
     const file = setConfigValue('llm.defaultModel', model, m.configFile);
     console.log(`✔ default model ${model} saved to ${file}`);
-    if (['openai', 'anthropic', 'openrouter'].includes(provider)) console.log(`  Put your API key in ~/.mercury/.env, e.g. ${provider.toUpperCase().replace('-', '_')}_API_KEY=...`);
+    if (['openai', 'anthropic', 'openrouter', 'chatllm'].includes(provider)) console.log(`  Put your API key in ~/.mercury/.env, e.g. ${provider.toUpperCase().replace('-', '_')}_API_KEY=...${provider === 'chatllm' ? '  (your Abacus.AI ChatLLM / RouteLLM key; ABACUS_API_KEY also works)' : ''}`);
     if (['ollama', 'lmstudio', 'openai-compatible'].includes(provider)) console.log(`  Make sure your local server is running and reachable.`);
     console.log('Next: `mercury chat` or `mercury serve` and open http://localhost:3000');
   } finally {

@@ -135,7 +135,7 @@ export async function doctor(m: Mercury): Promise<void> {
     ['Node.js >= 22', Number(process.versions.node.split('.')[0]) >= 22, 'install Node 22+'],
     ['data dir writable', existsSync(m.config.dataDir), m.config.dataDir],
     ['users exist', m.users.count() > 0, 'run `mercury setup`'],
-    ['real LLM provider (REQUIRED)', m.providers.list().some((p) => p.id !== 'mock'), 'run `mercury setup`, or configure openrouter / ollama / lmstudio / openai-compatible / anthropic (see docs/PROVIDERS.md)'],
+    ['real LLM provider (REQUIRED)', m.providers.list().some((p) => p.id !== 'mock'), 'run `mercury setup`, or configure chatllm / openrouter / ollama / lmstudio / openai-compatible / anthropic (see docs/PROVIDERS.md)'],
     ['Jev decisions (optional, OPENROUTER_API_KEY)', m.decisions.chain()[0] === 'jev', `optional; current chain: ${m.decisions.chain().join(' → ')}`],
     ['python3 (execute_code, polyglot)', has('python3'), 'optional'],
     ['docker (terminal backend)', has('docker'), 'optional'],

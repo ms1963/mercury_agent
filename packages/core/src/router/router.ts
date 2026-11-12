@@ -96,7 +96,7 @@ export class ModelRouter {
     if (!pool.length) {
       if (fallbackChain.length) return { model: fallbackChain[0]!, reason: 'no candidate matched; fallback', fallbacks: fallbackChain.slice(1) };
       throw new MercuryError(
-        'No LLM model is available. Configure a provider (openrouter, ollama, lmstudio, an openai-compatible API, or anthropic) and set llm.defaultModel — see docs/PROVIDERS.md or run `mercury setup`.',
+        'No LLM model is available. Configure a provider (chatllm, openrouter, ollama, lmstudio, an openai-compatible API, or anthropic) and set llm.defaultModel — see docs/PROVIDERS.md or run `mercury setup`.',
         'no_model_configured',
         'models',
       );

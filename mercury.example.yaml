@@ -43,7 +43,15 @@ llm:
     #   type: anthropic
     #   enabled: true
 
-  # OpenRouter and the OPENAI/ANTHROPIC/OPENROUTER cloud providers auto-enable
+    # --- Abacus.AI ChatLLM / RouteLLM. Key from CHATLLM_API_KEY (or ABACUS_API_KEY) ---
+    # Auto-enables when the key is present; this block only overrides defaults.
+    # chatllm:
+    #   type: chatllm
+    #   baseUrl: https://routellm.abacus.ai/v1   # default
+    #   enabled: true
+    # Then set, e.g.:  defaultModel: chatllm/route-llm
+
+  # ChatLLM, OpenRouter and the OPENAI/ANTHROPIC cloud providers auto-enable
   # when their API key is present in the environment — no entry needed above.
 
 router:

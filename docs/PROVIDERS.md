@@ -14,6 +14,27 @@ environment — never in the config file. Provider wiring goes in `~/.mercury/co
 
 ---
 
+## Abacus.AI ChatLLM / RouteLLM (remote, OpenAI-compatible)
+
+Uses the Abacus.AI ChatLLM / RouteLLM OpenAI-compatible endpoint. Get an API key from your
+ChatLLM account, then:
+
+```bash
+echo 'CHATLLM_API_KEY=s2-...' >> ~/.mercury/.env   # ABACUS_API_KEY also works
+mercury model chatllm/route-llm                     # RouteLLM auto-picks the best model per request
+# …or pin a specific model, e.g. chatllm/gpt-4o-mini, chatllm/claude-sonnet-4-5
+```
+
+ChatLLM is auto-enabled whenever `CHATLLM_API_KEY` (or `ABACUS_API_KEY`) is present — no config
+entry required. Default base URL `https://routellm.abacus.ai/v1`; override with the `baseUrl`
+field if you use a different ChatLLM gateway:
+
+```bash
+mercury config set llm.providers.chatllm '{"type":"chatllm","baseUrl":"https://routellm.abacus.ai/v1","enabled":true}'
+```
+
+Any model your ChatLLM account exposes can be used as `chatllm/<model>`.
+
 ## OpenRouter (remote, hundreds of models)
 
 ```bash

@@ -7,7 +7,7 @@
 import { z } from 'zod';
 
 const ProviderSchema = z.object({
-  /** openai | anthropic | openrouter | ollama | lmstudio | openai-compatible | mock */
+  /** openai | anthropic | openrouter | chatllm | ollama | lmstudio | openai-compatible | mock */
   type: z.string(),
   baseUrl: z.string().optional(),
   apiKey: z.string().optional(),
