@@ -50,7 +50,7 @@ export class MemoryManager {
   constructor(
     private config: MercuryConfig,
     db: Db,
-    embedder: EmbeddingProvider,
+    readonly embedder: EmbeddingProvider,
     private bus?: EventBus,
     private hooks?: HookManager,
   ) {

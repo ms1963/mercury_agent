@@ -32,6 +32,8 @@ export interface ToolContext {
   sessionId?: string;
   /** Front-end the run came from: cli, web, telegram, mcp, scheduler... */
   platform: string;
+  /** Chat/channel id on the platform (gateway runs) — default delivery target. */
+  chatId?: string;
   signal?: AbortSignal;
   /** Working directory for file/terminal tools (inside the path jail). */
   workdir: string;

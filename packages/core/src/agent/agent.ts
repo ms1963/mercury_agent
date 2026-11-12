@@ -67,6 +67,8 @@ export interface RunOptions {
   sessionId?: string;
   /** cli | web | telegram | ... | scheduler | mcp | subagent */
   platform?: string;
+  /** Platform chat id (gateway) used as default delivery target. */
+  chatId?: string;
   model?: string;
   /** Pattern name or "auto" (decision engine picks). */
   pattern?: string;
@@ -167,6 +169,7 @@ export class Agent {
       runId,
       sessionId,
       platform,
+      chatId: opts.chatId,
       signal: controller.signal,
       workdir,
       depth,
@@ -259,7 +262,7 @@ export class Agent {
     const turns = Math.floor(historyLength / 2) + 1;
     const nudge =
       run.depth === 0 && d.config.agent.nudgeEvery > 0 && turns % d.config.agent.nudgeEvery === 0
-        ? '## Reminder\nBefore answering, consider whether anything from this conversation should be saved (memory_remember for facts/preferences, skill_create for a reusable procedure).'
+        ? '## Reminder\nBefore answering, consider whether anything from this conversation should be saved (the memory tool for durable facts/preferences, skill_manage for a reusable procedure).'
         : '';
     return buildSystemPrompt({
       persona,
