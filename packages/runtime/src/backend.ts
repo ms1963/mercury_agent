@@ -1,0 +1,49 @@
+/** McpBackend implementation: what external MCP clients can do with Mercury. */
+import { newId, type Principal, type ToolContext } from '@mercury/core';
+import type { McpBackend } from '@mercury/mcp';
+import type { Mercury } from './mercury.js';
+
+/** Build a tool context for direct tool calls (MCP, REST "try tool"). */
+export function directToolContext(m: Mercury, principal: Principal, platform: string): ToolContext {
+  return {
+    principal,
+    runId: newId('run'),
+    platform,
+    workdir: process.cwd(),
+    depth: 0,
+    services: m.services,
+    emit: (type, data) => m.bus.emit({ type, userId: principal.userId, data }),
+    requestApproval: (req) => m.approvals.request(req, { userId: principal.userId, platform }),
+  };
+}
+
+export function createBackend(m: Mercury): McpBackend {
+  return {
+    toolSpecs: () => m.tools.specs('mcp'),
+    async callTool(principal, name, args) {
+      const ctx = directToolContext(m, principal, 'mcp');
+      const r = await m.executor.execute({ id: newId('call'), name, arguments: args }, ctx, { untrustedSeen: true, userRequest: `MCP call ${name}` });
+      return { content: r.result.content, isError: !r.ok };
+    },
+    async runAgent(principal, input, opts) {
+      const r = await m.agent.run({ principal, input, platform: 'mcp', kind: 'mcp', ...opts });
+      return { output: r.output, sessionId: r.sessionId, runId: r.runId, status: r.status };
+    },
+    async runWorkflow(principal, workflow, input) {
+      const r = await m.workflows.run(workflow, input, { principal, platform: 'mcp' });
+      return { output: r.output, runId: r.runId };
+    },
+    listWorkflows: () => m.workflows.list().map((w) => ({ name: w.name, type: w.type, description: w.description })),
+    async memorySearch(principal, query, k) {
+      return (await m.memory.recall(principal.userId, query, k)).map((i) => ({ id: i.id, content: i.content }));
+    },
+    async memoryAdd(principal, content) {
+      return (await m.memory.remember(principal.userId, content, { source: 'mcp' })).id;
+    },
+    readCurated: (principal, which) => m.memory.curated.read(principal.userId, which),
+    skills: () => m.skills.list().map((s) => ({ name: s.meta.name, description: s.meta.description })),
+    skillBody: (name) => m.skills.view(name),
+    scheduleList: (principal) => m.scheduler.list(principal.userId) as unknown as Array<Record<string, unknown>>,
+    scheduleCreate: (principal, when, task) => m.scheduler.create(principal.userId, { when, task }) as unknown as Record<string, unknown>,
+  };
+}
