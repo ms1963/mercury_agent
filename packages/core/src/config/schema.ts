@@ -1,6 +1,6 @@
 /**
  * Mercury configuration schema (zod). Every field has a sensible default so an
- * empty config file yields a working offline setup using the mock provider.
+ * empty config file yields a working setup once an LLM provider is configured.
  *
  * Layering (lowest → highest): defaults < config file < environment < CLI flags.
  */
@@ -105,7 +105,7 @@ export const ConfigSchema = z.object({
         .object({ quality: z.number().default(1), cost: z.number().default(0.3), latency: z.number().default(0.2) })
         .prefault({}),
       rules: z.array(RouterRuleSchema).default([]),
-      fallback: z.array(z.string()).default(['mock/echo']),
+      fallback: z.array(z.string()).default([]),
       useDecisions: z.boolean().default(true),
       topK: z.number().default(3),
     })

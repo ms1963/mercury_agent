@@ -34,7 +34,14 @@ export class ProviderRegistry {
   private profiles = new Map<string, ModelProfile>();
 
   constructor(private config: MercuryConfig) {
-    this.register(new MockProvider());
+    // The mock provider is NOT registered by default: Mercury requires a real LLM
+    // backend (OpenRouter, Ollama, LM Studio, an OpenAI-compatible API, or Anthropic).
+    // It is only available for the test-suite / offline development when explicitly
+    // opted in via MERCURY_ENABLE_MOCK=1 or a provider of type "mock" in the config.
+    const allowMock =
+      process.env.MERCURY_ENABLE_MOCK === '1' ||
+      Object.values(config.llm.providers).some((p) => p.type === 'mock' && p.enabled);
+    if (allowMock) this.register(new MockProvider());
     // Auto-enable cloud providers whose API key is present in the environment.
     for (const [id, env] of Object.entries(ENV_KEYS)) {
       if (process.env[env] && !config.llm.providers[id]) this.register(createProvider(id, { type: id, enabled: true }, config.llm.timeoutMs));

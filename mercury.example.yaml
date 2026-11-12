@@ -1,0 +1,61 @@
+# Mercury configuration — copy to ~/.mercury/config.yaml and edit.
+# Every field has a default; only what you change needs to appear here.
+# API keys do NOT belong here — put them in ~/.mercury/.env (see .env.example).
+
+locale: en                 # UI language; fully localizable (see locales/)
+logLevel: info
+
+server:
+  host: 0.0.0.0
+  port: 3000
+
+auth:
+  allowRegistration: true  # first registered account becomes admin
+
+# ---------------------------------------------------------------------------
+# LLM providers — configure AT LEAST ONE. Model ids are "<provider>/<model>".
+# ---------------------------------------------------------------------------
+llm:
+  # "auto" lets the router pick among configured providers; or pin one, e.g.
+  # defaultModel: ollama/llama3.1
+  defaultModel: auto
+  providers:
+    # --- Local, no API key: uncomment the one(s) you run ---
+    # ollama:
+    #   type: ollama
+    #   baseUrl: http://localhost:11434/v1   # default
+    #   enabled: true
+    # lmstudio:
+    #   type: lmstudio
+    #   baseUrl: http://localhost:1234/v1    # default
+    #   enabled: true
+
+    # --- Any OpenAI-compatible endpoint (vLLM, LocalAI, Groq, Azure, ...) ---
+    # myapi:
+    #   type: openai-compatible
+    #   baseUrl: https://host/v1
+    #   apiKeyEnv: MYAPI_KEY                 # env var holding the key (optional)
+    #   headers: {}                          # any extra headers
+    #   enabled: true
+
+    # --- Anthropic (native API). Key from ANTHROPIC_API_KEY in .env ---
+    # anthropic:
+    #   type: anthropic
+    #   enabled: true
+
+  # OpenRouter and the OPENAI/ANTHROPIC/OPENROUTER cloud providers auto-enable
+  # when their API key is present in the environment — no entry needed above.
+
+router:
+  enabled: true            # pick the best model per task
+  # fallback: [ollama/llama3.1]   # models tried if the chosen one is unavailable
+
+# ---------------------------------------------------------------------------
+# Jev decision engine — OPTIONAL. 'auto' uses Jev only when OPENROUTER_API_KEY
+# is set, else your LLM, else a safe heuristic. Set 'llm' to never use Jev.
+# ---------------------------------------------------------------------------
+decision:
+  provider: auto           # auto | jev | llm | mock
+
+budgets:
+  enabled: true            # per-user / per-model token & cost caps

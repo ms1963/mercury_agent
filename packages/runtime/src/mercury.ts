@@ -1,7 +1,9 @@
 /**
  * Composition root: builds every subsystem from config and wires them into one
  * `Mercury` instance shared by the CLI, the HTTP server and the MCP server.
- * With no API keys configured everything runs on the offline mock providers.
+ * A real LLM provider (OpenRouter, Ollama, LM Studio, an OpenAI-compatible API, or
+ * Anthropic) must be configured; the offline mock is only available when
+ * MERCURY_ENABLE_MOCK=1 is set (used by the test suite).
  */
 import { join } from 'node:path';
 import {

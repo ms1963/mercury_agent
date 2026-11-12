@@ -11,6 +11,7 @@
 import type { MercuryConfig, ModelProfile } from '../config/schema.js';
 import type { Judgment } from '../decision/judgment.js';
 import type { ProviderRegistry } from '../llm/registry.js';
+import { MercuryError } from '../types/common.js';
 
 export interface RouteRequest {
   task: string;
@@ -92,7 +93,14 @@ export class ModelRouter {
       return { model: configured, reason: 'default model', fallbacks: fallbackChain.filter((m) => m !== configured) };
     }
     const pool = this.candidates(req);
-    if (!pool.length) return { model: fallbackChain[0] ?? 'mock/echo', reason: 'no candidate matched; fallback', fallbacks: fallbackChain.slice(1) };
+    if (!pool.length) {
+      if (fallbackChain.length) return { model: fallbackChain[0]!, reason: 'no candidate matched; fallback', fallbacks: fallbackChain.slice(1) };
+      throw new MercuryError(
+        'No LLM model is available. Configure a provider (openrouter, ollama, lmstudio, an openai-compatible API, or anthropic) and set llm.defaultModel — see docs/PROVIDERS.md or run `mercury setup`.',
+        'no_model_configured',
+        'models',
+      );
+    }
     const scored = pool.map((p) => ({ model: p.id, score: this.score(p, tags, !!req.needs?.tools, pool) })).sort((a, b) => b.score - a.score);
     let chosen = scored[0]!.model;
     let reason = 'highest weighted score';
