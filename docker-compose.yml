@@ -10,7 +10,6 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      MERCURY_JWT_SECRET: ${MERCURY_JWT_SECRET:-}
     volumes:
       - mercury-data:/data
 volumes:
