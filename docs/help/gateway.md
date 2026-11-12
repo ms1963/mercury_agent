@@ -1,8 +1,8 @@
 # Messaging gateway
 
-The gateway connects Mercury to chat platforms: Telegram, Discord, Slack, WhatsApp, Signal,
-Matrix, Mattermost, Email, SMS (Twilio), Microsoft Teams, Google Chat, LINE, Messenger,
-Home Assistant, generic webhooks and more.
+The gateway connects Mercury to chat platforms: Telegram, Discord, Slack, WhatsApp (Cloud API),
+Signal (signal-cli REST), Matrix, Mattermost, Email (IMAP/SMTP), SMS (Twilio), Microsoft Teams,
+IRC, Home Assistant, RSS feeds, generic webhooks, web chat and the CLI.
 
 1. Configure an adapter in `~/.mercury/config.yaml` under `gateway.adapters` (tokens via env vars).
 2. Run `mercury serve` (or `mercury gateway start`).

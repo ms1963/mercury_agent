@@ -85,12 +85,15 @@ export async function createServer(m: Mercury): Promise<FastifyInstance> {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive', 'x-accel-buffering': 'no' });
       const closers: Array<() => void> = [];
       const ping = setInterval(() => res.write(': ping\n\n'), 15_000);
-      req.raw.on('close', () => {
+      // Note: listen on the response — the request emits 'close' as soon as its body is consumed.
+      res.on('close', () => {
         clearInterval(ping);
         closers.forEach((f) => f());
       });
       return {
-        send: (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
+        send: (event, data) => {
+          if (!res.writableEnded) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+        },
         onClose: (fn) => closers.push(fn),
         end: () => {
           clearInterval(ping);

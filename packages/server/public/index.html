@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mercury</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%236d5dfc'/><text x='16' y='22' font-size='16' text-anchor='middle' fill='white' font-family='sans-serif'>☿</text></svg>" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div id="auth" class="auth hidden">
+    <form id="auth-form" class="card auth-card">
+      <h1>☿ <span data-i18n="app.name">Mercury</span></h1>
+      <p class="muted" data-i18n="app.tagline">Agentic AI platform</p>
+      <p id="auth-hint" class="hint hidden" data-i18n="auth.firstUser"></p>
+      <label><span data-i18n="auth.username">Username</span><input name="username" autocomplete="username" required /></label>
+      <label><span data-i18n="auth.password">Password</span><input name="password" type="password" autocomplete="current-password" required /></label>
+      <button type="submit" id="auth-submit" class="primary" data-i18n="auth.login">Log in</button>
+      <a href="#" id="auth-switch" data-i18n="auth.switchToRegister">Register</a>
+      <p id="auth-error" class="error"></p>
+    </form>
+  </div>
+
+  <div id="shell" class="shell hidden">
+    <aside class="sidebar">
+      <div class="brand">☿ <span data-i18n="app.name">Mercury</span></div>
+      <nav id="nav"></nav>
+      <div class="sidebar-foot">
+        <select id="locale" aria-label="Language"></select>
+        <button id="theme" class="ghost" title="Theme">◐</button>
+        <button id="logout" class="ghost" data-i18n="app.logout">Log out</button>
+        <div id="whoami" class="muted small"></div>
+      </div>
+    </aside>
+    <main id="view" class="view"></main>
+  </div>
+  <div id="toast" class="toast hidden"></div>
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>
