@@ -55,5 +55,5 @@ These areas have code that compiles. In most cases it also has mock-based tests.
   - The rate limiter is in-memory.
 - **Feature parity:** Hermes parity covers features, not behaviour. Many features have only smoke-level test depth.
 - **Locales:** the UI ships English and German. Help docs are English only.
-- **Lint:** ESLint reports 0 errors but leaves a few warnings (e.g. unused vars) in place.
+- **Lint:** ESLint reports no problems, but `no-explicit-any` is switched off and short-circuit/ternary expression statements are allowed.
 - **Test runner:** `npm install` warns that esbuild's postinstall script was not approved. Tests run fine regardless.
