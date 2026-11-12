@@ -70,7 +70,7 @@ export interface Tool<A = Record<string, unknown>> {
   execute(args: A, ctx: ToolContext): Promise<ToolResult | string>;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 export type AnyTool = Tool<any>;
 
 /** Helper for defining tools with type inference. */

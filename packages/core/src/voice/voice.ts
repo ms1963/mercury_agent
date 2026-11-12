@@ -140,7 +140,8 @@ async function runTemplate(template: string, vars: Record<string, string>, stdin
     child.on('error', (e) => reject(new MercuryError(`Voice command failed: ${e.message}`, 'voice_command', 'voice')));
     child.on('close', (code) => {
       clearTimeout(timer);
-      code === 0 ? resolve({ stdout }) : reject(new MercuryError(`Voice command exited ${code}: ${stderr.slice(0, 500)}`, 'voice_command', 'voice'));
+      if (code === 0) resolve({ stdout });
+      else reject(new MercuryError(`Voice command exited ${code}: ${stderr.slice(0, 500)}`, 'voice_command', 'voice'));
     });
     if (stdin) child.stdin.write(stdin);
     child.stdin.end();

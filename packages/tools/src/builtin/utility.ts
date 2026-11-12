@@ -179,7 +179,7 @@ export function lineDiff(a: string, b: string): string {
   let i = 0;
   let j = 0;
   while (i < x.length && j < y.length) {
-    if (x[i] === y[j]) (out.push(`  ${x[i]}`), i++, j++);
+    if (x[i] === y[j]) { out.push(`  ${x[i]}`); i++; j++; }
     else if (dp[i + 1]![j]! >= dp[i]![j + 1]!) out.push(`- ${x[i++]}`);
     else out.push(`+ ${y[j++]}`);
   }

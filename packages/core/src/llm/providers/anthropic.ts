@@ -108,7 +108,7 @@ export class AnthropicProvider implements LLMProvider {
     const blocks = new Map<number, { id: string; name: string; json: string }>();
     let stop = 'stop';
     for await (const data of sseData(res)) {
-      const ev = safeJsonParse<Record<string, any>>(data); // eslint-disable-line @typescript-eslint/no-explicit-any
+      const ev = safeJsonParse<Record<string, any>>(data);  
       if (!ev) continue;
       if (ev.type === 'message_start') usage.inputTokens = ev.message?.usage?.input_tokens ?? 0;
       if (ev.type === 'content_block_start' && ev.content_block?.type === 'tool_use') blocks.set(ev.index, { id: ev.content_block.id, name: ev.content_block.name, json: '' });

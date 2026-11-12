@@ -102,8 +102,8 @@ export class FactStore {
   list(userId: string, opts: { scope?: string; kind?: string; limit?: number; offset?: number } = {}): Fact[] {
     const where = ['user_id = ?'];
     const params: (string | number)[] = [userId];
-    if (opts.scope) (where.push('scope = ?'), params.push(opts.scope));
-    if (opts.kind) (where.push('kind = ?'), params.push(opts.kind));
+    if (opts.scope) { where.push('scope = ?'); params.push(opts.scope); }
+    if (opts.kind) { where.push('kind = ?'); params.push(opts.kind); }
     return this.db
       .all<FactRow>(`SELECT * FROM facts WHERE ${where.join(' AND ')} ORDER BY updated_at DESC LIMIT ? OFFSET ?`, ...params, opts.limit ?? 100, opts.offset ?? 0)
       .map((r) => toFact(r));

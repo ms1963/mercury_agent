@@ -1,0 +1,17 @@
+services:
+  mercury:
+    build: .
+    image: mercury-agent:latest
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # Optional — Mercury runs fully offline with the mock provider when unset.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      MERCURY_JWT_SECRET: ${MERCURY_JWT_SECRET:-}
+    volumes:
+      - mercury-data:/data
+volumes:
+  mercury-data:
