@@ -81,7 +81,7 @@ export class Gateway {
       const platform = String(e.data.platform ?? '');
       const chat = this.lastChat.get(`${platform}:${e.userId}`);
       if (!this.adapters.has(platform) || !chat) return;
-      const text = `Approval needed for tool "${String(e.data.tool)}": ${String(e.data.reason ?? '')}\nReply /approve ${String(e.data.id)} or /deny ${String(e.data.id)}`;
+      const text = `Approval needed: ${String(e.data.title ?? e.data.tool)}\n${String(e.data.detail ?? '').slice(0, 500)}\nReply /approve ${String(e.data.id)} or /deny ${String(e.data.id)}`;
       void this.deliver(platform, chat, text).catch(() => undefined);
     });
   }

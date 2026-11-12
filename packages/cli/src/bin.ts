@@ -1,0 +1,162 @@
+#!/usr/bin/env node
+/** `mercury` command-line entry point. */
+import { createInterface } from 'node:readline/promises';
+import { createLogger, setConfigValue, SYSTEM_PRINCIPAL } from '@mercury/core';
+import { createMercury, type Mercury } from '@mercury/runtime';
+import { startServer } from '@mercury/server';
+import { serveStdio } from '@mercury/mcp';
+import { flag, parseArgs, type Args } from './args.js';
+import { chatOnce, repl } from './repl.js';
+import * as cmd from './commands.js';
+
+const HELP = `Mercury — agentic AI platform
+
+Usage: mercury <command> [options]
+
+  chat [message]            Interactive chat (or one-shot when a message is given)
+                            --model <id> --session <id> --pattern <name> --user <name>
+  serve [--port 3000]       Start the HTTP API + web UI (+ scheduler, gateway, MCP endpoint)
+  setup                     First-run wizard (admin user, LLM provider)
+                            non-interactive: --username --password --provider --model
+  model [provider/model]    Show or set the default model
+  tools [list|toolsets|enable|disable <name>]
+  skills [list|view|install <src>]
+  schedule [list|add|pause|resume|delete|run]   e.g. schedule add --when "every day at 9am" Summarise news
+  workflow [list|run <name> <input>]
+  config [path|get <key>|set <key> <value>]
+  gateway [status|start|pending|pair <CODE>]
+  mcp [list|serve]          List MCP client connections, or serve Mercury over MCP stdio
+  user [list|add|passwd|role|delete]
+  token [list|create <name> --scopes chat,mcp|revoke <id>]
+  plugins                   List loaded plugins
+  import-agent [~/.hermes]  Import memories, profile and skills from Hermes Agent
+  new <tool|skill|workflow|adapter|plugin> <name> [--lang python|js|go|cpp|java]
+  replay <runId>            Print the recorded event trace of a run
+  doctor                    Check the environment
+  update                    git pull + npm install + build
+  help [topic]              Show help (topics: mercury help)
+`;
+
+async function boot(a: Args, services = false): Promise<Mercury> {
+  return createMercury({ configFile: flag(a, 'config'), startServices: services, logger: createLogger((process.env.MERCURY_LOG_LEVEL as never) ?? 'warn') });
+}
+
+async function setup(m: Mercury, a: Args): Promise<void> {
+  const rl = process.stdin.isTTY ? createInterface({ input: process.stdin, output: process.stdout }) : undefined;
+  const ask = async (q: string, def = '') => flag(a, q.split(' ')[0]!.toLowerCase()) ?? (rl ? (await rl.question(`${q}${def ? ` [${def}]` : ''}: `)) || def : def);
+  try {
+    if (m.users.count() === 0 || flag(a, 'username')) {
+      const username = await ask('Username', 'admin');
+      const password = await ask('Password (min 8 chars)');
+      if (!password) throw new Error('a password is required (--password)');
+      const existing = m.users.findByUsername(username);
+      if (existing) m.users.setPassword(existing.id, password);
+      else m.users.register(username, password, { role: 'admin' });
+      console.log(`✔ admin user "${username}" ready`);
+    }
+    const provider = await ask('Provider (mock|openai|anthropic|openrouter|ollama|lmstudio)', 'mock');
+    const defaults: Record<string, string> = { mock: 'mock/echo', openai: 'openai/gpt-4o-mini', anthropic: 'anthropic/claude-3-5-haiku-latest', openrouter: 'openrouter/openai/gpt-4o-mini', ollama: 'ollama/llama3.1', lmstudio: 'lmstudio/local-model' };
+    const model = await ask('Model', defaults[provider] ?? 'mock/echo');
+    if (provider === 'ollama' || provider === 'lmstudio') setConfigValue(`llm.providers.${provider}`, { type: provider, enabled: true }, m.configFile);
+    const file = setConfigValue('llm.defaultModel', model, m.configFile);
+    console.log(`✔ default model ${model} saved to ${file}`);
+    if (!['mock', 'ollama', 'lmstudio'].includes(provider)) console.log(`  Put your API key in ~/.mercury/.env, e.g. ${provider.toUpperCase()}_API_KEY=...`);
+    console.log('Next: `mercury chat` or `mercury serve` and open http://localhost:3000');
+  } finally {
+    rl?.close();
+  }
+}
+
+async function main(argv: string[]): Promise<void> {
+  const a = parseArgs(argv);
+  const command = a._[0] ?? (a.flags.help ? 'help' : 'chat');
+  if (command === 'new') return cmd.newCmd(a);
+  if (command === 'version' || a.flags.v) return console.log('mercury 0.1.0');
+
+  const serve = command === 'serve' || (command === 'mcp' && a._[1] === 'serve');
+  const m = await boot(a, serve);
+  try {
+    switch (command) {
+      case 'chat': {
+        const principal = flag(a, 'user') ? m.principalFor(flag(a, 'user')) : await m.localPrincipal();
+        const opts = { model: flag(a, 'model'), sessionId: flag(a, 'session'), pattern: flag(a, 'pattern') };
+        const message = a._.slice(1).join(' ');
+        if (message) await chatOnce(m, principal, message, opts);
+        else await repl(m, principal, opts);
+        await m.agent.idle();
+        return;
+      }
+      case 'serve': {
+        const port = Number(flag(a, 'port') ?? m.config.server.port);
+        await startServer(m, { port, host: flag(a, 'host') });
+        console.log(`Mercury listening on http://${flag(a, 'host') ?? m.config.server.host}:${port}  (MCP: ${m.config.mcp.server.path}, metrics: /metrics)`);
+        if (m.users.count() === 0) console.log('No users yet — the first account registered in the web UI becomes admin.');
+        await new Promise<void>((resolve) => {
+          process.once('SIGINT', resolve);
+          process.once('SIGTERM', resolve);
+        });
+        return;
+      }
+      case 'setup':
+        return await setup(m, a);
+      case 'model':
+        if (a._[1]) return console.log(`default model saved to ${setConfigValue('llm.defaultModel', a._[1], m.configFile)}`);
+        console.log(`default: ${m.config.llm.defaultModel}\n${m.providers.profilesList().map((p) => `  ${p.id}`).join('\n')}`);
+        return;
+      case 'tools':
+        return await cmd.toolsCmd(m, a);
+      case 'skills':
+        return await cmd.skillsCmd(m, a);
+      case 'schedule':
+        return await cmd.scheduleCmd(m, a);
+      case 'config':
+        return await cmd.configCmd(m, a);
+      case 'gateway':
+        return await cmd.gatewayCmd(m, a);
+      case 'user':
+        return await cmd.userCmd(m, a);
+      case 'token':
+        return await cmd.tokenCmd(m, a);
+      case 'plugins':
+        return cmd.pluginsCmd(m);
+      case 'import-agent':
+        return await cmd.importAgent(m, a);
+      case 'doctor':
+        return await cmd.doctor(m);
+      case 'update':
+        return await cmd.updateCmd(m);
+      case 'workflow': {
+        if (a._[1] !== 'run') return console.log(m.workflows.list().map((w) => `${w.name.padEnd(24)} ${w.type.padEnd(18)} ${w.description ?? ''}`).join('\n'));
+        const principal = await m.localPrincipal();
+        const r = await m.workflows.run(a._[2] ?? '', a._.slice(3).join(' '), { principal, platform: 'cli' });
+        return console.log(r.output);
+      }
+      case 'mcp':
+        if (a._[1] === 'serve') {
+          const principal = flag(a, 'user') ? m.principalFor(flag(a, 'user')) : { ...SYSTEM_PRINCIPAL, userId: (await m.localPrincipal()).userId };
+          await serveStdio(m.mcpBackend(), principal);
+          await new Promise(() => undefined);
+        }
+        return console.log(JSON.stringify(m.mcp.status(), null, 2));
+      case 'replay':
+        for (const e of m.recorder.replay(a._[1] ?? '')) console.log(`${e.ts} ${e.type.padEnd(16)} ${JSON.stringify(e.data).slice(0, 160)}`);
+        return;
+      case 'help':
+        if (a._[1]) return console.log(m.help.get(a._[1]) ?? `No help topic "${a._[1]}". Topics:\n${m.help.index()}`);
+        return console.log(`${HELP}\nHelp topics:\n${m.help.index()}`);
+      default:
+        console.error(`Unknown command "${command}".\n\n${HELP}`);
+        process.exitCode = 2;
+    }
+  } finally {
+    await m.shutdown();
+  }
+}
+
+main(process.argv.slice(2)).then(
+  () => process.exit(process.exitCode ?? 0),
+  (err: unknown) => {
+    console.error(`Error: ${(err as Error).message}`);
+    process.exit(1);
+  },
+);
