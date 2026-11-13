@@ -7,7 +7,7 @@
 import { z } from 'zod';
 
 const ProviderSchema = z.object({
-  /** openai | anthropic | openrouter | chatllm | ollama | lmstudio | openai-compatible | mock */
+  /** openai | anthropic | openrouter | chatllm | ollama | lmstudio | openai-compatible */
   type: z.string(),
   baseUrl: z.string().optional(),
   apiKey: z.string().optional(),
@@ -121,8 +121,8 @@ export const ConfigSchema = z.object({
 
   decision: z
     .object({
-      /** auto = jev when OPENROUTER_API_KEY is set, otherwise llm (non-mock) or mock. */
-      provider: z.enum(['auto', 'jev', 'llm', 'mock']).default('auto'),
+      /** auto = jev when OPENROUTER_API_KEY is set, otherwise the LLM-based decision provider. */
+      provider: z.enum(['auto', 'jev', 'llm']).default('auto'),
       jev: z
         .object({
           model: z.string().default('typesafe/jev-1.13'),
@@ -214,14 +214,14 @@ export const ConfigSchema = z.object({
         .prefault({}),
       web: z
         .object({
-          searchProvider: z.enum(['duckduckgo', 'searxng', 'brave', 'mock']).default('duckduckgo'),
+          searchProvider: z.enum(['duckduckgo', 'searxng', 'brave']).default('duckduckgo'),
           searxngUrl: z.string().optional(),
           allowPrivateNetworks: z.boolean().default(false),
           maxBytes: z.number().default(2_000_000),
         })
         .prefault({}),
       browser: z.object({ backend: z.string().default('auto'), cdpUrl: z.string().optional() }).prefault({}),
-      image: z.object({ provider: z.string().default('mock'), model: z.string().default('dall-e-3') }).prefault({}),
+      image: z.object({ provider: z.string().default('openai'), model: z.string().default('dall-e-3') }).prefault({}),
       executeCode: z.object({ timeoutMs: z.number().default(30_000), maxToolCalls: z.number().default(50) }).prefault({}),
       polyglotDirs: z.array(z.string()).default([]),
     })
@@ -258,8 +258,8 @@ export const ConfigSchema = z.object({
 
   voice: z
     .object({
-      stt: z.object({ provider: z.string().default('mock'), command: z.string().optional(), model: z.string().default('whisper-1') }).prefault({}),
-      tts: z.object({ provider: z.string().default('mock'), command: z.string().optional(), voice: z.string().default('alloy') }).prefault({}),
+      stt: z.object({ provider: z.string().default('openai'), command: z.string().optional(), model: z.string().default('whisper-1') }).prefault({}),
+      tts: z.object({ provider: z.string().default('openai'), command: z.string().optional(), voice: z.string().default('alloy') }).prefault({}),
       wakeWord: z.object({ command: z.string().optional() }).prefault({}),
     })
     .prefault({}),

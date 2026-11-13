@@ -18,12 +18,9 @@ async function readCapped(res: Response, max: number): Promise<string> {
   return buf.subarray(0, max).toString('utf8');
 }
 
-/** Search providers. DuckDuckGo (HTML endpoint) needs no key; mock is offline. */
+/** Search providers. DuckDuckGo (HTML endpoint) needs no key; SearXNG/Brave require config. */
 export async function webSearch(ctx: ToolContext, query: string, n: number): Promise<SearchHit[]> {
   const cfg = ctx.services.config.tools.web;
-  if (cfg.searchProvider === 'mock') {
-    return [1, 2, 3].slice(0, n).map((i) => ({ title: `Mock result ${i} for "${query}"`, url: `https://example.com/${i}?q=${encodeURIComponent(query)}`, snippet: `Offline mock search result ${i}.` }));
-  }
   if (cfg.searchProvider === 'searxng') {
     if (!cfg.searxngUrl) throw new Error('tools.web.searxngUrl is not configured');
     const res = await safeFetch(`${cfg.searxngUrl.replace(/\/$/, '')}/search?format=json&q=${encodeURIComponent(query)}`, {}, { allowPrivate: true });
@@ -138,7 +135,6 @@ export const weather = defineTool<{ location: string }>({
   untrustedOutput: true,
   parameters: params({ location: str('City or place name') }, ['location']),
   async execute(a, ctx) {
-    if (ctx.services.config.tools.web.searchProvider === 'mock') return `Mock weather for ${a.location}: 18°C, partly cloudy.`;
     const geo = (await (await safeFetch(`https://geocoding-api.open-meteo.com/v1/search?count=1&name=${encodeURIComponent(a.location)}`)).json()) as { results?: Array<{ latitude: number; longitude: number; name: string; country?: string }> };
     const place = geo.results?.[0];
     if (!place) return { content: `Unknown location "${a.location}"`, isError: true };

@@ -1,18 +1,14 @@
 /**
  * Media tools (toolset "media"): image generation, TTS, STT, image description (vision).
- * Defaults are offline mocks so everything works without API keys; configure
- * `tools.image.provider=openai` and `voice.*` for real services.
+ * These require a real service to be configured (`tools.image.provider`, `voice.*`);
+ * there is no offline fallback — calls fail explicitly when the service is unconfigured.
  */
 import { readFileSync } from 'node:fs';
 import { defineTool, safeFetch, type AnyTool, type ToolContext } from '@mercury/core';
 import { params, str, strEnum } from '../util.js';
 
-/** A tiny valid 1x1 PNG used by the mock image generator. */
-const MOCK_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
-
 async function generateImage(ctx: ToolContext, prompt: string, size: string): Promise<Buffer> {
   const cfg = ctx.services.config.tools.image;
-  if (cfg.provider === 'mock') return MOCK_PNG;
   if (cfg.provider === 'openai') {
     const key = process.env.OPENAI_API_KEY;
     if (!key) throw new Error('OPENAI_API_KEY is not set');
@@ -37,8 +33,7 @@ export const imageGenerate = defineTool<{ prompt: string; size?: string }>({
   async execute(a, ctx) {
     const png = await generateImage(ctx, a.prompt, a.size ?? '1024x1024');
     const att = await ctx.services.attachments.save(ctx.principal.userId, 'image.png', png, 'image/png');
-    const mock = ctx.services.config.tools.image.provider === 'mock';
-    return { content: `Generated image ${att.id}${mock ? ' (mock provider: placeholder image)' : ''}.`, attachments: [att] };
+    return { content: `Generated image ${att.id}.`, attachments: [att] };
   },
 });
 

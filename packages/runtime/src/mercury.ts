@@ -78,7 +78,7 @@ export interface CreateOptions {
   /** Start background services (scheduler, gateway, MCP connections). Default true. */
   startServices?: boolean;
   logger?: Logger;
-  /** Transport for gateway adapters (tests use MockTransport). */
+  /** Optional HTTP transport override for gateway adapters (defaults to FetchTransport; tests inject a scriptable one). */
   transport?: HttpTransport;
 }
 
@@ -90,17 +90,21 @@ function decisionProviders(config: MercuryConfig, llm: LLMService, hasRealLlm: b
     const r = await llm.complete(SYSTEM_PRINCIPAL, messages, { model: d.llmModel, responseFormat: 'json', budgetOverride: true });
     return { content: r.content, model: r.modelId };
   });
-  const mock = new MockDecisionProvider();
+  // The mock decision provider is a test-only fallback (enabled via MERCURY_ENABLE_MOCK,
+  // see vitest.config.ts); it is never part of a production decision chain.
+  const mockTail: DecisionProvider[] = process.env.MERCURY_ENABLE_MOCK === '1' ? [new MockDecisionProvider()] : [];
   const nonMockLlm = hasRealLlm && !config.llm.defaultModel.startsWith('mock/');
   switch (d.provider) {
     case 'jev':
-      return [jev, mock];
+      return [jev, ...mockTail];
     case 'llm':
-      return [llmProv, mock];
-    case 'mock':
-      return [mock];
+      return [llmProv, ...mockTail];
     default:
-      return jev.available() ? [jev, ...(nonMockLlm ? [llmProv] : []), mock] : nonMockLlm ? [llmProv, mock] : [mock];
+      // 'auto': prefer a configured real provider; in production with neither Jev nor a
+      // real LLM available, fall back to Jev so decisions fail explicitly when used.
+      if (jev.available()) return [jev, ...(nonMockLlm ? [llmProv] : []), ...mockTail];
+      if (nonMockLlm) return [llmProv, ...mockTail];
+      return mockTail.length ? mockTail : [jev];
   }
 }
 

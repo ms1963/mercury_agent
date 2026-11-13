@@ -3,7 +3,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { JevDecisionProvider, MockDecisionProvider, hmacHex, createLogger, type Principal } from '@mercury/core';
-import { MockTransport, TelegramAdapter, SlackAdapter, type InboundMessage } from '@mercury/gateway';
+import { TelegramAdapter, SlackAdapter, type InboundMessage } from '@mercury/gateway';
+import { MockTransport } from './mock-transport.js';
 import { createMcpServer } from '@mercury/mcp';
 import { makeMercury } from './helpers.js';
 

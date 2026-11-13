@@ -42,8 +42,6 @@ export class VoiceService {
   async transcribe(path: string, mime = 'audio/wav'): Promise<string> {
     const stt = this.config.voice.stt;
     switch (stt.provider) {
-      case 'mock':
-        return `[mock transcript of ${basename(path)}]`;
       case 'openai': {
         const key = process.env.OPENAI_API_KEY;
         if (!key) throw new MercuryError('OPENAI_API_KEY is not set for STT', 'stt_unconfigured', 'voice');
@@ -77,11 +75,6 @@ export class VoiceService {
     const tts = this.config.voice.tts;
     const v = voice ?? tts.voice;
     switch (tts.provider) {
-      case 'mock': {
-        const path = join(this.outDir, `${newId('tts')}.wav`);
-        writeFileSync(path, silentWav(Math.min(3, 0.3 + text.length / 40)));
-        return { path, mime: 'audio/wav' };
-      }
       case 'openai': {
         const key = process.env.OPENAI_API_KEY;
         if (!key) throw new MercuryError('OPENAI_API_KEY is not set for TTS', 'tts_unconfigured', 'voice');
@@ -148,22 +141,3 @@ async function runTemplate(template: string, vars: Record<string, string>, stdin
   });
 }
 
-/** Minimal silent 16 kHz mono WAV (mock TTS output). */
-export function silentWav(seconds: number): Buffer {
-  const rate = 16000;
-  const samples = Math.floor(rate * seconds);
-  const buf = Buffer.alloc(44 + samples * 2);
-  buf.write('RIFF', 0);
-  buf.writeUInt32LE(36 + samples * 2, 4);
-  buf.write('WAVEfmt ', 8);
-  buf.writeUInt32LE(16, 16);
-  buf.writeUInt16LE(1, 20);
-  buf.writeUInt16LE(1, 22);
-  buf.writeUInt32LE(rate, 24);
-  buf.writeUInt32LE(rate * 2, 28);
-  buf.writeUInt16LE(2, 32);
-  buf.writeUInt16LE(16, 34);
-  buf.write('data', 36);
-  buf.writeUInt32LE(samples * 2, 40);
-  return buf;
-}
