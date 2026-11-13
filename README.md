@@ -1,6 +1,23 @@
-# ☿ Mercury
+<p align="center">
+  <img src="assets/mercury_agent.jpg" alt="Mercury Agent" width="180" />
+</p>
 
-A self-hosted, extensible **agentic AI platform** in TypeScript: a CLI, a web UI, chat-platform
+<h1 align="center">Mercury Agent</h1>
+
+<p align="center">
+  A self-hosted, extensible <strong>agentic AI platform</strong> in TypeScript.<br/>
+  <em>CLI · Web UI · 16 chat gateways · multi-agent workflows · persistent memory · 75+ tools · MCP client &amp; server</em>
+</p>
+
+<p align="center">
+  <img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-blue.svg" />
+  <img alt="Node.js" src="https://img.shields.io/badge/Node.js-%E2%89%A522.5-5FA04E.svg" />
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-ESM-3178C6.svg" />
+</p>
+
+---
+
+Mercury Agent is a self-hosted, extensible **agentic AI platform** in TypeScript: a CLI, a web UI, chat-platform
 gateways, multi-agent workflows, persistent memory, skills, 75+ tools and MCP (client **and** server).
 It aims for feature parity with Hermes Agent and adds a typed **decision engine (Jev)** that routes
 models, judges risk, triages messages and drives reflection.
