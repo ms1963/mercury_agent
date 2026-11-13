@@ -16,6 +16,14 @@ companion documents ([ARCHITECTURE.md](ARCHITECTURE.md), [SECURITY.md](SECURITY.
 > build, no systemd run. Treat feature descriptions as "implemented and offline-tested"; see
 > [STATUS.md](../STATUS.md) for the precise tested-vs-untested breakdown. Where a feature has only
 > been run against a mock, this guide says so.
+>
+> **Mocks removed for integrations.** The integration-standing mocks have been stripped from the
+> production/runtime paths: the gateway `MockTransport` (adapters now use the real `FetchTransport`;
+> the test-only `MockTransport` moved to `tests/mock-transport.ts`), and the mock
+> search/weather/image and STT/TTS branches. These subsystems now **require real configuration and
+> fail explicitly** rather than silently falling back to a mock. The deterministic **mock LLM and mock
+> decision provider remain available only** behind `MERCURY_ENABLE_MOCK=1` — the single sanctioned
+> escape hatch the test suite depends on, never for production.
 
 ---
 
@@ -715,28 +723,116 @@ engine pick a template. Authoring workflows: Part VIII.
 
 ## 5.9 MCP (Model Context Protocol)
 
-Mercury is **both** an MCP client and an MCP server.
+Mercury is **both** an MCP client and an MCP server. The Model Context Protocol is a standard that lets
+AI apps talk to external "tool servers" — a filesystem server, a GitHub server, a database server, a
+Slack server, and hundreds of community servers. By connecting Mercury to one, **every tool that server
+offers becomes a tool your Mercury agent can call**, exactly like a built-in tool.
 
-- **As a client**, external MCP servers become tools, namespaced `mcp__<server>__<tool>`. Configure
-  them under `mcp.servers` (or `~/.mercury/mcp.json`, which hot-reloads). Each server entry sets the
-  transport (`stdio`|`http`|`sse`), command/args/env or url/headers, `include`/`exclude` filters,
-  `trust` (`untrusted` default), and `allowSampling`. List with `mercury mcp list`.
-- **As a server**, Mercury exposes its own capabilities over MCP two ways: the HTTP streamable
-  endpoint at `/mcp` (bearer token with the `mcp` scope — see §4.3), or `mercury mcp serve` over
-  stdio. Built-in tools appear as `mercury_<name>` (needs the `tools` scope).
+### 5.9.1 Connecting Mercury to an external MCP server (Mercury as client)
+
+When you connect a server, its tools are discovered automatically and registered under the name
+`mcp_<server>_<tool>`, grouped into the toolset `mcp:<server>`. (So a `read_file` tool on a server you
+named `fs` becomes `mcp_fs_read_file`.)
+
+**Three transports are supported** — pick the one the server documents:
+
+| Transport | Use when the server… | Required fields |
+|---|---|---|
+| `stdio` | is a local program/command you run (the most common kind — e.g. an `npx` package) | `command`, optional `args`, `env` |
+| `http` | is a remote Streamable-HTTP endpoint | `url`, optional `headers` |
+| `sse` | is a remote Server-Sent-Events endpoint | `url`, optional `headers` |
+
+**The simplest way to add one — edit `~/.mercury/mcp.json`.** This file **hot-reloads**, so changes take
+effect without restarting Mercury. It is a map of server name → config. Example connecting three servers:
+
+```jsonc
+{
+  // A) A local stdio server launched via npx (filesystem access, scoped to one folder)
+  "fs": {
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home/me/projects"],
+    "trust": "untrusted"
+  },
+
+  // B) A local stdio server that needs a secret, passed via env
+  "github": {
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-github"],
+    "env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_xxx" }
+  },
+
+  // C) A remote Streamable-HTTP server behind an auth header
+  "weather": {
+    "transport": "http",
+    "url": "https://mcp.example.com/mcp",
+    "headers": { "Authorization": "Bearer YOUR_TOKEN" },
+    "include": ["get_forecast", "get_alerts"],   // only expose these tools
+    "trust": "untrusted"
+  }
+}
+```
+
+**Per-server options** (all optional unless noted):
+
+| Field | Meaning |
+|---|---|
+| `transport` | `stdio`, `http`, or `sse` (**required**). |
+| `command`, `args`, `env` | For `stdio`: the program to run, its arguments, and environment variables (good place for the server's API key). |
+| `url`, `headers` | For `http`/`sse`: the endpoint and any auth headers. |
+| `include` / `exclude` | Glob lists to allow/deny specific tool names from that server (useful to hide dangerous ones). |
+| `trust` | `untrusted` (default) or `trusted`. Untrusted servers' output is **spotlighted** (treated as data, not instructions) to resist prompt-injection — leave it `untrusted` unless you fully control the server. |
+| `allowSampling` | `false` by default. If `true`, the server may ask **your** LLM for completions. Enable only for servers you trust. |
+| `enabled` | Set `false` to keep a definition but turn it off. |
+
+**Other ways to add a server** (equivalent — use whichever fits):
+
+```bash
+# From the CLI config (writes into config.yaml under mcp.servers):
+mercury config set mcp.servers.fs '{"transport":"stdio","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","/home/me"]}'
+
+# Or from the web UI: Settings → Tools/MCP → add a server.
+# Or via the HTTP API: POST /api/mcp  (admin; see Appendix C).
+```
+
+**Check it worked and use the tools:**
+
+```bash
+mercury mcp list          # shows each server: transport, connected?, and the tools discovered
+mercury tools list        # the server's tools now appear as mcp_<server>_<tool>
+mercury chat "Use the filesystem tools to list the files in my projects folder"
+```
+
+The agent will call the newly available `mcp_*` tools on its own. If a server fails to connect,
+`mercury mcp list` shows the error (common causes: wrong `command`/`url`, a missing key in `env`, or the
+server package not installed).
+
+### 5.9.2 Exposing Mercury's own tools over MCP (Mercury as server)
+
+Other MCP-aware apps (another Mercury, Claude Desktop, an IDE, etc.) can consume **Mercury's** tools two
+ways. Built-in tools appear to them as `mercury_<name>`.
+
+- **HTTP:** the streamable endpoint at `/mcp` (requires a bearer token with the `mcp` scope — see §4.3;
+  each tool additionally needs its own scope, e.g. `tools`). Configure with `mcp.server.enabled` /
+  `mcp.server.path`.
+- **stdio:** `mercury mcp serve` — ideal for desktop apps that launch a local command.
 
 > **Status:** MCP was verified only with an in-memory client↔server roundtrip and an HTTP `/mcp`
-> initialize handshake; connections to **real external MCP servers** have not been exercised.
+> initialize handshake; connections to **real external MCP servers** have not been exercised against
+> live services.
 
 ## 5.10 Voice
 
-STT/TTS providers are configured under `voice.stt` / `voice.tts` (`mock` default, or `openai`,
-local whisper/edge-tts/piper, or any `command`). The web UI can record from the mic and play back
-responses; the gateway transcribes inbound voice memos. `voice.wakeWord.command` sets an optional
-wake-word hook.
+STT/TTS providers are configured under `voice.stt` / `voice.tts` (`openai` default, local
+whisper/edge-tts/piper, or any `command`). There is **no mock voice provider** — the mock STT/TTS
+branches were removed, so an unconfigured provider now fails explicitly (the `openai` default throws a
+`MercuryError` — `stt_unconfigured` / `tts_unconfigured` — when `OPENAI_API_KEY` is missing) instead of
+returning silent/placeholder audio. The web UI can record from the mic and play back responses; the
+gateway transcribes inbound voice memos. `voice.wakeWord.command` sets an optional wake-word hook.
 
-> **Status:** only the mock STT/TTS providers were exercised; real voice services and browser mic
-> capture have not been run.
+> **Status:** real voice services and browser mic capture have **not** been run against live services.
+> The former mock STT/TTS providers have been removed, so voice now requires a real, configured backend.
 
 
 ---
@@ -796,15 +892,19 @@ In chat, `/tools` lists what is currently available. Over the API: `GET /api/too
 - **`browser_*`** uses Playwright when installed, otherwise a fetch-based fallback (`tools.browser.backend`
   = `auto`|…, `cdpUrl` to attach to a remote Chrome).
 - **`web_*`** go through `safeFetch` (SSRF guard + size cap); search provider is `tools.web.searchProvider`
-  (`duckduckgo` default, `searxng`, `brave`, `mock`).
-- **`image_generate`** uses `tools.image.provider` (`mock` SVG default, or an OpenAI-compatible image
-  provider / model).
+  (`duckduckgo` default — works with no key; `searxng` requires `searxngUrl`; `brave` requires
+  `BRAVE_API_KEY`). The `mock` search provider and the mock-weather branch have been removed.
+- **`image_generate`** uses `tools.image.provider` (`openai` default, or an OpenAI-compatible image
+  provider / model). The `mock` SVG image provider has been removed; the `openai` default throws
+  `OPENAI_API_KEY is not set` when unconfigured.
 - **`file_*`** are confined by the path jail (`tools.jail`).
 
 > **Status:** the Docker and SSH terminal backends, the Playwright browser backend, real web-search
 > providers, and real image generation have **not** been exercised against live services (only the
-> local terminal, fetch browser backend and mock providers were run). The Go polyglot example tool
-> (`tools/hash_go`) is present but no Go toolchain is installed in the test environment.
+> local terminal and the fetch browser backend were run). The former mock search/weather/image
+> branches have been removed, so these tools now require a real, configured backend and fail explicitly
+> otherwise. The Go polyglot example tool (`tools/hash_go`) is present but no Go toolchain is installed
+> in the test environment.
 
 ## 6.4 Polyglot tools (any language)
 
@@ -833,9 +933,12 @@ Decisions API). Mercury uses it as a calibrated decision-maker in two families:
 | `auto` (default) | Use Jev **only** when `OPENROUTER_API_KEY` is set; else your configured LLM; else a built-in heuristic. |
 | `jev` | Force Jev (requires the OpenRouter key). |
 | `llm` | Use your normal LLM for decisions, never Jev. |
-| `mock` | Deterministic keyword heuristic, no network (used in tests). |
 
-Mercury runs fully without Jev — every decision degrades to the LLM or the heuristic.
+The `mock` decision provider has been removed from normal operation (and dropped from the
+`decision.provider` enum). A deterministic mock decision provider is still appended **only** when
+`MERCURY_ENABLE_MOCK=1` is set — the sanctioned test/offline escape hatch — never in production.
+
+Mercury runs fully without Jev — every decision degrades to the LLM or the built-in heuristic.
 
 **Configuration** (`decision.*`): `jev.model` (`typesafe/jev-1.13`), `jev.baseUrl`
 (`https://openrouter.ai/api/alpha`), `jev.apiKeyEnv` (`OPENROUTER_API_KEY`), `jev.timeoutMs` (20 s);
@@ -959,8 +1062,10 @@ errors with `mercury plugins`. Register the module in `plugins:[]` or drop it in
 
 Implement the `Adapter` interface from `@mercury/gateway` (or extend `BaseAdapter`): `name`, `type`,
 optional `textOnly`, `start(sink)`, `stop()`, `send(out)`, `status()`, and optional
-`handleWebhook(req)` (mounted at `/webhooks/<name>`). Use the injected `deps.transport` for HTTP so
-the adapter is testable with `MockTransport`. Register it from a plugin with
+`handleWebhook(req)` (mounted at `/webhooks/<name>`). Use the injected `deps.transport` for HTTP; it
+defaults to the real `FetchTransport`, and for tests you can inject the test-only `MockTransport` from
+`tests/mock-transport.ts` (it is no longer part of the shipped `@mercury/gateway` package — the
+production `transport.ts` exports only `wrap()` and `FetchTransport`). Register it from a plugin with
 `api.registerAdapter('myplatform', (config) => new MyAdapter(...))`, then enable it under
 `gateway.adapters.myplatform`.
 
@@ -1057,8 +1162,9 @@ as root; leave approvals on `manual` unless input is fully trusted.
 
 Full detail is in [ARCHITECTURE.md](ARCHITECTURE.md); this orients you quickly.
 
-**Design principles:** small explicit interfaces for every subsystem; offline-first (mock LLM/
-decisions, hash embeddings, mock STT/TTS); one composition root (`createMercury()` in
+**Design principles:** small explicit interfaces for every subsystem; offline-first for development and
+tests (the mock LLM/decision providers behind `MERCURY_ENABLE_MOCK=1`, hash embeddings) while
+integrations require real configuration; one composition root (`createMercury()` in
 `@mercury/runtime` wires everything — the CLI, server, gateway, scheduler and MCP server are thin
 front-ends over it); everything is an event; untrusted-by-default content handling.
 
@@ -1074,7 +1180,8 @@ approval/hooks/sandbox/timeout, external results tagged untrusted → repeat) �
 (redaction) → stream answer → post-run reflection. Every arrow emits a persisted event.
 
 **Key subsystems:** the `ReactLoop` primitive (with a text-ReAct fallback for models lacking native
-tool calling), seven reasoning patterns, the `DecisionEngine` (Jev/LLM/mock providers with a fallback
+tool calling), seven reasoning patterns, the `DecisionEngine` (Jev/LLM providers — plus a gated mock
+for tests — with a fallback
 chain), the model router + budget service, the six-kind memory system (working, episodic, semantic,
 curated, procedural/skills, user model, blackboard), skills with progressive disclosure, the tool
 executor pipeline, the workflow spawner (depth/concurrency/budget limits), the gateway, and the
@@ -1194,7 +1301,7 @@ shown is the default applied when the key is omitted. Keys are grouped by their 
 
 | Key | Default | Notes |
 | --- | --- | --- |
-| `decision.provider` | `'auto'` | `auto`, `jev`, `llm`, or `mock`. |
+| `decision.provider` | `'auto'` | `auto`, `jev`, or `llm`. (`mock` removed from the enum; a mock provider is appended only under `MERCURY_ENABLE_MOCK=1`.) |
 | `decision.jev.model` | `'typesafe/jev-1.13'` | Jev model id. |
 | `decision.jev.baseUrl` | `'https://openrouter.ai/api/alpha'` | Jev endpoint. |
 | `decision.jev.apiKeyEnv` | `'OPENROUTER_API_KEY'` | Env var holding the key. |
@@ -1265,13 +1372,13 @@ shown is the default applied when the key is omitted. Keys are grouped by their 
 | `tools.terminal.dockerImage` | `'node:22-slim'` | Image for the Docker backend. |
 | `tools.terminal.ssh` | `{ host?, user?, keyPath? }` | SSH backend target. |
 | `tools.terminal.timeoutMs` | `60000` | Terminal command timeout. |
-| `tools.web.searchProvider` | `'duckduckgo'` | `duckduckgo`, `searxng`, `brave`, or `mock`. |
+| `tools.web.searchProvider` | `'duckduckgo'` | `duckduckgo`, `searxng`, or `brave`. (`mock` removed.) |
 | `tools.web.searxngUrl` | *(unset)* | SearXNG instance URL. |
 | `tools.web.allowPrivateNetworks` | `false` | SSRF guard: allow private ranges. |
 | `tools.web.maxBytes` | `2000000` | Max fetch size. |
 | `tools.browser.backend` | `'auto'` | Browser automation backend. |
 | `tools.browser.cdpUrl` | *(unset)* | Chrome DevTools Protocol URL. |
-| `tools.image.provider` | `'mock'` | Image generation provider. |
+| `tools.image.provider` | `'openai'` | Image generation provider (was `mock`; throws if `OPENAI_API_KEY` unset). |
 | `tools.image.model` | `'dall-e-3'` | Image model. |
 | `tools.executeCode.timeoutMs` | `30000` | Code-execution timeout. |
 | `tools.executeCode.maxToolCalls` | `50` | Max nested tool calls from executed code. |
@@ -1315,10 +1422,10 @@ shown is the default applied when the key is omitted. Keys are grouped by their 
 
 | Key | Default | Notes |
 | --- | --- | --- |
-| `voice.stt.provider` | `'mock'` | Speech-to-text provider. |
+| `voice.stt.provider` | `'openai'` | Speech-to-text provider (was `mock`; throws `stt_unconfigured` if `OPENAI_API_KEY` unset). |
 | `voice.stt.command` | *(unset)* | External STT command. |
 | `voice.stt.model` | `'whisper-1'` | STT model. |
-| `voice.tts.provider` | `'mock'` | Text-to-speech provider. |
+| `voice.tts.provider` | `'openai'` | Text-to-speech provider (was `mock`; throws `tts_unconfigured` if `OPENAI_API_KEY` unset). |
 | `voice.tts.command` | *(unset)* | External TTS command. |
 | `voice.tts.voice` | `'alloy'` | TTS voice. |
 | `voice.wakeWord.command` | *(unset)* | Wake-word detector command. |
