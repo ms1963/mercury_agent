@@ -29,7 +29,12 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
-          language: ${{ matrix.language }}
+          # NOTE: the input is "languages" (plural). Using the singular form made the
+          # action ignore it and auto-detect every language in the repo (including the
+          # example Go and Python tools), and Go does not support build-mode "none",
+          # which failed CodeQL at init. Pinning the language keeps the scan on the
+          # TypeScript/JavaScript sources this project is written in.
+          languages: ${{ matrix.language }}
           # The TS/JS extractor analyses the sources directly; no build required.
           build-mode: none
       - name: Perform CodeQL analysis
