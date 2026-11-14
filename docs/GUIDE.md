@@ -1,3 +1,5 @@
+![Mercury Agent](../assets/mercury_agent.png)
+
 # ☿ Mercury — The Complete Guide
 
 **For Users, Developers and Administrators.**
@@ -918,7 +920,7 @@ stdin and reads the result from stdout (a non-zero exit is reported as an error)
 
 # Part VII — The decision engine (Jev)
 
-Jev is a typed decision/judgment model (Michael Stal's `typesafe/jev-1.13`, served via the OpenRouter
+Jev is a typed decision/judgment model (`typesafe/jev-1.13`, served via the OpenRouter
 Decisions API). Mercury uses it as a calibrated decision-maker in two families:
 
 - **Routing / judgment:** model selection, pattern/workflow selection, tool-approval gating,
@@ -1639,7 +1641,7 @@ providers, and provider keys, and reports what is missing.
 
 | Term | Meaning |
 | --- | --- |
-| **Jev** | A typed decision/judgment model (`typesafe/jev-1.13`, by Michael Stal) used by the decision engine to make small structured choices (routing, tool gating, triage, reflection) instead of a general LLM. |
+| **Jev** | A typed decision/judgment model (`typesafe/jev-1.13`) used by the decision engine to make small structured choices (routing, tool gating, triage, reflection) instead of a general LLM. |
 | **Pattern** | A reasoning strategy for a turn: `react`, `cot`, `plan-execute`, `reflexion`, `tot`, `self-consistency`, `critic`. |
 | **Toolset** | A named group of tools that can be enabled/disabled together, including per gateway platform. |
 | **Skill** | Procedural memory: a reusable, progressively disclosed how-to distilled from successful runs or installed manually. |

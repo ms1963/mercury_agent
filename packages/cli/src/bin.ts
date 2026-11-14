@@ -32,6 +32,7 @@ Usage: mercury <command> [options]
   import-agent [~/.hermes]  Import memories, profile and skills from Hermes Agent
   new <tool|skill|workflow|adapter|plugin> <name> [--lang python|js|go|cpp|java]
   replay <runId>            Print the recorded event trace of a run
+  eval [--tag <tag>] [--json]   Run the built-in self-evaluation suite (offline) with token/cost accounting
   doctor                    Check the environment
   update                    git pull + npm install + build
   help [topic]              Show help (topics: mercury help)
@@ -148,6 +149,8 @@ async function main(argv: string[]): Promise<void> {
       case 'replay':
         for (const e of m.recorder.replay(a._[1] ?? '')) console.log(`${e.ts} ${e.type.padEnd(16)} ${JSON.stringify(e.data).slice(0, 160)}`);
         return;
+      case 'eval':
+        return await cmd.evalCmd(m, a);
       case 'help':
         if (a._[1]) return console.log(m.help.get(a._[1]) ?? `No help topic "${a._[1]}". Topics:\n${m.help.index()}`);
         return console.log(`${HELP}\nHelp topics:\n${m.help.index()}`);

@@ -1,19 +1,13 @@
-<p align="center">
-  <img src="assets/mercury_agent.jpg" alt="Mercury Agent" width="180" />
-</p>
+![Mercury Agent](assets/mercury_agent.png)
 
-<h1 align="center">Mercury Agent</h1>
+# Mercury Agent
 
-<p align="center">
-  A self-hosted, extensible <strong>agentic AI platform</strong> in TypeScript.<br/>
-  <em>CLI · Web UI · 16 chat gateways · multi-agent workflows · persistent memory · 75+ tools · MCP client &amp; server</em>
-</p>
+A self-hosted, extensible **agentic AI platform** in TypeScript.
+*CLI · Web UI · 16 chat gateways · multi-agent workflows · persistent memory · 75+ tools · MCP client & server*
 
-<p align="center">
-  <img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-blue.svg" />
-  <img alt="Node.js" src="https://img.shields.io/badge/Node.js-%E2%89%A522.5-5FA04E.svg" />
-  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-ESM-3178C6.svg" />
-</p>
+![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
+![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A522.5-5FA04E.svg)
+![TypeScript](https://img.shields.io/badge/TypeScript-ESM-3178C6.svg)
 
 ---
 
@@ -131,6 +125,20 @@ Monorepo packages:
 | `@mercury/cli` | The `mercury` binary |
 
 More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Documentation
+
+| Guide | For whom |
+| --- | --- |
+| [docs/INSTALL_GUIDE.md](docs/INSTALL_GUIDE.md) | **New / non-technical users** — friendly, step-by-step: install, connect ChatLLM or Ollama (and optionally Jev), send prompts, create agents, change settings |
+| [docs/QUICK.md](docs/QUICK.md) | A fast, plain-language quick start |
+| [docs/GUIDE.md](docs/GUIDE.md) | **The complete manual** — every CLI command, config key, tool, endpoint and extension point ([PDF](docs/GUIDE.pdf)) |
+| [docs/PROVIDERS.md](docs/PROVIDERS.md) | One-line LLM provider setups |
+| [examples/env/](examples/env/) | Copy-paste `.env` files for 15 LLM providers (OpenAI, Anthropic, OpenRouter, ChatLLM, Groq, Mistral, DeepSeek, Gemini, Ollama, …) |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/SECURITY.md](docs/SECURITY.md) · [docs/EXTENDING.md](docs/EXTENDING.md) | Design, security model, and how to extend Mercury |
+| [STATUS.md](STATUS.md) | Honest tested-vs-untested status of every subsystem |
+
+> This README is also available as a [PDF](README.pdf).
 
 ## Development
 

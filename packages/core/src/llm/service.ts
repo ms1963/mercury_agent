@@ -13,6 +13,7 @@ import { BudgetExceededError, MercuryError, PermissionDeniedError, errorMessage,
 import type { ChatMessage, DeltaHandler, LLMResponse, ToolSpec } from '../types/messages.js';
 import type { ProviderRegistry } from './registry.js';
 import { ProviderError } from './provider.js';
+import { backoffDelay } from './backoff.js';
 import { parseTextReact, textReactInstructions } from './text-react.js';
 import type { HookManager } from '../plugins/hooks.js';
 
@@ -124,7 +125,9 @@ export class LLMService {
       } catch (err) {
         const retryable = err instanceof ProviderError && err.retryable;
         if (!retryable || attempt >= this.config.llm.retries || call.signal?.aborted) throw err;
-        await sleep(500 * 2 ** attempt, call.signal);
+        const delay = backoffDelay(attempt, this.config.llm.retryBackoffMs, this.config.llm.retryJitter);
+        this.bus.emit({ type: 'llm.retry', runId: call.runId, data: { model: modelId, attempt: attempt + 1, maxRetries: this.config.llm.retries, delayMs: delay, error: errorMessage(err) } });
+        await sleep(delay, call.signal);
       }
     }
     if (textMode) {

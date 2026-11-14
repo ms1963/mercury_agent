@@ -1,3 +1,5 @@
+![Mercury Agent](../assets/mercury_agent.png)
+
 # Mercury — Quick Start for Everyone
 
 A short, friendly guide to getting Mercury running and talking to it — **no IT background needed**.

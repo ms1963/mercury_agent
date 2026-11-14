@@ -1,3 +1,5 @@
+![Mercury Agent](../assets/mercury_agent.png)
+
 # LLM Providers
 
 Mercury has **no built-in model**. You must point it at one real LLM backend before it can
@@ -96,7 +98,7 @@ mercury config set llm.providers.anthropic '{"type":"anthropic","baseUrl":"https
 
 ## The optional Jev decision engine
 
-Jev is Michael Stal's typed decision/judgment model, used by Mercury for model routing,
+Jev is a typed decision/judgment model, used by Mercury for model routing,
 injection classification, smart tool-approval, gateway triage, retry and reflection decisions.
 It is **entirely optional**:
 

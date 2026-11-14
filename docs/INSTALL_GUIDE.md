@@ -1,10 +1,8 @@
-<p align="center">
-  <img src="../assets/mercury_agent.jpg" alt="Mercury Agent" width="140" />
-</p>
+# Getting Started with Mercury
 
-<h1 align="center">Getting Started with Mercury</h1>
+![Mercury Agent](../assets/mercury_agent.png)
 
-<p align="center"><em>The friendly, no-jargon installation guide — for people who just want it to work.</em></p>
+*The friendly, no-jargon installation guide — for people who just want it to work.*
 
 ---
 
@@ -199,8 +197,8 @@ does and how to switch it on.
 
 **What is Jev?** Mercury constantly makes little behind-the-scenes decisions: *Which AI model is best
 for this question? Is this message trying to trick me? Should I ask the human before deleting that
-file? Should I try again or give up?* **Jev** is a specialized "decision-helper" (built by Mercury's
-author, Michael Stal) that makes those judgment calls sharper and safer. Think of it as hiring a wise,
+file? Should I try again or give up?* **Jev** is a specialized "decision-helper"
+that makes those judgment calls sharper and safer. Think of it as hiring a wise,
 level-headed advisor 🧓 who sits next to your assistant and whispers good advice.
 
 **What happens if you don't use it?** Nothing bad at all — Mercury simply uses your main AI (or a
@@ -288,6 +286,164 @@ extra setup needed.
 > 🛡️ **Safety tip:** Mercury can use "tools" (like running commands or editing files). By default it's
 > cautious and will *ask your permission* before anything sensitive. You can review this with
 > `mercury tools list` and adjust with `mercury config set tools.approvals.mode smart`.
+
+---
+
+## Doing more: prompts, agents & settings 🛠️
+
+Once Mercury is answering you, here's how to get real work out of it. Everything below works from the
+terminal; the web page has buttons for most of it too. (Remember: wherever you see `mercury`, you can
+type `node packages/cli/dist/bin.js` instead if the shortcut didn't install.)
+
+### A. Sending prompts (the many ways to ask) 💬
+
+**One quick question** — Mercury answers and exits:
+
+```
+mercury chat "Summarize the plot of Hamlet in 3 sentences"
+```
+
+**A back-and-forth conversation** — keeps context until you type `exit`:
+
+```
+mercury chat
+```
+
+**Keep a conversation for later.** Give it a *session* name and reuse it tomorrow — Mercury remembers
+what you talked about:
+
+```
+mercury chat --session trip-planning "Help me plan a 5-day trip to Lisbon"
+# ...later...
+mercury chat --session trip-planning "Add a day trip to Sintra"
+```
+
+**Ask a specific AI model** for one answer (handy if you connected more than one):
+
+```
+mercury chat --model ollama/llama3.1 "Explain how a rainbow forms"
+```
+
+**Change *how* Mercury thinks** with `--pattern`. A pattern is a thinking style. The useful ones:
+
+| Pattern | Best for | Try it |
+| --- | --- | --- |
+| `react` | Everyday tasks (the default) | `mercury chat --pattern react "..."` |
+| `cot` | Step-by-step reasoning, puzzles | `mercury chat --pattern cot "If a train..."` |
+| `plan-execute` | Bigger multi-step jobs | `mercury chat --pattern plan-execute "Research and outline a blog post about bees"` |
+| `reflexion` | When you want it to double-check itself | `mercury chat --pattern reflexion "Proofread this paragraph: ..."` |
+
+> 💡 You rarely *need* to pick a pattern — leave it out and Mercury chooses a sensible one. It's there
+> for when you want more care or more planning.
+
+**From the web page**, you just type in the chat box — model, session and pattern are pickable in the
+interface, no flags needed.
+
+### B. Creating agents 🤖
+
+In Mercury, an "agent" isn't a separate program you launch — **every chat is already an agent** that can
+plan and use tools. "Creating an agent" really means *shaping* one. Three practical ways:
+
+**1. Give it a personality.** A personality is just a short text file describing how Mercury should act.
+Create one in your home folder under `~/.mercury/personalities/` — the **file name becomes the
+personality name**:
+
+```
+# file: ~/.mercury/personalities/coach.md
+# Coach
+You are Mercury, an upbeat personal coach. Be encouraging, ask one clarifying
+question when useful, and end each reply with a small, concrete next step.
+```
+
+Turn it on so every chat uses it:
+
+```
+mercury config set agent.personality coach
+```
+
+Mercury ships with a few to try (`default`, `concise`, `teacher`, `pirate`) — set `agent.personality
+pirate` for a laugh. 🏴‍☠️
+
+**2. Make a scheduled agent** that runs on its own, even when you're not watching. For example, a daily
+news summary at 9am:
+
+```
+mercury schedule add --when "every day at 9am" Summarize today's top AI headlines
+```
+
+Manage them easily:
+
+```
+mercury schedule list            # see all your scheduled agents
+mercury schedule run <id>        # run one right now to test it
+mercury schedule pause <id>      # or resume / delete
+```
+
+> To have results delivered to a chat app (once you've connected one), add `--deliver telegram:<chat-id>`.
+
+**3. Build a team of agents (a workflow).** For a job where several specialists cooperate, Mercury has
+ready-made *workflows* — like a `dev-team` (a coordinator, an engineer, a reviewer) or a `debate`:
+
+```
+mercury workflow list                               # see the available teams
+mercury workflow run research-report "The history of coffee"
+```
+
+Want your own tool, skill, or team template? Mercury scaffolds a starter file for you:
+
+```
+mercury new skill my-first-skill
+mercury new workflow my-team
+```
+
+(These land in `~/.mercury/`; tools and skills hot-reload, so they're available immediately. See
+**GUIDE.md** / **EXTENDING.md** for filling them in.)
+
+### C. Changing parameters & configuration ⚙️
+
+Mercury keeps its settings in one file at `~/.mercury/config.yaml`. You don't have to edit it by hand —
+the `config` command does it safely.
+
+**See a setting, or see everything:**
+
+```
+mercury config path              # where your config file lives
+mercury config get agent         # show all agent settings
+mercury config get llm.defaultModel
+```
+
+**Change a setting** (it's saved immediately — restart `mercury serve` to apply):
+
+```
+mercury config set llm.defaultModel ollama/llama3.1
+mercury config set agent.temperature 0.7
+```
+
+The settings you'll most likely want:
+
+| Setting | What it controls | Example |
+| --- | --- | --- |
+| `llm.defaultModel` | Which AI it uses by default | `mercury config set llm.defaultModel chatllm/route-llm` |
+| `agent.personality` | Its tone/persona | `mercury config set agent.personality concise` |
+| `agent.pattern` | Default thinking style | `mercury config set agent.pattern plan-execute` |
+| `agent.temperature` | Creativity (0 = focused, 1 = playful) | `mercury config set agent.temperature 0.5` |
+| `agent.maxIterations` | How many steps it may take on a task | `mercury config set agent.maxIterations 20` |
+| `tools.approvals.mode` | How cautious it is with tools (`manual` / `smart` / `auto` / `deny`) | `mercury config set tools.approvals.mode smart` |
+| `server.port` | The web page's port | `mercury config set server.port 8080` |
+
+> 🛡️ **About `tools.approvals.mode`:** `manual` (the default) asks before every tool (safest), `smart`
+> asks only for risky things (a good balance), `auto` never asks and just runs them (fastest, least
+> cautious), and `deny` blocks tools that would need approval. Start with the default, or `smart`.
+
+**Prefer not to touch config at all?** You can set things for a single run with environment variables —
+handy for a quick experiment:
+
+```
+MERCURY_MODEL=ollama/llama3.1 mercury chat "hello"
+```
+
+That's the whole toolkit: **ask** (prompts), **shape** (agents), **tune** (config). Mix and match as you
+go — nothing here is permanent, and `mercury config set` can always change it back.
 
 ---
 

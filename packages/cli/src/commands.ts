@@ -3,7 +3,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { cpSync, existsSync, readFileSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { getPath, installSkills, mercuryHome, scaffold, setConfigValue, type ExtensionKind } from '@mercury/core';
+import { getPath, installSkills, mercuryHome, runEvalSuite, scaffold, selectEvals, setConfigValue, type EvalObservation, type ExtensionKind } from '@mercury/core';
 import type { Mercury } from '@mercury/runtime';
 import { flag, type Args } from './args.js';
 
@@ -194,4 +194,51 @@ export function pluginsCmd(m: Mercury): void {
 
 export function copyAssets(from: string, to: string): void {
   cpSync(from, to, { recursive: true, errorOnExist: false });
+}
+
+/**
+ * `mercury eval` — run the built-in deterministic self-evaluation suite against the
+ * configured provider (the offline mock when MERCURY_ENABLE_MOCK=1) and report
+ * pass/score plus token and estimated-cost accounting derived from the event bus.
+ */
+export async function evalCmd(m: Mercury, a: Args): Promise<void> {
+  const principal = await m.localPrincipal();
+  const tag = flag(a, 'tag');
+  const tasks = selectEvals(tag);
+  if (tasks.length === 0) throw new Error(`no eval tasks match tag "${tag}"`);
+
+  // Accumulate per-run token usage and estimated cost straight off the event bus.
+  const usage = new Map<string, { inputTokens: number; outputTokens: number; cost: number }>();
+  const offUsage = m.bus.on('llm.response', (e) => {
+    const id = e.runId ?? '';
+    const acc = usage.get(id) ?? { inputTokens: 0, outputTokens: 0, cost: 0 };
+    const d = e.data as { inputTokens?: number; outputTokens?: number; cost?: number };
+    acc.inputTokens += d.inputTokens ?? 0;
+    acc.outputTokens += d.outputTokens ?? 0;
+    acc.cost += d.cost ?? 0;
+    usage.set(id, acc);
+  });
+
+  try {
+    const report = await runEvalSuite(tasks, async (task): Promise<EvalObservation> => {
+      const started = Date.now();
+      const res = await m.commands.handle({ principal, input: task.prompt, platform: 'cli' });
+      const durationMs = Date.now() - started;
+      const u = usage.get(res.run?.runId ?? '') ?? { inputTokens: 0, outputTokens: 0, cost: 0 };
+      return { output: res.output ?? '', toolNames: res.run?.toolNames ?? [], inputTokens: u.inputTokens, outputTokens: u.outputTokens, cost: u.cost, durationMs };
+    });
+
+    if (a.flags.json) return out(report, true);
+
+    const rows = report.results.map(
+      (r) => `${(r.pass ? 'PASS' : 'FAIL').padEnd(5)} ${r.id.padEnd(26)} score=${r.score.toFixed(2)}  tok=${r.inputTokens}/${r.outputTokens}  $${r.cost.toFixed(6)}  ${r.durationMs}ms${r.pass ? '' : `  — ${r.reasons.join('; ')}`}`,
+    );
+    out(
+      `Mercury self-evaluation${tag ? ` (tag: ${tag})` : ''}\n${rows.join('\n')}\n\n` +
+        `${report.passed}/${report.total} passed  mean-score=${report.score.toFixed(2)}  tokens=${report.inputTokens}/${report.outputTokens}  est-cost=$${report.cost.toFixed(6)}  ${report.durationMs}ms`,
+    );
+    if (report.failed > 0) process.exitCode = 1;
+  } finally {
+    offUsage();
+  }
 }

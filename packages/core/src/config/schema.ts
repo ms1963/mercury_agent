@@ -95,6 +95,10 @@ export const ConfigSchema = z.object({
       models: z.array(ModelProfileSchema).default([]),
       retries: z.number().default(2),
       timeoutMs: z.number().default(120_000),
+      /** Base delay (ms) for the exponential retry backoff: base * 2^attempt. */
+      retryBackoffMs: z.number().default(500),
+      /** Jitter fraction (0..1) added on top of each backoff delay to avoid thundering herds. */
+      retryJitter: z.number().min(0).max(1).default(0.5),
     })
     .prefault({}),
 
