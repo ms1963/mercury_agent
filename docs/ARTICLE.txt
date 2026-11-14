@@ -1,717 +1,986 @@
-MERCURY AGENT: A FIELD GUIDE TO A SELF-HOSTED AGENTIC AI PLATFORM IN TYPESCRIPT
+########################################################################
+#                                                                      #
+#   M E R C U R Y   A G E N T                                          #
+#                                                                      #
+#   A FIELD GUIDE TO A SELF-HOSTED AGENTIC AI PLATFORM                 #
+#   WRITTEN ENTIRELY IN TYPESCRIPT                                     #
+#                                                                      #
+########################################################################
 
 
-A NOTE ON FORMAT
+                        -----------------------
+                         A NOTE ON THE FORMAT
+                        -----------------------
 
-This article is written in plain ASCII prose on purpose. There are no Markdown
-headings, no bold, no bullet symbols and no decorative rule lines made of
-punctuation. Section titles are simply written as ordinary capitalised lines so
-that the text reads the same in a terminal, a plain editor and a code review tool.
-The only places where the layout becomes visually distinct are the code listings,
-which are indented consistently so that every example can be copied and run
-without reformatting. When this same article is shown in a chat window, those
-listings are placed in their own code windows so you can read and copy them in
-isolation, but the surrounding explanation always stays in flowing prose.
+This article is written in plain ASCII. It uses no Markdown, no bold, no
+Unicode box characters and no tab characters anywhere; every indent is made
+of ordinary spaces so the text lines up identically in a terminal, a plain
+editor and a code-review tool. Section titles are drawn as simple ruled
+banners. Every code listing and every figure is placed inside its own framed
+window with a title bar, so that it reads as a self-contained panel that can
+be copied and run without reformatting. The prose between those windows is
+ordinary flowing text. When the same article is shown in a chat, each framed
+window is additionally placed in its own code block so the listings stay
+visually separated from the explanation around them.
 
 
-WHAT MERCURY IS, AND WHY IT EXISTS
+========================================================================
+  1.  WHAT MERCURY IS, AND WHY IT EXISTS
+========================================================================
 
-Mercury Agent is a self-hosted, extensible agentic AI platform written entirely in
-TypeScript and designed to run on Node.js version 22.5 or newer. The phrase
-"agentic platform" is doing a lot of work in that sentence, so it is worth
-unpacking before we go any deeper. An ordinary chatbot takes a message and returns
-a reply. An agent, by contrast, is given a goal and then reasons in a loop: it
-decides what to do, calls a tool, observes the result, revises its plan and
-repeats until the goal is met. A platform is what surrounds that loop so the whole
-thing is usable by real people in production, which means a command line, a web
-interface, connectors to the chat applications people already use, persistent
-memory, security controls, and a way to observe and debug everything that happens.
-Mercury is all of that in one coherent codebase that you own and run yourself.
+Mercury Agent is a self-hosted, extensible agentic AI platform written
+entirely in TypeScript and designed to run on Node.js version 22.5 or newer.
+The phrase "agentic platform" is doing a lot of work in that sentence, so it
+is worth unpacking before we go any deeper. An ordinary chatbot takes a
+message and returns a reply. An agent, by contrast, is given a goal and then
+reasons in a loop: it decides what to do, calls a tool, observes the result,
+revises its plan and repeats until the goal is met. A platform is what
+surrounds that loop so the whole thing is usable by real people in
+production, which means a command line, a web interface, connectors to the
+chat applications people already use, persistent memory, security controls,
+and a way to observe and debug everything that happens. Mercury is all of
+that in one coherent codebase that you own and run yourself.
 
-The single most important design fact about Mercury is that it has no built-in
-model. It is deliberately a runtime around a large language model rather than a
-model in a box. You point it at a provider you control or trust, and the same
-agent machinery works unchanged whether that provider is a local model served by
-Ollama or LM Studio on your own laptop, an OpenAI-compatible endpoint running
-inside your own network, or a remote cloud service such as Abacus.AI ChatLLM,
-OpenRouter, OpenAI or Anthropic. This is the red thread that runs through the
-entire system and through this article, because it shapes the provider layer, the
-configuration model, the router and even the security posture. Everything else is
-built so that swapping the brain behind the agent is a one-line change.
+The single most important design fact about Mercury is that it has no
+built-in model. It is deliberately a runtime around a large language model
+rather than a model in a box. You point it at a provider you control or
+trust, and the same agent machinery works unchanged whether that provider is
+a local model served by Ollama or LM Studio on your own laptop, an
+OpenAI-compatible endpoint running inside your own network, or a remote cloud
+service such as Abacus.AI ChatLLM, OpenRouter, OpenAI or Anthropic. This is
+the red thread that runs through the entire system and through this article,
+because it shapes the provider layer, the configuration model, the router and
+even the security posture. Everything else is built so that swapping the
+brain behind the agent is a one-line change.
 
 Mercury also ships an optional and genuinely unusual component called the Jev
-decision engine. Where most agents fold every judgement into the same model prompt
-that writes the answer, Mercury separates the act of deciding from the act of
-answering. Jev is a typed decision layer that chooses which model should handle a
-task, judges how risky a proposed tool call is, triages incoming messages from
-chat platforms and decides when the agent should pause to reflect on what it has
-learned. It is entirely optional; when it is not configured, Mercury falls back to
-a safe heuristic, so you are never forced to adopt it to get value from the rest of
-the platform. We will return to it, but it helps to know from the outset that
-"decide" and "answer" are treated as different responsibilities.
+decision engine. Where most agents fold every judgement into the same model
+prompt that writes the answer, Mercury separates the act of deciding from the
+act of answering. Jev is a typed decision layer that chooses which model
+should handle a task, judges how risky a proposed tool call is, triages
+incoming messages from chat platforms and decides when the agent should pause
+to reflect on what it has learned. It is entirely optional; when it is not
+configured, Mercury falls back to a safe heuristic, so you are never forced
+to adopt it to get value from the rest of the platform. We will return to it,
+but it helps to know from the outset that "decide" and "answer" are treated
+as different responsibilities.
 
 One more thing deserves to be stated plainly and early, because honesty about
-maturity is part of understanding any platform. Mercury carries a deterministic,
-offline test suite that exercises its subsystems against a mock provider, and that
-mock exists for exactly one reason, which is testing. In normal operation the mock
-is disabled and a real model is required. The project is young, at version 0.1.0,
-and while the implemented surface area is large, it has not yet been hardened at
-scale against every real external chat platform and voice service. The accompanying
-status document in the repository is the authoritative record of what has and has
-not been exercised against live services, and you should read it before you make
-production commitments. Throughout this article, when something is a design
-intention rather than a battle-tested guarantee, it is described as such.
+maturity is part of understanding any platform. Mercury carries a
+deterministic, offline test suite that exercises its subsystems against a
+mock provider, and that mock exists for exactly one reason, which is testing.
+In normal operation the mock is disabled and a real model is required. The
+project is young, at version 0.1.0, and while the implemented surface area is
+large, it has not yet been hardened at scale against every real external chat
+platform and voice service. The accompanying status document in the
+repository is the authoritative record of what has and has not been exercised
+against live services, and you should read it before you make production
+commitments. Throughout this article, when something is a design intention
+rather than a battle-tested guarantee, it is described as such.
 
 
-THE SHAPE OF THE SYSTEM: LAYERS, PACKAGES AND EVENTS
+========================================================================
+  2.  THE SHAPE OF THE SYSTEM: LAYERS, PACKAGES AND EVENTS
+========================================================================
 
-Mercury is organised as an npm-workspaces monorepo, and the package boundaries are
-not cosmetic. They encode a strict dependency direction that keeps the domain logic
-pure and the input and output surfaces thin. The core package, published internally
-as the at-mercury-core workspace, contains the configuration schema, the database
-access, authentication, the language-model abstraction, the decision engine, the
-agent loop, memory, skills, workflows, the scheduler and the security primitives.
-Crucially it contains no HTTP server; it depends only on two small libraries, the
-zod schema validator and a YAML parser, plus the Node built-ins. Surrounding it are
-the tools package with the built-in and polyglot tool implementations, the mcp
-package that is both a client of other tool servers and a server exposing Mercury's
-own tools, the gateway package with its sixteen chat-platform adapters, and finally
-the runtime package whose only job is to build and wire everything together. On top
-of the runtime sit the two front-ends that most users touch, namely the server
-package, which is a Fastify application serving the REST and streaming API, the
-webhooks, the MCP endpoint, a Prometheus metrics endpoint and the static web
-interface, and the cli package, which produces the mercury binary. The dependency
-arrows only ever point inward: the command line and the server depend on the
-runtime, the runtime depends on tools, mcp and gateway, and all of them depend on
-core, while core depends on nothing of theirs. That single rule is what keeps the
-business logic testable in isolation and free of framework entanglement.
+Mercury is organised as an npm-workspaces monorepo, and the package
+boundaries are not cosmetic. They encode a strict dependency direction that
+keeps the domain logic pure and the input and output surfaces thin. The core
+package, published internally as the at-mercury-core workspace, contains the
+configuration schema, the database access, authentication, the language-model
+abstraction, the decision engine, the agent loop, memory, skills, workflows,
+the scheduler and the security primitives. Crucially it contains no HTTP
+server; it depends only on two small libraries, the zod schema validator and
+a YAML parser, plus the Node built-ins. Surrounding it are the tools package
+with the built-in and polyglot tool implementations, the mcp package that is
+both a client of other tool servers and a server exposing Mercury's own
+tools, the gateway package with its sixteen chat-platform adapters, and
+finally the runtime package whose only job is to build and wire everything
+together. On top of the runtime sit the two front-ends that most users touch,
+namely the server package, which is a Fastify application serving the REST and
+streaming API, the webhooks, the MCP endpoint, a Prometheus metrics endpoint
+and the static web interface, and the cli package, which produces the mercury
+binary. The dependency arrows only ever point inward: the command line and
+the server depend on the runtime, the runtime depends on tools, mcp and
+gateway, and all of them depend on core, while core depends on nothing of
+theirs. That single rule is what keeps the business logic testable in
+isolation and free of framework entanglement.
 
 It is useful to picture the layering from top to bottom as a stack of
-responsibilities rather than a pile of files. The following figure sketches it.
+responsibilities rather than a pile of files. The following figure sketches
+it.
 
-    +-------------------------------------------------------------+
-    |  FRONTENDS   CLI / REPL   Web UI (SPA)   Chat Gateway       |
-    |              MCP server    Scheduler                        |
-    +-------------------------------------------------------------+
-    |  COMPOSITION   createMercury(): builds and owns everything  |
-    +-------------------------------------------------------------+
-    |  ORCHESTRATION   Agent loop + patterns   Workflow engine    |
-    |                  Subagents   Reflection                     |
-    +-------------------------------------------------------------+
-    |  JUDGMENT   Decision engine: Jev / LLM / safe heuristic     |
-    +-------------------------------------------------------------+
-    |  CAPABILITIES   LLM providers + router   Tools (built-in,   |
-    |                 polyglot, MCP)   Memory   Skills   Voice    |
-    +-------------------------------------------------------------+
-    |  FOUNDATION   Config (zod)   SQLite + FTS5   EventBus +     |
-    |               Tracer + Metrics   Security   Auth + Budgets  |
-    +-------------------------------------------------------------+
+    +------------------------------------------------------------------+
+    | FIGURE 1   The responsibility stack, top to bottom
+    +------------------------------------------------------------------+
+    |
+    |    +----------------------------------------------------------+
+    |    |  FRONTENDS                                               |
+    |    |    CLI / REPL    Web UI (SPA)    Chat Gateway            |
+    |    |    MCP server    Scheduler                               |
+    |    +----------------------------------------------------------+
+    |    |  COMPOSITION                                             |
+    |    |    createMercury(): builds and owns everything           |
+    |    +----------------------------------------------------------+
+    |    |  ORCHESTRATION                                           |
+    |    |    Agent loop + patterns    Workflow engine              |
+    |    |    Subagents    Reflection                               |
+    |    +----------------------------------------------------------+
+    |    |  JUDGMENT                                                |
+    |    |    Decision engine: Jev / LLM / safe heuristic           |
+    |    +----------------------------------------------------------+
+    |    |  CAPABILITIES                                            |
+    |    |    LLM providers + router    Tools (built-in,            |
+    |    |    polyglot, MCP)    Memory    Skills    Voice           |
+    |    +----------------------------------------------------------+
+    |    |  FOUNDATION                                              |
+    |    |    Config (zod)    SQLite + FTS5    EventBus +           |
+    |    |    Tracer + Metrics    Security    Auth + Budgets        |
+    |    +----------------------------------------------------------+
+    |
+    +------------------------------------------------------------------+
 
-The second pillar of the architecture, alongside the layering, is that everything
-is an event. Every language-model call, every tool invocation, every memory
-operation, every decision and every intermediate thought is published on an
-in-process event bus, persisted as a trace and made available as a live stream. This
-is why Mercury can offer a replayable history of any run, a live debugging view with
-breakpoints, and Prometheus metrics, all without special-casing each feature. The
-observability is a consequence of the event-driven design rather than a bolt-on.
+The second pillar of the architecture, alongside the layering, is that
+everything is an event. Every language-model call, every tool invocation,
+every memory operation, every decision and every intermediate thought is
+published on an in-process event bus, persisted as a trace and made available
+as a live stream. This is why Mercury can offer a replayable history of any
+run, a live debugging view with breakpoints, and Prometheus metrics, all
+without special-casing each feature. The observability is a consequence of
+the event-driven design rather than a bolt-on.
 
-The third pillar is that content is untrusted by default. Anything that did not come
-directly from the authenticated human user, which includes tool output, fetched web
-pages, incoming emails, attachments and results from external MCP servers, is tagged
-as untrusted and visually spotlighted, and it can never by itself trigger a sensitive
-tool without passing through the approval and guardrail machinery. This matters
-enormously for an agent that can read the open web and then act, because it is the
-structural defence against prompt-injection attacks, and it is woven into the type
-system rather than left to the discipline of individual tool authors.
+The third pillar is that content is untrusted by default. Anything that did
+not come directly from the authenticated human user, which includes tool
+output, fetched web pages, incoming emails, attachments and results from
+external MCP servers, is tagged as untrusted and visually spotlighted, and it
+can never by itself trigger a sensitive tool without passing through the
+approval and guardrail machinery. This matters enormously for an agent that
+can read the open web and then act, because it is the structural defence
+against prompt-injection attacks, and it is woven into the type system rather
+than left to the discipline of individual tool authors.
 
 
-THE PROVIDER ABSTRACTION: ONE INTERFACE, LOCAL AND REMOTE ALIKE
+========================================================================
+  3.  THE PROVIDER ABSTRACTION: ONE INTERFACE, LOCAL AND REMOTE ALIKE
+========================================================================
 
-Because the choice of model is the red thread, the cleanest place to understand
-Mercury is the language-model abstraction, and the best news for anyone integrating
-it is how small that abstraction is. A provider is any object that can describe a
-model's capabilities, list the models it offers and perform a chat completion,
-optionally streaming the tokens as they arrive. The interface is reproduced below
-exactly as the core package defines it, and its brevity is the point.
+Because the choice of model is the red thread, the cleanest place to
+understand Mercury is the language-model abstraction, and the best news for
+anyone integrating it is how small that abstraction is. A provider is any
+object that can describe a model's capabilities, list the models it offers
+and perform a chat completion, optionally streaming the tokens as they
+arrive. The interface is reproduced below exactly as the core package defines
+it, and its brevity is the point.
 
-    export interface LLMProvider {
-      /** Provider id used as the model prefix, e.g. "openai" in "openai/gpt-4o". */
-      readonly id: string;
-      /** Wire type, e.g. "openai-compatible", "anthropic", "mock". */
-      readonly type: string;
-      capabilities(model: string): ModelCapabilities;
-      listModels(): Promise<ModelInfo[]>;
-      /** Perform a chat completion. When onDelta is given the provider streams. */
-      chat(req: LLMRequest, onDelta?: DeltaHandler): Promise<LLMResponse>;
-    }
+    +------------------------------------------------------------------+
+    | CODE   packages/core/src/llm/provider.ts
+    +------------------------------------------------------------------+
+    |
+    |      export interface LLMProvider {
+    |        /** Provider id used as the model prefix,
+    |            e.g. "openai" in "openai/gpt-4o". */
+    |        readonly id: string;
+    |        /** Wire type, e.g. "openai-compatible", "anthropic". */
+    |        readonly type: string;
+    |        capabilities(model: string): ModelCapabilities;
+    |        listModels(): Promise<ModelInfo[]>;
+    |        /** Perform a chat completion. When onDelta is given
+    |            the provider streams token deltas as they arrive. */
+    |        chat(req: LLMRequest, onDelta?: DeltaHandler): Promise<LLMResponse>;
+    |      }
+    |
+    +------------------------------------------------------------------+
 
 What makes local and remote models interchangeable is that the overwhelming
-majority of model servers in existence today speak the same dialect, namely the
-OpenAI chat-completions wire format. Ollama exposes it on a local port, LM Studio
-exposes it on another, llama.cpp and vLLM expose it, and the big cloud services
-expose it too. Mercury therefore implements that dialect once, in a single
-OpenAI-compatible provider, and distinguishes one backend from another purely by
-base URL and an optional API key. The default base URLs it ships with show how
-little separates a model on your laptop from a model in a distant data centre.
+majority of model servers in existence today speak the same dialect, namely
+the OpenAI chat-completions wire format. Ollama exposes it on a local port,
+LM Studio exposes it on another, llama.cpp and vLLM expose it, and the big
+cloud services expose it too. Mercury therefore implements that dialect once,
+in a single OpenAI-compatible provider, and distinguishes one backend from
+another purely by base URL and an optional API key. The default base URLs it
+ships with show how little separates a model on your laptop from a model in a
+distant data centre.
 
-    export const DEFAULT_BASE_URLS: Record<string, string> = {
-      openai:     'https://api.openai.com/v1',
-      openrouter: 'https://openrouter.ai/api/v1',
-      lmstudio:   'http://localhost:1234/v1',    // local, no key needed
-      ollama:     'http://localhost:11434/v1',   // local, no key needed
-      chatllm:    'https://routellm.abacus.ai/v1',
-    };
+    +------------------------------------------------------------------+
+    | CODE   packages/core/src/llm/providers/openai.ts
+    +------------------------------------------------------------------+
+    |
+    |      export const DEFAULT_BASE_URLS: Record<string, string> = {
+    |        openai:     'https://api.openai.com/v1',
+    |        openrouter: 'https://openrouter.ai/api/v1',
+    |        lmstudio:   'http://localhost:1234/v1',   // local, no key
+    |        ollama:     'http://localhost:11434/v1',  // local, no key
+    |        chatllm:    'https://routellm.abacus.ai/v1',
+    |      };
+    |
+    +------------------------------------------------------------------+
 
-Reading that table from top to bottom tells the whole story of the abstraction. The
-first two entries and the last one are remote services reached over the public
-internet and secured with a bearer token. The two middle entries point at
-localhost, need no credentials at all, and are served by a model running on your own
-machine. The provider code does not branch on "is this local or remote"; it simply
-builds an Authorization header when a key is present and omits it when it is not.
-That is the entire difference, and it is why you can develop against a free local
-model and then move to a hosted one by changing a single configuration value.
+Reading that table from top to bottom tells the whole story of the
+abstraction. The first two entries and the last one are remote services
+reached over the public internet and secured with a bearer token. The two
+middle entries point at localhost, need no credentials at all, and are served
+by a model running on your own machine. The provider code does not branch on
+"is this local or remote"; it simply builds an Authorization header when a
+key is present and omits it when it is not. That is the entire difference, and
+it is why you can develop against a free local model and then move to a hosted
+one by changing a single configuration value.
 
-The resilience of those calls is handled in one shared helper rather than scattered
-through each provider, which keeps the behaviour uniform and the error handling
-honest. The helper posts the request with a timeout, and it is careful to classify
-failures so the rest of the system can react intelligently. A rate-limit response or
-a server error is marked retryable, whereas a bad request or an authentication
-failure is not, because retrying a wrong API key would only waste time and quota.
+The resilience of those calls is handled in one shared helper rather than
+scattered through each provider, which keeps the behaviour uniform and the
+error handling honest. The helper posts the request with a timeout, and it is
+careful to classify failures so the rest of the system can react
+intelligently. A rate-limit response or a server error is marked retryable,
+whereas a bad request or an authentication failure is not, because retrying a
+wrong API key would only waste time and quota.
 
-    export async function postJson(url, body, headers, signal, timeoutMs = 120_000) {
-      const timeout = AbortSignal.timeout(timeoutMs);
-      const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
-      let res: Response;
-      try {
-        res = await fetch(url, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', ...headers },
-          body: JSON.stringify(body),
-          signal: combined,
-        });
-      } catch (err) {
-        if (signal?.aborted) throw new ProviderError('aborted', undefined, false);
-        // Network-level failure (DNS, refused connection) is worth retrying.
-        throw new ProviderError(`network error: ${String(err)}`, undefined, true);
-      }
-      if (!res.ok) {
-        const text = await res.text().catch(() => '');
-        // 429 and 5xx are transient; everything else fails fast.
-        throw new ProviderError(text, res.status, res.status === 429 || res.status >= 500);
-      }
-      return res;
-    }
+    +------------------------------------------------------------------+
+    | CODE   packages/core/src/llm/http.ts
+    +------------------------------------------------------------------+
+    |
+    |      export async function postJson(
+    |        url, body, headers, signal, timeoutMs = 120_000,
+    |      ) {
+    |        const timeout = AbortSignal.timeout(timeoutMs);
+    |        const combined =
+    |          signal ? AbortSignal.any([signal, timeout]) : timeout;
+    |        let res: Response;
+    |        try {
+    |          res = await fetch(url, {
+    |            method: 'POST',
+    |            headers: { 'content-type': 'application/json', ...headers },
+    |            body: JSON.stringify(body),
+    |            signal: combined,
+    |          });
+    |        } catch (err) {
+    |          if (signal?.aborted) {
+    |            throw new ProviderError('aborted', undefined, false);
+    |          }
+    |          // Network-level failure (DNS, refused) is worth retrying.
+    |          throw new ProviderError(
+    |            `network error: ${String(err)}`, undefined, true,
+    |          );
+    |        }
+    |        if (!res.ok) {
+    |          const text = await res.text().catch(() => '');
+    |          // 429 and 5xx are transient; everything else fails fast.
+    |          throw new ProviderError(
+    |            text, res.status, res.status === 429 || res.status >= 500,
+    |          );
+    |        }
+    |        return res;
+    |      }
+    |
+    +------------------------------------------------------------------+
 
-Once a provider exists, the registry is what turns a human-friendly model identifier
-into a concrete call. Model identifiers in Mercury always take the form of a
-provider prefix, a slash and then the backend model name, so that ollama/llama3.1
-and chatllm/route-llm are unambiguous about which backend to use. The registry splits
-that string at the first slash, looks up the provider and hands back both the
-provider object and the remaining model name. It also auto-enables any cloud provider
-whose API key it discovers in the environment, which is the mechanism behind the
-pleasant experience of setting one variable and immediately being able to select that
-provider's models.
+Once a provider exists, the registry is what turns a human-friendly model
+identifier into a concrete call. Model identifiers in Mercury always take the
+form of a provider prefix, a slash and then the backend model name, so that
+ollama/llama3.1 and chatllm/route-llm are unambiguous about which backend to
+use. The registry splits that string at the first slash, looks up the
+provider and hands back both the provider object and the remaining model
+name. It also auto-enables any cloud provider whose API key it discovers in
+the environment, which is the mechanism behind the pleasant experience of
+setting one variable and immediately being able to select that provider's
+models.
 
 
-IMPLEMENTING A CLIENT THAT SPEAKS TO LOCAL AND REMOTE MODELS
+========================================================================
+  4.  A CLIENT THAT SPEAKS TO LOCAL AND REMOTE MODELS
+========================================================================
 
-To make the abstraction concrete, and because the request was explicitly to show
-code that works with both local and remote language models, the repository now
-includes a self-contained client under examples/llm-local-remote/llm-client.ts. It
-has no dependency on the rest of Mercury and no mock anywhere in it; it talks to
-real endpoints over real HTTP, and it has been type-checked under strict TypeScript.
-It is deliberately written to the same philosophy as Mercury's own provider: one
-transport, many backends, chosen by base URL and an optional key. We will walk
-through it in the order a reader naturally meets it, starting with the vocabulary.
+To make the abstraction concrete, and because the request was explicitly to
+show code that works with both local and remote language models, the
+repository includes a self-contained client under the path
+examples/llm-local-remote/llm-client.ts. It has no dependency on the rest of
+Mercury and no mock anywhere in it; it talks to real endpoints over real
+HTTP, and it has been type-checked under strict TypeScript. It is deliberately
+written to the same philosophy as Mercury's own provider: one transport, many
+backends, chosen by base URL and an optional key. We will walk through it in
+the order a reader naturally meets it, starting with the vocabulary.
 
-The first thing any clean integration needs is a small, explicit set of types that
-describe what flows in and out, so that the compiler rather than the programmer
-keeps the shapes honest. A message is a role and some text. A backend is a name, a
-base URL, a model and an optional key. A result is the text together with the token
-counts, so that cost can be measured. None of these types know anything about
-whether the model is near or far.
+The first thing any clean integration needs is a small, explicit set of types
+that describe what flows in and out, so that the compiler rather than the
+programmer keeps the shapes honest. A message is a role and some text. A
+backend is a name, a base URL, a model and an optional key. A result is the
+text together with the token counts, so that cost can be measured. None of
+these types know anything about whether the model is near or far.
 
-    /** One turn in a conversation, in provider-neutral form. */
-    export interface ChatMessage {
-      role: 'system' | 'user' | 'assistant';
-      content: string;
-    }
+    +------------------------------------------------------------------+
+    | CODE   examples/llm-local-remote/llm-client.ts  (types)
+    +------------------------------------------------------------------+
+    |
+    |      /** One turn in a conversation, in provider-neutral form. */
+    |      export interface ChatMessage {
+    |        role: 'system' | 'user' | 'assistant';
+    |        content: string;
+    |      }
+    |
+    |      /** Everything needed to reach exactly one backend. */
+    |      export interface BackendConfig {
+    |        readonly name: string;      // label for logs, e.g. "ollama"
+    |        readonly baseUrl: string;   // OpenAI-compatible, ends "/v1"
+    |        readonly model: string;     // model id that backend knows
+    |        readonly apiKey?: string;   // omitted for local servers
+    |      }
+    |
+    |      /** Normalised result returned regardless of backend. */
+    |      export interface ChatResult {
+    |        readonly text: string;
+    |        readonly model: string;
+    |        readonly inputTokens: number;
+    |        readonly outputTokens: number;
+    |      }
+    |
+    +------------------------------------------------------------------+
 
-    /** Everything needed to reach exactly one backend. */
-    export interface BackendConfig {
-      readonly name: string;      // label used in logs, e.g. "ollama"
-      readonly baseUrl: string;   // OpenAI-compatible URL ending in "/v1"
-      readonly model: string;     // model id understood by that backend
-      readonly apiKey?: string;   // omitted for local servers that need none
-    }
+Errors deserve their own type because, just as in Mercury's own helper, the
+caller needs to know whether a failure is worth retrying. A dedicated error
+class carries the HTTP status and a boolean that says, in effect, "it is
+reasonable to try this again." That single flag is what later lets the retry
+loop distinguish a temporary overload from a permanent misconfiguration
+without parsing error strings.
 
-    /** Normalised result returned regardless of backend. */
-    export interface ChatResult {
-      readonly text: string;
-      readonly model: string;
-      readonly inputTokens: number;
-      readonly outputTokens: number;
-    }
+    +------------------------------------------------------------------+
+    | CODE   examples/llm-local-remote/llm-client.ts  (error type)
+    +------------------------------------------------------------------+
+    |
+    |      export class LlmError extends Error {
+    |        constructor(
+    |          message: string,
+    |          readonly status: number | undefined,
+    |          readonly retryable: boolean,
+    |        ) {
+    |          super(message);
+    |          this.name = 'LlmError';
+    |        }
+    |      }
+    |
+    +------------------------------------------------------------------+
 
-Errors deserve their own type because, just as in Mercury's own helper, the caller
-needs to know whether a failure is worth retrying. A dedicated error class carries
-the HTTP status and a boolean that says, in effect, "it is reasonable to try this
-again." That single flag is what later lets the retry loop distinguish a temporary
-overload from a permanent misconfiguration without parsing error strings.
+With the vocabulary in place, the client itself is a single class whose
+private methods assemble headers and a request body, and whose public methods
+offer either a buffered completion or a streamed one. The header method is the
+exact point at which local and remote stop differing: it adds a bearer token
+only when the backend config actually carries a key, and a local Ollama
+server simply has no key, so no Authorization header is sent. Everything
+downstream is identical for both.
 
-    export class LlmError extends Error {
-      constructor(
-        message: string,
-        readonly status: number | undefined,
-        readonly retryable: boolean,
-      ) {
-        super(message);
-        this.name = 'LlmError';
-      }
-    }
+    +------------------------------------------------------------------+
+    | CODE   examples/llm-local-remote/llm-client.ts  (headers)
+    +------------------------------------------------------------------+
+    |
+    |      private headers(): Record<string, string> {
+    |        const headers: Record<string, string> = {
+    |          'content-type': 'application/json',
+    |        };
+    |        if (this.config.apiKey) {
+    |          headers.authorization = `Bearer ${this.config.apiKey}`;
+    |        }
+    |        return headers;
+    |      }
+    |
+    +------------------------------------------------------------------+
 
-With the vocabulary in place, the client itself is a single class whose private
-methods assemble headers and a request body, and whose public methods offer either a
-buffered completion or a streamed one. The header method is the exact point at which
-local and remote stop differing: it adds a bearer token only when the backend config
-actually carries a key, and a local Ollama server simply has no key, so no
-Authorization header is sent. Everything downstream is identical for both.
+The buffered path is the one to read first because it is the simplest
+complete round trip. It posts the request, waits for the whole JSON response,
+and then maps the provider's reply onto the neutral ChatResult, reaching for
+sensible defaults if a field is missing so that a slightly nonstandard server
+cannot crash the caller. The token counts are pulled from the usage section
+when the server provides it, which is how cost accounting becomes possible
+later.
 
-    private headers(): Record<string, string> {
-      const headers: Record<string, string> = { 'content-type': 'application/json' };
-      if (this.config.apiKey) {
-        headers.authorization = `Bearer ${this.config.apiKey}`;
-      }
-      return headers;
-    }
+    +------------------------------------------------------------------+
+    | CODE   examples/llm-local-remote/llm-client.ts  (complete)
+    +------------------------------------------------------------------+
+    |
+    |      async complete(
+    |        messages: ChatMessage[], options: ChatOptions = {},
+    |      ): Promise<ChatResult> {
+    |        const response = await this.post(messages, options, false);
+    |        const json = (await response.json()) as {
+    |          model?: string;
+    |          choices?: Array<{ message?: { content?: string | null } }>;
+    |          usage?: { prompt_tokens?: number; completion_tokens?: number };
+    |        };
+    |        return {
+    |          text: json.choices?.[0]?.message?.content ?? '',
+    |          model: json.model ?? this.config.model,
+    |          inputTokens: json.usage?.prompt_tokens ?? 0,
+    |          outputTokens: json.usage?.completion_tokens ?? 0,
+    |        };
+    |      }
+    |
+    +------------------------------------------------------------------+
 
-The buffered path is the one to read first because it is the simplest complete
-round trip. It posts the request, waits for the whole JSON response, and then maps
-the provider's reply onto the neutral ChatResult, reaching for sensible defaults if a
-field is missing so that a slightly nonstandard server cannot crash the caller. The
-token counts are pulled from the usage section when the server provides it, which is
-how cost accounting becomes possible later.
+Streaming is where an agent feels responsive, because the user sees words
+appear rather than waiting for a paragraph. Every OpenAI-compatible server
+streams using the Server-Sent-Events convention, in which each line that
+begins with the text "data:" carries one JSON fragment, and a final line
+carrying the literal value "[DONE]" signals the end. The streaming method
+accumulates incoming bytes into a buffer, slices off complete lines as they
+form, ignores anything that is not a data line, decodes each fragment and
+forwards the piece of text it contains to an optional callback while also
+appending it to the full answer. The same loop watches for the usage fragment
+so that token counts survive streaming too. The essential part of that loop
+reads as follows.
 
-    async complete(messages: ChatMessage[], options: ChatOptions = {}): Promise<ChatResult> {
-      const response = await this.post(messages, options, false);
-      const json = (await response.json()) as {
-        model?: string;
-        choices?: Array<{ message?: { content?: string | null } }>;
-        usage?: { prompt_tokens?: number; completion_tokens?: number };
-      };
-      return {
-        text: json.choices?.[0]?.message?.content ?? '',
-        model: json.model ?? this.config.model,
-        inputTokens: json.usage?.prompt_tokens ?? 0,
-        outputTokens: json.usage?.completion_tokens ?? 0,
-      };
-    }
+    +------------------------------------------------------------------+
+    | CODE   examples/llm-local-remote/llm-client.ts  (stream loop)
+    +------------------------------------------------------------------+
+    |
+    |      for await (const chunk of
+    |        response.body as unknown as AsyncIterable<Uint8Array>
+    |      ) {
+    |        buffer += decoder.decode(chunk, { stream: true });
+    |
+    |        let newline: number;
+    |        while ((newline = buffer.indexOf('\n')) >= 0) {
+    |          const line = buffer.slice(0, newline).replace(/\r$/, '');
+    |          buffer = buffer.slice(newline + 1);
+    |          if (!line.startsWith('data:')) {
+    |            continue;                   // skip comments / keep-alives
+    |          }
+    |          const payload = line.slice('data:'.length).trimStart();
+    |          if (payload === '[DONE]') {
+    |            break;                      // server signalled end
+    |          }
+    |          const event = safeParse(payload);  // tolerate bad chunk
+    |          if (!event) {
+    |            continue;
+    |          }
+    |          const fragment = event.choices?.[0]?.delta?.content;
+    |          if (fragment) {
+    |            text += fragment;
+    |            options.onDelta?.(fragment);     // push token now
+    |          }
+    |          if (event.usage) {
+    |            inputTokens  = event.usage.prompt_tokens ?? inputTokens;
+    |            outputTokens = event.usage.completion_tokens ?? outputTokens;
+    |          }
+    |        }
+    |      }
+    |
+    +------------------------------------------------------------------+
 
-Streaming is where an agent feels responsive, because the user sees words appear
-rather than waiting for a paragraph. Every OpenAI-compatible server streams using
-the Server-Sent-Events convention, in which each line that begins with the text
-"data:" carries one JSON fragment, and a final line carrying the literal value
-"[DONE]" signals the end. The streaming method accumulates incoming bytes into a
-buffer, slices off complete lines as they form, ignores anything that is not a data
-line, decodes each fragment and forwards the piece of text it contains to an
-optional callback while also appending it to the full answer. The same loop watches
-for the usage fragment so that token counts survive streaming too. The essential
-part of that loop reads as follows.
+The transport underneath both paths is a single post method that applies a
+timeout, turns a thrown network error into a retryable LlmError, and turns a
+non-successful HTTP status into an LlmError whose retryable flag is true only
+for rate limiting and server errors. This mirrors Mercury's own
+classification precisely, and it is what makes the next piece, the resilience
+wrapper, both small and correct.
 
-    for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
-      buffer += decoder.decode(chunk, { stream: true });
+    +------------------------------------------------------------------+
+    | CODE   examples/llm-local-remote/llm-client.ts  (post)
+    +------------------------------------------------------------------+
+    |
+    |      private async post(
+    |        messages, options, stream,
+    |      ): Promise<Response> {
+    |        const url = `${this.config.baseUrl}/chat/completions`;
+    |        let response: Response;
+    |        try {
+    |          response = await fetch(url, {
+    |            method: 'POST',
+    |            headers: this.headers(),
+    |            body: this.body(messages, options, stream),
+    |            signal: AbortSignal.timeout(120_000),
+    |          });
+    |        } catch (cause) {
+    |          // Connection refused usually means a local server
+    |          // is simply not running yet.
+    |          throw new LlmError(
+    |            `network error calling ${this.config.name}: ${String(cause)}`,
+    |            undefined, true,
+    |          );
+    |        }
+    |        if (!response.ok) {
+    |          const detail =
+    |            (await response.text().catch(() => '')).slice(0, 300);
+    |          const retryable =
+    |            response.status === 429 || response.status >= 500;
+    |          throw new LlmError(
+    |            `${response.status} from ${this.config.name}: ${detail}`,
+    |            response.status, retryable,
+    |          );
+    |        }
+    |        return response;
+    |      }
+    |
+    +------------------------------------------------------------------+
 
-      let newline: number;
-      while ((newline = buffer.indexOf('\n')) >= 0) {
-        const line = buffer.slice(0, newline).replace(/\r$/, '');
-        buffer = buffer.slice(newline + 1);
-        if (!line.startsWith('data:')) {
-          continue;                         // skip comments and blank keep-alives
-        }
-        const payload = line.slice('data:'.length).trimStart();
-        if (payload === '[DONE]') {
-          break;                            // server signalled end of stream
-        }
-        const event = safeParse(payload);   // tolerate a malformed chunk
-        if (!event) {
-          continue;
-        }
-        const fragment = event.choices?.[0]?.delta?.content;
-        if (fragment) {
-          text += fragment;
-          options.onDelta?.(fragment);      // push the token to the caller now
-        }
-        if (event.usage) {
-          inputTokens = event.usage.prompt_tokens ?? inputTokens;
-          outputTokens = event.usage.completion_tokens ?? outputTokens;
-        }
-      }
-    }
-
-The transport underneath both paths is a single post method that applies a timeout,
-turns a thrown network error into a retryable LlmError, and turns a non-successful
-HTTP status into an LlmError whose retryable flag is true only for rate limiting and
-server errors. This mirrors Mercury's own classification precisely, and it is what
-makes the next piece, the resilience wrapper, both small and correct.
-
-    private async post(messages, options, stream): Promise<Response> {
-      const url = `${this.config.baseUrl}/chat/completions`;
-      let response: Response;
-      try {
-        response = await fetch(url, {
-          method: 'POST',
-          headers: this.headers(),
-          body: this.body(messages, options, stream),
-          signal: AbortSignal.timeout(120_000),
-        });
-      } catch (cause) {
-        // Connection refused usually means a local server is simply not running.
-        throw new LlmError(`network error calling ${this.config.name}: ${String(cause)}`, undefined, true);
-      }
-      if (!response.ok) {
-        const detail = (await response.text().catch(() => '')).slice(0, 300);
-        const retryable = response.status === 429 || response.status >= 500;
-        throw new LlmError(`${response.status} from ${this.config.name}: ${detail}`, response.status, retryable);
-      }
-      return response;
-    }
-
-The reason the error classification was worth the effort becomes visible in the
-fallback function, which ties local and remote together into a resilient strategy.
-It accepts an ordered list of backends and tries each in turn. Within a backend it
-retries only failures that are marked retryable, and it spaces those retries using
-exponential backoff with bounded random jitter, exactly as Mercury does, so that a
-fleet of agents recovering from a blip do not all strike the server again in the same
-instant. A non-retryable error, such as an authentication failure, breaks out of the
-retry loop immediately and moves to the next backend rather than hammering a door
-that will never open. Placing a local model first and a cloud model second yields a
-system that prefers the free, private option and reaches for the paid, remote one
+The reason the error classification was worth the effort becomes visible in
+the fallback function, which ties local and remote together into a resilient
+strategy. It accepts an ordered list of backends and tries each in turn.
+Within a backend it retries only failures that are marked retryable, and it
+spaces those retries using exponential backoff with bounded random jitter,
+exactly as Mercury does, so that a fleet of agents recovering from a blip do
+not all strike the server again in the same instant. A non-retryable error,
+such as an authentication failure, breaks out of the retry loop immediately
+and moves to the next backend rather than hammering a door that will never
+open. Placing a local model first and a cloud model second yields a system
+that prefers the free, private option and reaches for the paid, remote one
 only when the local path is genuinely unavailable.
 
-    export async function completeWithFallback(
-      backends: readonly BackendConfig[],
-      messages: ChatMessage[],
-      options: ChatOptions & { retries?: number; backoffMs?: number; jitter?: number } = {},
-    ): Promise<ChatResult> {
-      const retries = options.retries ?? 2;
-      const backoffMs = options.backoffMs ?? 500;
-      const jitter = options.jitter ?? 0.5;
-      let lastError: unknown;
+    +------------------------------------------------------------------+
+    | CODE   examples/llm-local-remote/llm-client.ts  (fallback)
+    +------------------------------------------------------------------+
+    |
+    |      export async function completeWithFallback(
+    |        backends: readonly BackendConfig[],
+    |        messages: ChatMessage[],
+    |        options: ChatOptions & {
+    |          retries?: number; backoffMs?: number; jitter?: number;
+    |        } = {},
+    |      ): Promise<ChatResult> {
+    |        const retries   = options.retries   ?? 2;
+    |        const backoffMs = options.backoffMs ?? 500;
+    |        const jitter    = options.jitter    ?? 0.5;
+    |        let lastError: unknown;
+    |
+    |        for (const backend of backends) {
+    |          const client = new OpenAICompatibleClient(backend);
+    |          for (let attempt = 0; attempt <= retries; attempt++) {
+    |            try {
+    |              return await client.complete(messages, options);
+    |            } catch (error) {
+    |              lastError = error;
+    |              const canRetry =
+    |                error instanceof LlmError &&
+    |                error.retryable && attempt < retries;
+    |              if (!canRetry) {
+    |                break;                  // try the next backend
+    |              }
+    |              const base  = backoffMs * 2 ** attempt;
+    |              const sleep = base + Math.random() * base * jitter;
+    |              await new Promise((r) => setTimeout(r, sleep));
+    |            }
+    |          }
+    |        }
+    |        throw new LlmError(
+    |          `all backends failed; last error: ${String(lastError)}`,
+    |          undefined, false,
+    |        );
+    |      }
+    |
+    +------------------------------------------------------------------+
 
-      for (const backend of backends) {
-        const client = new OpenAICompatibleClient(backend);
-        for (let attempt = 0; attempt <= retries; attempt++) {
-          try {
-            return await client.complete(messages, options);
-          } catch (error) {
-            lastError = error;
-            const canRetry = error instanceof LlmError && error.retryable && attempt < retries;
-            if (!canRetry) {
-              break;                         // give up on this backend, try the next
-            }
-            const base = backoffMs * 2 ** attempt;
-            const sleep = base + Math.random() * base * jitter;
-            await new Promise((resolve) => setTimeout(resolve, sleep));
-          }
-        }
-      }
-      throw new LlmError(`all backends failed; last error: ${String(lastError)}`, undefined, false);
-    }
+Finally the example wires itself to the environment in a way that
+demonstrates the local-first, remote-optional philosophy at runtime. It
+always includes a local Ollama backend, and it appends a remote ChatLLM
+backend only when an API key is present in the environment, which means the
+very same file runs fully offline against a local model and, the moment a key
+appears, gains a cloud fallback without any code change. That is the whole
+thesis of Mercury's provider design distilled into a dozen lines.
 
-Finally the example wires itself to the environment in a way that demonstrates the
-local-first, remote-optional philosophy at runtime. It always includes a local
-Ollama backend, and it appends a remote ChatLLM backend only when an API key is
-present in the environment, which means the very same file runs fully offline
-against a local model and, the moment a key appears, gains a cloud fallback without
-any code change. That is the whole thesis of Mercury's provider design distilled into
-a dozen lines.
+    +------------------------------------------------------------------+
+    | CODE   examples/llm-local-remote/llm-client.ts  (backends)
+    +------------------------------------------------------------------+
+    |
+    |      function backendsFromEnv(): BackendConfig[] {
+    |        const backends: BackendConfig[] = [
+    |          {
+    |            name: 'ollama',
+    |            baseUrl:
+    |              process.env.OLLAMA_BASE_URL ??
+    |              'http://localhost:11434/v1',
+    |            model: process.env.OLLAMA_MODEL ?? 'llama3.1',
+    |          },
+    |        ];
+    |        const remoteKey =
+    |          process.env.CHATLLM_API_KEY ?? process.env.ABACUS_API_KEY;
+    |        if (remoteKey) {
+    |          backends.push({
+    |            name: 'chatllm',
+    |            baseUrl: 'https://routellm.abacus.ai/v1',
+    |            model: 'route-llm',
+    |            apiKey: remoteKey,
+    |          });
+    |        }
+    |        return backends;
+    |      }
+    |
+    +------------------------------------------------------------------+
 
-    function backendsFromEnv(): BackendConfig[] {
-      const backends: BackendConfig[] = [
-        {
-          name: 'ollama',
-          baseUrl: process.env.OLLAMA_BASE_URL ?? 'http://localhost:11434/v1',
-          model: process.env.OLLAMA_MODEL ?? 'llama3.1',
-        },
-      ];
-      const remoteKey = process.env.CHATLLM_API_KEY ?? process.env.ABACUS_API_KEY;
-      if (remoteKey) {
-        backends.push({
-          name: 'chatllm',
-          baseUrl: 'https://routellm.abacus.ai/v1',
-          model: 'route-llm',
-          apiKey: remoteKey,
-        });
-      }
-      return backends;
-    }
+To run it against a local model you install Ollama, pull a model such as
+llama3.1, and execute the file with a recent Node, which on version 22.5 and
+above can strip the TypeScript types directly. Adding a cloud key before you
+run it is all that is needed to activate the remote path.
 
-To run it against a local model you install Ollama, pull a model such as llama3.1,
-and execute the file with a recent Node, which on version 22.5 and above can strip
-the TypeScript types directly. Adding a cloud key before you run it is all that is
-needed to activate the remote path.
-
-    # Local only: start Ollama, pull a model, then run the example.
-    ollama pull llama3.1
-    node --experimental-strip-types examples/llm-local-remote/llm-client.ts
-
-    # Add a remote fallback by exporting a key first.
-    export CHATLLM_API_KEY=sk-your-key-here
-    node --experimental-strip-types examples/llm-local-remote/llm-client.ts
+    +------------------------------------------------------------------+
+    | SHELL   running the dual-mode example
+    +------------------------------------------------------------------+
+    |
+    |      # Local only: start Ollama, pull a model, then run.
+    |      ollama pull llama3.1
+    |      node --experimental-strip-types \
+    |        examples/llm-local-remote/llm-client.ts
+    |
+    |      # Add a remote fallback by exporting a key first.
+    |      export CHATLLM_API_KEY=sk-your-key-here
+    |      node --experimental-strip-types \
+    |        examples/llm-local-remote/llm-client.ts
+    |
+    +------------------------------------------------------------------+
 
 
-HOW MERCURY IS INSTALLED
+========================================================================
+  5.  HOW MERCURY IS INSTALLED
+========================================================================
 
 Installing the full platform, as opposed to the standalone example above, is
-deliberately mundane, which is a virtue. Mercury requires Node.js version 22.5 or
-newer, and the version floor is not arbitrary: Mercury uses the SQLite driver that
-is now built into Node itself, which removes a whole class of native-compilation
-headaches that used to plague self-hosted tools. With a suitable Node in place you
-clone the repository, install the workspace dependencies, build the TypeScript
-project references and run the first-time setup, which interactively creates the
-administrator account and helps you choose a provider.
+deliberately mundane, which is a virtue. Mercury requires Node.js version
+22.5 or newer, and the version floor is not arbitrary: Mercury uses the
+SQLite driver that is now built into Node itself, which removes a whole class
+of native-compilation headaches that used to plague self-hosted tools. With a
+suitable Node in place you clone the repository, install the workspace
+dependencies, build the TypeScript project references and run the first-time
+setup, which interactively creates the administrator account and helps you
+choose a provider.
 
-    git clone https://github.com/ms1963/mercury_agent mercury && cd mercury
-    npm install
-    npm run build
-    node packages/cli/dist/bin.js setup     # create admin user, choose a provider
-    node packages/cli/dist/bin.js serve     # web UI + API on http://localhost:3000
+    +------------------------------------------------------------------+
+    | SHELL   clone, build and first run
+    +------------------------------------------------------------------+
+    |
+    |      git clone https://github.com/ms1963/mercury_agent mercury
+    |      cd mercury
+    |      npm install
+    |      npm run build
+    |      # create admin user, choose a provider:
+    |      node packages/cli/dist/bin.js setup
+    |      # web UI + API on http://localhost:3000 :
+    |      node packages/cli/dist/bin.js serve
+    |
+    +------------------------------------------------------------------+
 
-Two small but real operational details are worth internalising here because they
-have caused confusion in practice. The first is that the build step emits the
-command-line entry point as a compiled JavaScript file, and because that file is
-generated by the TypeScript compiler it does not automatically carry the Unix
-executable bit. When a global command is linked to point at it, a shell will refuse
-to run a file it does not consider executable and will report a permission error. The
-build is therefore configured to set the executable bit after compilation, and if you
-ever bypass the build and invoke the entry point yourself you can always run it
-through Node directly, which never depends on that bit. The second detail is that
-Mercury reads its configuration and its environment file from a home directory under
-the user's account, by default a directory named .mercury, and not from the directory
-you happen to be standing in. If you place an environment file anywhere else it will
-simply not be found, which is the single most common cause of a freshly installed
-Mercury insisting it has no provider. The convenience installer script bundled with
-the project performs the clone, the build, the executable-bit fix and the global link
-in one step, and a container image with an accompanying compose file is provided for
-those who would rather not manage Node at all.
+Two small but real operational details are worth internalising here because
+they have caused confusion in practice. The first is that the build step
+emits the command-line entry point as a compiled JavaScript file, and because
+that file is generated by the TypeScript compiler it does not automatically
+carry the Unix executable bit. When a global command is linked to point at
+it, a shell will refuse to run a file it does not consider executable and will
+report a permission error. The build is therefore configured to set the
+executable bit after compilation, and if you ever bypass the build and invoke
+the entry point yourself you can always run it through Node directly, which
+never depends on that bit. The second detail is that Mercury reads its
+configuration and its environment file from a home directory under the user's
+account, by default a directory named .mercury, and not from the directory you
+happen to be standing in. If you place an environment file anywhere else it
+will simply not be found, which is the single most common cause of a freshly
+installed Mercury insisting it has no provider. The convenience installer
+script bundled with the project performs the clone, the build, the
+executable-bit fix and the global link in one step, and a container image with
+an accompanying compose file is provided for those who would rather not manage
+Node at all.
 
 
-HOW MERCURY IS CONFIGURED
+========================================================================
+  6.  HOW MERCURY IS CONFIGURED
+========================================================================
 
-Configuration in Mercury follows a clear layering, and understanding that layering
-removes almost all of the mystery from getting it to behave. The lowest layer is the
-set of built-in defaults, which are defined and validated by a zod schema so that an
-entirely empty configuration still produces a working system the moment a provider is
-present. On top of the defaults sits the configuration file, written in YAML and kept
-in the home directory mentioned above. On top of the file sit environment variables,
-which is why exporting an API key can switch on a provider. At the very top sit
-command-line flags, which win over everything for the duration of a single command.
-Values flow upward, so a flag beats an environment variable, which beats the file,
-which beats the default.
+Configuration in Mercury follows a clear layering, and understanding that
+layering removes almost all of the mystery from getting it to behave. The
+lowest layer is the set of built-in defaults, which are defined and validated
+by a zod schema so that an entirely empty configuration still produces a
+working system the moment a provider is present. On top of the defaults sits
+the configuration file, written in YAML and kept in the home directory
+mentioned above. On top of the file sit environment variables, which is why
+exporting an API key can switch on a provider. At the very top sit
+command-line flags, which win over everything for the duration of a single
+command. Values flow upward, so a flag beats an environment variable, which
+beats the file, which beats the default. The figure below shows the same
+precedence as a stack, with the winner on top.
 
-The provider section of the configuration is where the local-versus-remote decision
-is finally recorded. Enabling a local model that needs no key is a single setting,
-after which you select one of its models. Enabling a remote model is usually even
-less work, because simply placing the key in the environment file auto-enables the
-corresponding provider, and you then select a model from it.
+    +------------------------------------------------------------------+
+    | FIGURE 2   Configuration precedence (highest wins)
+    +------------------------------------------------------------------+
+    |
+    |        command-line flags        <-- highest precedence
+    |              |
+    |        environment variables
+    |              |
+    |        YAML config file (~/.mercury)
+    |              |
+    |        built-in zod defaults     <-- lowest precedence
+    |
+    +------------------------------------------------------------------+
 
-    # Local model served by Ollama, no API key required.
-    mercury config set llm.providers.ollama '{"type":"ollama","enabled":true}'
-    mercury model ollama/llama3.1
+The provider section of the configuration is where the local-versus-remote
+decision is finally recorded. Enabling a local model that needs no key is a
+single setting, after which you select one of its models. Enabling a remote
+model is usually even less work, because simply placing the key in the
+environment file auto-enables the corresponding provider, and you then select
+a model from it.
 
-    # Remote model via Abacus.AI ChatLLM: put the key in the env file, pick a model.
-    echo 'CHATLLM_API_KEY=sk-your-key' >> ~/.mercury/.env
-    mercury model chatllm/route-llm
+    +------------------------------------------------------------------+
+    | SHELL   selecting a local or a remote model
+    +------------------------------------------------------------------+
+    |
+    |      # Local model served by Ollama, no API key required.
+    |      mercury config set llm.providers.ollama \
+    |        '{"type":"ollama","enabled":true}'
+    |      mercury model ollama/llama3.1
+    |
+    |      # Remote model via Abacus.AI ChatLLM: put the key in the
+    |      # env file, then pick a model.
+    |      echo 'CHATLLM_API_KEY=sk-your-key' >> ~/.mercury/.env
+    |      mercury model chatllm/route-llm
+    |
+    +------------------------------------------------------------------+
 
-It is worth being precise about the division of labour between the key and the model,
-because it is a question that comes up constantly. The environment file holds the
-credential and nothing about which model to use. The model is selected separately, by
-writing the default model into the configuration, which is exactly what the mercury
-model command does on your behalf; the underlying key it writes is llm.defaultModel.
-Setting the default model to the identifier chatllm/route-llm, for instance, tells
-Mercury to let the remote RouteLLM service pick the best specific model for each
-request, whereas naming a concrete model pins it. The command that lists models with
-no argument shows the current default alongside the models your configured providers
-expose, and the doctor command verifies that at least one real provider has been
-detected, which together form the two-step check you should run whenever a new
-install seems not to answer.
+It is worth being precise about the division of labour between the key and the
+model, because it is a question that comes up constantly. The environment file
+holds the credential and nothing about which model to use. The model is
+selected separately, by writing the default model into the configuration,
+which is exactly what the mercury model command does on your behalf; the
+underlying key it writes is llm.defaultModel. Setting the default model to the
+identifier chatllm/route-llm, for instance, tells Mercury to let the remote
+RouteLLM service pick the best specific model for each request, whereas naming
+a concrete model pins it. The command that lists models with no argument shows
+the current default alongside the models your configured providers expose, and
+the doctor command verifies that at least one real provider has been detected,
+which together form the two-step check you should run whenever a new install
+seems not to answer.
 
-Around the raw provider choice sit several refinements that turn a single model into
-a fleet. Each model can be given a profile describing its quality, its cost per
-million tokens of input and output, its typical latency, its context window and the
-capabilities it supports, such as tool use or vision. The router then uses those
-profiles to choose a model per task according to configurable weights that trade off
-quality against cost and latency, and according to rules that can match on the text
-of a task or on tags such as code or vision. Budgets can be attached per user and per
-model, over a daily or monthly period, capping either tokens or cost, so that a
-shared deployment cannot run up an unbounded bill. None of this is mandatory; a single
-provider with a single model works perfectly well, but the structure is there the
+Around the raw provider choice sit several refinements that turn a single
+model into a fleet. Each model can be given a profile describing its quality,
+its cost per million tokens of input and output, its typical latency, its
+context window and the capabilities it supports, such as tool use or vision.
+The router then uses those profiles to choose a model per task according to
+configurable weights that trade off quality against cost and latency, and
+according to rules that can match on the text of a task or on tags such as
+code or vision. Budgets can be attached per user and per model, over a daily
+or monthly period, capping either tokens or cost, so that a shared deployment
+cannot run up an unbounded bill. None of this is mandatory; a single provider
+with a single model works perfectly well, but the structure is there the
 moment you need to grow into it.
 
 
-HOW MERCURY IS USED
+========================================================================
+  7.  HOW MERCURY IS USED
+========================================================================
 
-With a provider configured, the ways to actually use Mercury fan out from the same
-runtime. The command line is the most direct. A single chat subcommand sends a prompt
-and prints the answer, which is ideal for quick questions and for scripting. The same
-binary starts the server that hosts the web interface and the API, manages scheduled
-tasks, runs workflows, administers users and tokens, inspects and installs tools and
-skills, operates the gateway to chat platforms, and runs the self-evaluation harness.
-The full set of subcommands covers chat, config, doctor, eval, gateway, help, mcp,
-model, plugins, replay, schedule, serve, setup, skills, token, tools, update, user
-and workflow, and each is discoverable through the help subcommand and the web Help
-panel.
+With a provider configured, the ways to actually use Mercury fan out from the
+same runtime. The command line is the most direct. A single chat subcommand
+sends a prompt and prints the answer, which is ideal for quick questions and
+for scripting. The same binary starts the server that hosts the web interface
+and the API, manages scheduled tasks, runs workflows, administers users and
+tokens, inspects and installs tools and skills, operates the gateway to chat
+platforms, and runs the self-evaluation harness. The full set of subcommands
+covers chat, config, doctor, eval, gateway, help, mcp, model, plugins, replay,
+schedule, serve, setup, skills, token, tools, update, user and workflow, and
+each is discoverable through the help subcommand and the web Help panel.
 
-    mercury chat "Summarise the latest entries in my project log"
-    mercury serve --port 3000          # web UI + REST/SSE API
-    mercury doctor                     # environment and provider health check
-    mercury eval --json                # deterministic self-benchmark, machine-readable
+    +------------------------------------------------------------------+
+    | SHELL   everyday command-line usage
+    +------------------------------------------------------------------+
+    |
+    |      # one-shot question, prints the answer
+    |      mercury chat "Summarise today's entries in my project log"
+    |
+    |      # web UI + REST/SSE API
+    |      mercury serve --port 3000
+    |
+    |      # environment and provider health check
+    |      mercury doctor
+    |
+    |      # deterministic self-benchmark, machine-readable
+    |      mercury eval --json
+    |
+    +------------------------------------------------------------------+
 
 The web interface is a no-build single-page application served directly by the
-server, which keeps deployment simple because there is no separate front-end build to
-manage. Through it a user chats with streaming responses, sees each tool call appear
-as a chip that can require explicit approval, attaches files, browses past sessions
-and runs, edits workflows, inspects memory and skills, manages tools and MCP
-connections, schedules tasks, configures integrations, reviews models and budgets,
-administers users, watches the live debug stream and reads the reflections the agent
-has written about its own work. It offers light and dark themes and both English and
-German.
+server, which keeps deployment simple because there is no separate front-end
+build to manage. Through it a user chats with streaming responses, sees each
+tool call appear as a chip that can require explicit approval, attaches files,
+browses past sessions and runs, edits workflows, inspects memory and skills,
+manages tools and MCP connections, schedules tasks, configures integrations,
+reviews models and budgets, administers users, watches the live debug stream
+and reads the reflections the agent has written about its own work. It offers
+light and dark themes and both English and German.
 
 The agent loop that sits behind all of these surfaces runs, by default, in a
-streaming reason-and-act pattern: the model thinks, optionally calls a tool, observes
-the tagged result, and continues until it has an answer, emitting events at every
-step so the front-ends can show progress. Other patterns are available for other
-shapes of problem, including plan-and-execute for tasks that benefit from an explicit
-plan up front and reflexion for tasks where the agent should check and retry its own
-work. Interactive controls let a user stop a run, retry it, undo a step, compress the
-context when it grows long, or roll back to an earlier checkpoint. For problems too
-large for one agent, Mercury can spawn subagents with restricted tool sets, and it can
-run multi-agent workflows defined declaratively in YAML, in shapes such as a
-pipeline, a round-robin, a coordinator with workers, a tree, a map-reduce, a router
-and a structured debate.
+streaming reason-and-act pattern: the model thinks, optionally calls a tool,
+observes the tagged result, and continues until it has an answer, emitting
+events at every step so the front-ends can show progress. The shape of that
+loop is worth drawing once.
 
-Two capabilities turn Mercury from a clever console into something that lives in your
-daily environment. The scheduler lets you express recurring work either in plain
-language, such as asking for a task every weekday morning, or in cron syntax, and it
-runs an agent task on that schedule. The gateway connects the agent to the chat
-applications people already use, with sixteen adapters spanning Telegram, Discord,
-Slack, WhatsApp, Signal, Matrix, Mattermost, Teams, IRC, email, SMS, Home Assistant,
-RSS, a generic webhook, a web chat widget and the command line itself. The gateway
-handles the realities of messaging, including pairing a direct-message conversation
-to an account with a code, carrying context across platforms, transcribing voice
-memos and triaging messages to a human when appropriate.
+    +------------------------------------------------------------------+
+    | FIGURE 3   The reason-and-act loop
+    +------------------------------------------------------------------+
+    |
+    |      goal
+    |       |
+    |       v
+    |    +--------+     +-----------+     +------------------+
+    |    | THINK  | --> | ACT       | --> | OBSERVE          |
+    |    | (model | <-- | call a    | <-- | tagged result,   |
+    |    |  plans)|     | tool      |     | emit events      |
+    |    +--------+     +-----------+     +------------------+
+    |       |                                     |
+    |       |  goal met?  no --------------------- +
+    |       |  yes
+    |       v
+    |    answer
+    |
+    +------------------------------------------------------------------+
+
+Other patterns are available for other shapes of problem, including
+plan-and-execute for tasks that benefit from an explicit plan up front and
+reflexion for tasks where the agent should check and retry its own work.
+Interactive controls let a user stop a run, retry it, undo a step, compress
+the context when it grows long, or roll back to an earlier checkpoint. For
+problems too large for one agent, Mercury can spawn subagents with restricted
+tool sets, and it can run multi-agent workflows defined declaratively in YAML,
+in shapes such as a pipeline, a round-robin, a coordinator with workers, a
+tree, a map-reduce, a router and a structured debate.
+
+Two capabilities turn Mercury from a clever console into something that lives
+in your daily environment. The scheduler lets you express recurring work
+either in plain language, such as asking for a task every weekday morning, or
+in cron syntax, and it runs an agent task on that schedule. The gateway
+connects the agent to the chat applications people already use, with sixteen
+adapters spanning Telegram, Discord, Slack, WhatsApp, Signal, Matrix,
+Mattermost, Teams, IRC, email, SMS, Home Assistant, RSS, a generic webhook, a
+web chat widget and the command line itself. The gateway handles the realities
+of messaging, including pairing a direct-message conversation to an account
+with a code, carrying context across platforms, transcribing voice memos and
+triaging messages to a human when appropriate.
 
 
-HOW MERCURY IS EXTENDED
+========================================================================
+  8.  HOW MERCURY IS EXTENDED
+========================================================================
 
-Extensibility is where the small-interfaces principle pays its largest dividend,
-because adding capability almost always means implementing one more object behind one
-more interface rather than modifying the core. The most common extension is a new
-tool, and a tool is just an object that declares its name, a description the model
-reads to decide when to use it, the toolset it belongs to, a JSON schema for its
-arguments, a risk level and an execute function. A helper named defineTool exists
-purely to give you type inference while you write it. The following example is a
-complete, well-behaved tool that reverses a string; it is trivial on purpose so that
-the shape, rather than the logic, is what you take away.
+Extensibility is where the small-interfaces principle pays its largest
+dividend, because adding capability almost always means implementing one more
+object behind one more interface rather than modifying the core. The most
+common extension is a new tool, and a tool is just an object that declares its
+name, a description the model reads to decide when to use it, the toolset it
+belongs to, a JSON schema for its arguments, a risk level and an execute
+function. A helper named defineTool exists purely to give you type inference
+while you write it. The following example is a complete, well-behaved tool
+that reverses a string; it is trivial on purpose so that the shape, rather
+than the logic, is what you take away.
 
-    import { defineTool } from '@mercury/core';
+    +------------------------------------------------------------------+
+    | CODE   a minimal custom tool
+    +------------------------------------------------------------------+
+    |
+    |      import { defineTool } from '@mercury/core';
+    |
+    |      /**
+    |       * A minimal, safe tool. "risk: safe" means it never needs
+    |       * approval, and because it does not touch the outside world
+    |       * it is not marked sensitive.
+    |       */
+    |      export const reverseText = defineTool<{ text: string }>({
+    |        name: 'reverse_text',
+    |        description: 'Reverse the characters of the given text.',
+    |        toolset: 'utility',
+    |        risk: 'safe',
+    |        parameters: {
+    |          type: 'object',
+    |          properties: {
+    |            text: { type: 'string', description: 'Text to reverse.' },
+    |          },
+    |          required: ['text'],
+    |        },
+    |        async execute(args) {
+    |          const reversed = [...args.text].reverse().join('');
+    |          return { content: reversed };
+    |        },
+    |      });
+    |
+    +------------------------------------------------------------------+
 
-    /**
-     * A minimal, safe tool. "risk: safe" means it never needs approval, and
-     * because it does not touch the outside world it is not marked sensitive.
-     */
-    export const reverseText = defineTool<{ text: string }>({
-      name: 'reverse_text',
-      description: 'Reverse the characters of the given text.',
-      toolset: 'utility',
-      risk: 'safe',
-      parameters: {
-        type: 'object',
-        properties: {
-          text: { type: 'string', description: 'The text to reverse.' },
-        },
-        required: ['text'],
-      },
-      async execute(args) {
-        const reversed = [...args.text].reverse().join('');
-        return { content: reversed };
-      },
-    });
-
-The risk level in that definition is not decoration; it feeds directly into the
-security model. A tool marked safe runs without ceremony, a moderate or dangerous
-tool can be gated behind approval, and a tool that produces output from the outside
-world marks that output untrusted so it cannot silently trigger further sensitive
-actions. A tool that acts on the outside world, by writing files or sending messages
-or executing code, is marked sensitive and is blocked when the surrounding context is
-untrusted unless a human approves it. The execute function receives, besides its
-typed arguments, a context object carrying the authenticated principal, the working
-directory inside the filesystem jail, an event emitter and a function to request
-approval, so even an ambitious tool interacts with the platform through a small, safe
-surface.
+The risk level in that definition is not decoration; it feeds directly into
+the security model. A tool marked safe runs without ceremony, a moderate or
+dangerous tool can be gated behind approval, and a tool that produces output
+from the outside world marks that output untrusted so it cannot silently
+trigger further sensitive actions. A tool that acts on the outside world, by
+writing files or sending messages or executing code, is marked sensitive and
+is blocked when the surrounding context is untrusted unless a human approves
+it. The execute function receives, besides its typed arguments, a context
+object carrying the authenticated principal, the working directory inside the
+filesystem jail, an event emitter and a function to request approval, so even
+an ambitious tool interacts with the platform through a small, safe surface.
 
 Not every capability should be written in TypeScript, and Mercury accepts that
-gracefully through polyglot tools. A tool can be implemented in any language, such as
-Python, Go, Java or C++, by placing the executable alongside a small descriptor file
-named tool.json that declares its name, description and parameter schema; Mercury
-then runs it as a subprocess and exposes it to the agent exactly like a native tool.
-Beyond individual tools, plugins can contribute whole bundles of extensions at once,
-including tools, lifecycle hooks, additional language-model providers, new reasoning
-patterns, workflow templates and gateway adapters, and the command line can scaffold
-new instances of each of these so you start from a working skeleton rather than a
+gracefully through polyglot tools. A tool can be implemented in any language,
+such as Python, Go, Java or C++, by placing the executable alongside a small
+descriptor file named tool.json that declares its name, description and
+parameter schema; Mercury then runs it as a subprocess and exposes it to the
+agent exactly like a native tool. Beyond individual tools, plugins can
+contribute whole bundles of extensions at once, including tools, lifecycle
+hooks, additional language-model providers, new reasoning patterns, workflow
+templates and gateway adapters, and the command line can scaffold new
+instances of each of these so you start from a working skeleton rather than a
 blank file.
 
-The final extension dimension is interoperability through the Model Context Protocol,
-and this is one of Mercury's genuine differentiators because it works in both
-directions. As a client, Mercury can connect to external MCP servers over standard
-input and output or over HTTP, and every tool those servers expose becomes available
-to the agent as if it had been written locally. As a server, Mercury exposes its own
-tools and agents to other MCP clients, either over a streamable HTTP endpoint secured
-with scoped tokens or over standard input and output for local integration. In
-practice this means Mercury can both consume the growing ecosystem of MCP tools and
-take its place within someone else's agent as a capable tool provider, which few
-platforms do symmetrically.
+The final extension dimension is interoperability through the Model Context
+Protocol, and this is one of Mercury's genuine differentiators because it
+works in both directions. As a client, Mercury can connect to external MCP
+servers over standard input and output or over HTTP, and every tool those
+servers expose becomes available to the agent as if it had been written
+locally. As a server, Mercury exposes its own tools and agents to other MCP
+clients, either over a streamable HTTP endpoint secured with scoped tokens or
+over standard input and output for local integration. In practice this means
+Mercury can both consume the growing ecosystem of MCP tools and take its place
+within someone else's agent as a capable tool provider, which few platforms do
+symmetrically.
 
 
-SECURITY AND OBSERVABILITY, BRIEFLY BUT SERIOUSLY
+========================================================================
+  9.  SECURITY AND OBSERVABILITY, BRIEFLY BUT SERIOUSLY
+========================================================================
 
-Because an agent that can read the web and then act is a security-sensitive thing,
-Mercury treats defence as a first-class layer rather than an afterthought. Passwords
-are hashed with scrypt and sessions are carried by signed JSON Web Tokens, access is
-governed by role-based controls, and API access can be granted through scoped tokens
-that carry only the permissions they need. Prompt-injection defence is layered, with
-heuristics and an optional classifier inspecting input and with the untrusted-content
-tagging described earlier preventing externally supplied text from reaching sensitive
+Because an agent that can read the web and then act is a security-sensitive
+thing, Mercury treats defence as a first-class layer rather than an
+afterthought. Passwords are hashed with scrypt and sessions are carried by
+signed JSON Web Tokens, access is governed by role-based controls, and API
+access can be granted through scoped tokens that carry only the permissions
+they need. Prompt-injection defence is layered, with heuristics and an
+optional classifier inspecting input and with the untrusted-content tagging
+described earlier preventing externally supplied text from reaching sensitive
 tools unapproved. File and terminal tools operate inside a path jail, outbound
 requests pass through a guard against server-side request forgery, secrets are
 redacted from output, and every security-relevant action is written to a
 hash-chained audit log whose entries cannot be altered without detection.
 
-Observability, as noted at the outset, falls out of the event-driven core. Every run
-produces a trace of its events that can be replayed after the fact with the replay
-subcommand, a live debug stream allows breakpoints and pausing and resuming a run as
-it happens, and operational metrics are exposed in the Prometheus format at a metrics
-endpoint so the platform can be monitored with the same tools as any other service.
-Taken together, these mean that when an agent does something surprising you can see
-exactly what it saw and decided, which is the difference between trusting a system and
-merely hoping it behaves.
+Observability, as noted at the outset, falls out of the event-driven core.
+Every run produces a trace of its events that can be replayed after the fact
+with the replay subcommand, a live debug stream allows breakpoints and pausing
+and resuming a run as it happens, and operational metrics are exposed in the
+Prometheus format at a metrics endpoint so the platform can be monitored with
+the same tools as any other service. Taken together, these mean that when an
+agent does something surprising you can see exactly what it saw and decided,
+which is the difference between trusting a system and merely hoping it behaves.
 
 
-A HONEST WORD ON MATURITY, AND WHERE TO GO NEXT
+========================================================================
+  10.  A HONEST WORD ON MATURITY, AND WHERE TO GO NEXT
+========================================================================
 
-It would be easy to end an article like this on an unqualified high note, but that
-would misrepresent the project, and misrepresentation is the one thing an
+It would be easy to end an article like this on an unqualified high note, but
+that would misrepresent the project, and misrepresentation is the one thing an
 infrastructure tool can least afford. Mercury is feature-rich and carefully
-structured, and its offline test suite exercises its subsystems deterministically,
-but it is an early release and it has not yet been run hard against the full range of
-real external chat platforms and voice services at production scale. The mock
-provider that the tests rely on is, by deliberate design, disabled outside of testing,
-which is consistent with the project's stated rule that mocks are for testing and
-nothing else. If you are evaluating Mercury for serious use, the right next step is to
-read the status document in the repository, which records subsystem by subsystem what
-has been verified and what has not, and then to start exactly where the red thread of
-this article began, by pointing Mercury at a local model you fully control, watching a
-run unfold through the event stream, and only then widening the circle to remote
-models, chat gateways and schedules as your confidence grows. That path, from a
-private local model outward, is the one the whole architecture was built to make
-safe, observable and, with any luck, genuinely enjoyable.
+structured, and its offline test suite exercises its subsystems
+deterministically, but it is an early release and it has not yet been run hard
+against the full range of real external chat platforms and voice services at
+production scale. The mock provider that the tests rely on is, by deliberate
+design, disabled outside of testing, which is consistent with the project's
+stated rule that mocks are for testing and nothing else. If you are evaluating
+Mercury for serious use, the right next step is to read the status document in
+the repository, which records subsystem by subsystem what has been verified
+and what has not, and then to start exactly where the red thread of this
+article began, by pointing Mercury at a local model you fully control,
+watching a run unfold through the event stream, and only then widening the
+circle to remote models, chat gateways and schedules as your confidence grows.
+That path, from a private local model outward, is the one the whole
+architecture was built to make safe, observable and, with any luck, genuinely
+enjoyable.
+
+
+########################################################################
+#                           END OF ARTICLE                             #
+########################################################################
