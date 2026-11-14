@@ -1,7 +1,7 @@
-# Mercury — Build Status (honest snapshot, 2026-11-12)
+# Mercury — Build Status (honest snapshot, 2026-11-14)
 
 **Overall:** all 7 packages compile. From a clean build, `npm install && npm run build && npm test`
-passes (5 files, **44/44 tests**, offline). `npx eslint .` exits 0. The CLI, HTTP server and web UI
+passes (8 files, **69/69 tests**, offline). `npx eslint .` exits 0. The CLI, HTTP server and web UI
 run end-to-end with the offline mock LLM and mock decision provider. Nothing has been exercised
 against a real external service: no real LLM API, no Jev API, no chat platform, no STT/TTS service.
 
@@ -14,7 +14,10 @@ Tested here means covered by the vitest suite (`tests/`) and/or run by hand in t
 | Agent loop (mock LLM) | tests: plain answer + session persistence, tool call fed back, streaming deltas + run events, slash commands (/new /usage /undo /help), multi-turn continuity |
 | Tools | tests: built-in catalogue registered, safe tool runs, polyglot **Python** and **JavaScript** tools run, disabling a tool |
 | Memory | tests: facts remember/recall/forget per user, curated MEMORY.md / USER.md |
-| Router & budgets | tests: routes to configured model, explicit model honoured, token budget blocks a user |
+| Router & budgets | tests: routes to configured model, explicit model honoured, token budget blocks a user, router tag inference (code/reasoning/writing/fast) |
+| Resilience (retries) | tests: jittered exponential-backoff math with injectable RNG; a **retryable** provider error is retried on the same model and recovers (emitting `llm.retry`); a **non-retryable** error fails fast without retrying. Fault injected via the mock provider's scripted-response queue |
+| Cost/token accounting | tests: `costOf` math (per-1M-token input/output rates; 0 when no model profile); per-run token/cost totals aggregated from `llm.response` events |
+| Self-eval harness | tests: pure `scoreTask` scoring (pass/partial/notContains/regex/error), tag-filtered `selectEvals`, and an **end-to-end run of the built-in suite (5/5 tasks pass)** through the real agent loop on the mock LLM. CLI: `mercury eval [--tag <t>] [--json]` run by hand → 5/5 passed |
 | Scheduler | tests: natural-language + cron parsing; create/pause/resume/run/delete |
 | Workflows & skills | tests: bundled specs/templates load, pipeline workflow with subagents, debate workflow, list/create skills |
 | Auth & RBAC | tests: first user admin, JWT login, bad password rejected, role policies, scoped API tokens + revocation |

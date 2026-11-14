@@ -88,6 +88,27 @@ to `~/.mercury/config.yaml` for a documented starting point.
 | **Web UI** | No-build SPA: chat with streaming, tool chips and approvals, attachments, sessions, runs, workflows, memory, skills, tools/MCP, scheduler, integrations, models/budgets, users, debug, reflections, help; dark/light; English/German |
 | **Extensibility** | Plugins (tools, hooks, providers, patterns, templates, adapters), scaffolding via `mercury new …`; see [docs/EXTENDING.md](docs/EXTENDING.md) |
 
+## What makes Mercury superior
+
+Mercury started as "feature parity with Hermes Agent plus the Jev decision engine." Beyond that
+baseline it adds a coherent, **deterministically tested** (offline, mock-provider) set of
+differentiators:
+
+- **Jev decision engine** — a typed decision layer that routes models by task class / cost /
+  capability, judges risk to drive "smart" tool approvals, triages gateway messages and triggers
+  reflection, with a safe heuristic fallback when unconfigured.
+- **Self-evaluation harness** — `mercury eval [--tag <t>] [--json]` runs a built-in deterministic
+  benchmark against the agent (round-trip answers, explicit + natural-language tool dispatch,
+  tool-result grounding, memory writes) and reports pass/score so regressions are caught in CI.
+- **Resilient provider calls** — retryable errors retry with **exponential backoff + bounded jitter**
+  (configurable `llm.retryBackoffMs` / `llm.retryJitter`), non-retryable errors fail fast, and a
+  cross-model fallback chain is attempted; every retry emits a structured `llm.retry` event.
+- **Token + cost accounting** — per-call token counts and estimated cost (from per-1M-token model
+  rates) recorded to the usage ledger, emitted as events, and surfaced per-run by `mercury eval`.
+
+See **[docs/COMPARISON.md](docs/COMPARISON.md)** for the full, honestly-scoped feature-by-feature
+table (and [STATUS.md](STATUS.md) for what is tested vs not yet run against real services).
+
 ## Architecture
 
 ```mermaid
@@ -136,6 +157,7 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 | [docs/PROVIDERS.md](docs/PROVIDERS.md) | One-line LLM provider setups |
 | [examples/env/](examples/env/) | Copy-paste `.env` files for 15 LLM providers (OpenAI, Anthropic, OpenRouter, ChatLLM, Groq, Mistral, DeepSeek, Gemini, Ollama, …) |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/SECURITY.md](docs/SECURITY.md) · [docs/EXTENDING.md](docs/EXTENDING.md) | Design, security model, and how to extend Mercury |
+| [docs/COMPARISON.md](docs/COMPARISON.md) | **Mercury vs Hermes Agent** — what Mercury adds beyond the parity baseline, honestly marked tested-vs-untested |
 | [STATUS.md](STATUS.md) | Honest tested-vs-untested status of every subsystem |
 
 > This README is also available as a [PDF](README.pdf).

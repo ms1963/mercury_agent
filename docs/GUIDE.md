@@ -8,11 +8,15 @@ This is the full reference for installing, deploying, configuring, administratin
 and extending Mercury. It is written to be exhaustive: every CLI command, every configuration key,
 every built-in tool, every HTTP endpoint and every extension point is covered here or in the linked
 companion documents ([ARCHITECTURE.md](ARCHITECTURE.md), [SECURITY.md](SECURITY.md),
-[EXTENDING.md](EXTENDING.md), [PROVIDERS.md](PROVIDERS.md), and the topic files in
-[`docs/help/`](help/)).
+[EXTENDING.md](EXTENDING.md), [PROVIDERS.md](PROVIDERS.md), [COMPARISON.md](COMPARISON.md), and the
+topic files in [`docs/help/`](help/)).
+
+> **How Mercury goes beyond the Hermes-parity baseline** — a self-evaluation harness (`mercury eval`),
+> resilient provider calls (jittered exponential-backoff retries + fallback), and per-run token/cost
+> accounting — is laid out, honestly scoped and tested-vs-untested, in [COMPARISON.md](COMPARISON.md).
 
 > **Honest-status note.** Mercury's seven packages compile, `npm install && npm run build && npm test`
-> passes **49/49 tests offline**, and the CLI, HTTP server and web UI run end-to-end with the
+> passes **69/69 tests offline**, and the CLI, HTTP server and web UI run end-to-end with the
 > deterministic offline mock LLM. **Nothing in this guide has been exercised against a real external
 > service** — no real LLM API, no Jev API, no chat platform, no STT/TTS service, no Docker image
 > build, no systemd run. Treat feature descriptions as "implemented and offline-tested"; see
@@ -1224,6 +1228,7 @@ variables < CLI flags (see Appendix B), and `MERCURY_HOME` overrides the data di
 | `import-agent [path]` | Import an existing Hermes agent/config (default `~/.hermes`). | — |
 | `new <kind> <name>` | Scaffold a new extension. `kind` ∈ `tool\|skill\|workflow\|adapter\|plugin`. | `--lang <python\|js\|go\|cpp\|java>` |
 | `replay <runId>` | Re-run a recorded run from its persisted events (debugging). | — |
+| `eval` | Run the built-in deterministic self-evaluation suite against the agent and report pass/score with per-run token/cost accounting. | `--tag <tag>` (filter: `basic\|tools\|memory\|reasoning\|grounding`), `--json` |
 | `doctor` | Environment / configuration health check (see Appendix E). | — |
 | `update` | Self-update the installation. | — |
 | `help [topic]` | Show help; with a topic, prints the matching help doc. | — |
@@ -1275,7 +1280,9 @@ shown is the default applied when the key is omitted. Keys are grouped by their 
 | `llm.defaultModel` | `'auto'` | `auto` defers to the router. |
 | `llm.providers` | `{}` | Map of provider → `{ type, baseUrl?, apiKey?, apiKeyEnv?, headers?, enabled:true }`. |
 | `llm.models` | `[]` | Each: `{ id, tags[], quality:0.5, costPer1MInput:0, costPer1MOutput:0, latencyMs:1000, contextWindow:8192, tools:true, vision:false, audio:false, json:true, enabled:true }`. |
-| `llm.retries` | `2` | LLM call retries. |
+| `llm.retries` | `2` | Max retries of a retryable provider error (per model, before fallback). |
+| `llm.retryBackoffMs` | `500` | Base delay for exponential backoff between retries (`base·2^attempt`). |
+| `llm.retryJitter` | `0.5` | Jitter fraction (0..1) added to each backoff delay to avoid thundering-herd retries. |
 | `llm.timeoutMs` | `120000` | LLM call timeout. |
 
 ### `router`
