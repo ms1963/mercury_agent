@@ -8,22 +8,6 @@
 ########################################################################
 
 
-                        -----------------------
-                         A NOTE ON THE FORMAT
-                        -----------------------
-
-This article is written in plain ASCII. It uses no Markdown, no bold, no
-Unicode box characters and no tab characters anywhere; every indent is made
-of ordinary spaces so the text lines up identically in a terminal, a plain
-editor and a code-review tool. Section titles are drawn as simple ruled
-banners. Every code listing and every figure is placed inside its own framed
-window with a title bar, so that it reads as a self-contained panel that can
-be copied and run without reformatting. The prose between those windows is
-ordinary flowing text. When the same article is shown in a chat, each framed
-window is additionally placed in its own code block so the listings stay
-visually separated from the explanation around them.
-
-
 ========================================================================
   1.  WHAT MERCURY IS, AND WHY IT EXISTS
 ========================================================================
