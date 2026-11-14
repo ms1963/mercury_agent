@@ -1,11 +1,28 @@
 name: CI
+
+# Build, lint and test the monorepo on every push to main and on every pull
+# request, plus a manual trigger. Node engines require >=22.5.0, so the matrix
+# covers the current and next LTS-line majors. Tests run fully offline: the
+# vitest config enables the mock providers internally (MERCURY_ENABLE_MOCK=1).
 on:
   push:
+    branches: [main]
   pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancel superseded runs on the same ref so a fresh push does not queue behind
+# an already-running (now stale) build.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
+  build-test:
+    name: build & test (node ${{ matrix.node }})
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         node: [22, 24]
     steps:
@@ -14,12 +31,19 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-      - run: npm ci
-      - run: npm run build
-      - run: npx eslint .
-      - run: npm test
+      - name: Install dependencies
+        run: npm ci
+      - name: Build (tsc project references)
+        run: npm run build
+      - name: Lint
+        run: npx eslint .
+      - name: Test (vitest, offline)
+        run: npm test
+
   docker:
+    name: docker image builds
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -t mercury-agent:ci .
+      - name: Build container image
+        run: docker build -t mercury-agent:ci .
