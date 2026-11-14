@@ -2,7 +2,7 @@
 # Mercury installer: clones (or updates) the repo, builds it and links the `mercury` binary.
 #   curl -fsSL <raw-url>/install.sh | sh        or        ./install.sh  (inside a checkout)
 set -eu
-REPO_URL="${MERCURY_REPO:-https://github.com/your-org/mercury.git}"
+REPO_URL="${MERCURY_REPO:-https://github.com/ms1963/mercury_agent.git}"
 DIR="${MERCURY_DIR:-$HOME/.mercury-src}"
 
 command -v node >/dev/null 2>&1 || { echo "Node.js >= 22.5 is required: https://nodejs.org" >&2; exit 1; }
@@ -20,6 +20,7 @@ fi
 cd "$DIR"
 npm ci
 npm run build
+chmod +x "$DIR/packages/cli/dist/bin.js"
 npm link >/dev/null 2>&1 || echo "note: 'npm link' failed; run mercury via: node $DIR/packages/cli/dist/bin.js"
 
 echo

@@ -18,6 +18,7 @@
   "bin": { "mercury": "packages/cli/dist/bin.js" },
   "scripts": {
     "build": "tsc -b packages/cli packages/server",
+    "postbuild": "chmod +x packages/cli/dist/bin.js",
     "clean": "tsc -b --clean packages/cli packages/server",
     "test": "vitest run",
     "test:watch": "vitest",
