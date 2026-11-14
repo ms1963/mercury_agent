@@ -1,0 +1,28 @@
+# Normalize line endings for text files on checkout/commit.
+* text=auto eol=lf
+
+# Shell scripts must always use LF.
+*.sh text eol=lf
+
+# Windows batch files must use CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Treat these as binary (no diff, no EOL conversion).
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.woff binary
+*.woff2 binary
+
+# Mark generated/vendored files so GitHub collapses them in diffs and
+# excludes them from language statistics.
+package-lock.json linguist-generated=true
+**/dist/** linguist-generated=true
+*.tsbuildinfo linguist-generated=true
+docs/*.pdf linguist-documentation=true
+README.pdf linguist-documentation=true
