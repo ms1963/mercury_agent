@@ -10,6 +10,7 @@ import { fromJson, toJson } from '../db/db.js';
 import { MercuryError, NotFoundError, newId, nowIso, type Principal, type UserRole } from '../types/common.js';
 import { generateApiToken, hashPassword, sha256, signJwt, verifyJwt, verifyPassword } from './crypto.js';
 import type { UserPolicy } from './policy.js';
+import type { AuditLog } from '../security/audit.js';
 
 export interface User {
   id: string;
@@ -52,7 +53,7 @@ const toUser = (r: UserRow): User => ({
 export class UserService {
   readonly secret: string;
 
-  constructor(private db: Db, dataDir: string, private tokenTtlHours = 168) {
+  constructor(private db: Db, dataDir: string, private tokenTtlHours = 168, private audit?: AuditLog) {
     this.secret = loadOrCreateSecret(join(dataDir, 'secret.key'));
   }
 
@@ -60,7 +61,9 @@ export class UserService {
     return this.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM users')?.n ?? 0;
   }
 
-  register(username: string, password: string, opts: { role?: UserRole; displayName?: string } = {}): User {
+  /** Create a user. `actor` is the principal performing the action (an admin or installer);
+   *  when omitted the new user is treated as the actor (self-registration / bootstrap). */
+  register(username: string, password: string, opts: { role?: UserRole; displayName?: string } = {}, actor?: string): User {
     if (!/^[a-zA-Z0-9_.-]{3,32}$/.test(username)) throw new MercuryError('Username must be 3-32 chars: letters, digits, _ . -', 'invalid_username', 'auth');
     if (password.length < 8) throw new MercuryError('Password must be at least 8 characters', 'weak_password', 'auth');
     if (this.findByUsername(username)) throw new MercuryError('Username already taken', 'username_taken', 'auth', 409);
@@ -70,7 +73,9 @@ export class UserService {
       'INSERT INTO users (id, username, password_hash, role, display_name, created_at) VALUES (?,?,?,?,?,?)',
       id, username, hashPassword(password), role, opts.displayName ?? username, nowIso(),
     );
-    return this.get(id);
+    const user = this.get(id);
+    this.audit?.record(actor ?? id, 'user.register', username, { role, userId: id });
+    return user;
   }
 
   get(id: string): User {
@@ -93,14 +98,19 @@ export class UserService {
     return this.db.all<UserRow>('SELECT * FROM users ORDER BY created_at').map(toUser);
   }
 
-  update(id: string, patch: Partial<Pick<User, 'role' | 'displayName' | 'locale' | 'disabled' | 'policy'>>): User {
+  /** Update a user. `actor` is the principal performing the change; when omitted the target
+   *  user is treated as the actor (e.g. editing their own profile). */
+  update(id: string, patch: Partial<Pick<User, 'role' | 'displayName' | 'locale' | 'disabled' | 'policy'>>, actor?: string): User {
     const u = this.get(id);
     this.db.run(
       'UPDATE users SET role=?, display_name=?, locale=?, disabled=?, policy=? WHERE id=?',
       patch.role ?? u.role, patch.displayName ?? u.displayName, patch.locale ?? u.locale,
       patch.disabled ?? u.disabled, toJson(patch.policy ?? u.policy), id,
     );
-    return this.get(id);
+    const updated = this.get(id);
+    const changed = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
+    this.audit?.record(actor ?? id, 'user.update', id, changed);
+    return updated;
   }
 
   setPassword(id: string, password: string): void {
@@ -108,16 +118,25 @@ export class UserService {
     this.db.run('UPDATE users SET password_hash=? WHERE id=?', hashPassword(password), id);
   }
 
-  delete(id: string): void {
+  delete(id: string, actor?: string): void {
+    const row = this.db.get<UserRow>('SELECT username FROM users WHERE id=?', id);
     this.db.run('DELETE FROM users WHERE id=?', id);
+    if (row) this.audit?.record(actor ?? id, 'user.delete', id, { username: row.username });
   }
 
-  /** Verify credentials and issue a session JWT. */
+  /** Verify credentials and issue a session JWT. Both success and failure are audited. */
   login(username: string, password: string): { token: string; user: User } {
     const row = this.db.get<UserRow>('SELECT * FROM users WHERE username = ?', username);
-    if (!row || !verifyPassword(password, row.password_hash)) throw new MercuryError('Invalid username or password', 'invalid_credentials', 'auth', 401);
-    if (row.disabled) throw new MercuryError('Account disabled', 'account_disabled', 'auth', 403);
+    if (!row || !verifyPassword(password, row.password_hash)) {
+      this.audit?.record(username, 'auth.login_failed', username, { reason: row ? 'bad_password' : 'unknown_user' });
+      throw new MercuryError('Invalid username or password', 'invalid_credentials', 'auth', 401);
+    }
+    if (row.disabled) {
+      this.audit?.record(row.id, 'auth.login_failed', username, { reason: 'account_disabled' });
+      throw new MercuryError('Account disabled', 'account_disabled', 'auth', 403);
+    }
     const user = toUser(row);
+    this.audit?.record(user.id, 'auth.login', username, { role: user.role });
     return { token: this.issueJwt(user), user };
   }
 
@@ -125,13 +144,14 @@ export class UserService {
     return signJwt({ sub: user.id, role: user.role, username: user.username }, this.secret, this.tokenTtlHours * 3600);
   }
 
-  createToken(userId: string, name: string, scopes: string[] = ['*'], ttlDays?: number): { token: string; info: ApiToken } {
+  createToken(userId: string, name: string, scopes: string[] = ['*'], ttlDays?: number, actor?: string): { token: string; info: ApiToken } {
     const bad = scopes.filter((s) => !(SCOPES as readonly string[]).includes(s));
     if (bad.length) throw new MercuryError(`Unknown scopes: ${bad.join(', ')}`, 'invalid_scope', 'auth');
     const token = generateApiToken();
     const id = newId('tok');
     const expires = ttlDays ? new Date(Date.now() + ttlDays * 86_400_000).toISOString() : null;
     this.db.run('INSERT INTO api_tokens (id, user_id, name, token_hash, scopes, created_at, expires_at) VALUES (?,?,?,?,?,?,?)', id, userId, name, sha256(token), toJson(scopes), nowIso(), expires);
+    this.audit?.record(actor ?? userId, 'token.issue', id, { name, scopes, userId, expiresAt: expires });
     return { token, info: this.listTokens(userId).find((t) => t.id === id)! };
   }
 
@@ -151,8 +171,10 @@ export class UserService {
     }));
   }
 
-  revokeToken(id: string): void {
+  revokeToken(id: string, actor?: string): void {
+    const row = this.db.get<{ user_id: string; name: string | null; revoked: number }>('SELECT user_id, name, revoked FROM api_tokens WHERE id = ?', id);
     this.db.run('UPDATE api_tokens SET revoked = 1 WHERE id = ?', id);
+    if (row && !row.revoked) this.audit?.record(actor ?? row.user_id, 'token.revoke', id, { name: row.name ?? undefined, userId: row.user_id });
   }
 
   /** Authenticate a bearer credential (JWT or API token) into a Principal. */

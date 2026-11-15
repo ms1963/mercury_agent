@@ -14,7 +14,7 @@ const str = (v: unknown, name: string): string => {
 const STREAM_EVENTS = new Set(['run.start', 'run.end', 'tool.call', 'tool.result', 'tool.denied', 'approval.request', 'approval.resolved', 'subagent.spawn', 'subagent.end', 'decision', 'guardrail', 'thought', 'debug.paused']);
 
 export function registerCoreRoutes(app: FastifyInstance, { m, auth, sse }: Ctx): void {
-  app.get('/health', async () => ({ ok: true, version: '0.1.0', uptimeSec: Math.round((Date.now() - m.startedAt.getTime()) / 1000) }));
+  app.get('/health', async () => ({ ok: true, version: '0.2.0', uptimeSec: Math.round((Date.now() - m.startedAt.getTime()) / 1000) }));
 
   // ---- auth ---------------------------------------------------------------
   app.get('/api/auth/status', async () => ({ users: m.users.count(), allowRegistration: m.config.auth.allowRegistration || m.users.count() === 0 }));
@@ -22,7 +22,6 @@ export function registerCoreRoutes(app: FastifyInstance, { m, auth, sse }: Ctx):
     const b = req.body as Body;
     if (!m.config.auth.allowRegistration && m.users.count() > 0) throw new HttpError(403, 'registration is disabled; ask an admin');
     const user = m.users.register(str(b.username, 'username'), str(b.password, 'password'), { displayName: b.displayName as string | undefined });
-    m.audit.record(user.id, 'user.register', user.username);
     return { token: m.users.issueJwt(user), user };
   });
   app.post('/api/auth/login', async (req) => {
@@ -52,29 +51,28 @@ export function registerCoreRoutes(app: FastifyInstance, { m, auth, sse }: Ctx):
     const p = auth(req);
     const id = (req.params as Body).id as string;
     if (!m.users.listTokens(p.userId).some((t) => t.id === id) && p.role !== 'admin') throw new HttpError(404, 'token not found');
-    m.users.revokeToken(id);
+    m.users.revokeToken(id, p.userId);
     return { ok: true };
   });
 
   // ---- users (admin) --------------------------------------------------------
   app.get('/api/users', async (req) => (auth(req, 'users.manage'), { users: m.users.list() }));
   app.post('/api/users', async (req) => {
-    auth(req, 'users.manage');
+    const p = auth(req, 'users.manage');
     const b = req.body as Body;
-    return m.users.register(str(b.username, 'username'), str(b.password, 'password'), { role: (b.role as 'user' | 'admin') ?? 'user' });
+    return m.users.register(str(b.username, 'username'), str(b.password, 'password'), { role: (b.role as 'user' | 'admin') ?? 'user' }, p.userId);
   });
   app.patch('/api/users/:id', async (req) => {
     const p = auth(req, 'users.manage');
     const b = req.body as Body;
     const id = (req.params as Body).id as string;
-    m.audit.record(p.userId, 'user.update', id, b);
-    return m.users.update(id, { role: b.role as 'user' | 'admin' | undefined, disabled: b.disabled as boolean | undefined, policy: b.policy as never });
+    return m.users.update(id, { role: b.role as 'user' | 'admin' | undefined, disabled: b.disabled as boolean | undefined, policy: b.policy as never }, p.userId);
   });
   app.delete('/api/users/:id', async (req) => {
     const p = auth(req, 'users.manage');
     const id = (req.params as Body).id as string;
     if (id === p.userId) throw new HttpError(400, 'cannot delete yourself');
-    m.users.delete(id);
+    m.users.delete(id, p.userId);
     return { ok: true };
   });
 

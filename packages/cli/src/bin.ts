@@ -28,6 +28,7 @@ Usage: mercury <command> [options]
   mcp [list|serve]          List MCP client connections, or serve Mercury over MCP stdio
   user [list|add|passwd|role|delete]
   token [list|create <name> --scopes chat,mcp|revoke <id>]
+  audit [list|verify] [--actor id] [--action token] [--since ISO] [--limit n] [--json]
   plugins                   List loaded plugins
   import-agent [~/.hermes]  Import memories, profile and skills from Hermes Agent
   new <tool|skill|workflow|adapter|plugin> <name> [--lang python|js|go|cpp|java]
@@ -79,7 +80,7 @@ async function main(argv: string[]): Promise<void> {
   const a = parseArgs(argv);
   const command = a._[0] ?? (a.flags.help ? 'help' : 'chat');
   if (command === 'new') return cmd.newCmd(a);
-  if (command === 'version' || a.flags.v) return console.log('mercury 0.1.0');
+  if (command === 'version' || a.flags.v) return console.log('mercury 0.2.0');
 
   const serve = command === 'serve' || (command === 'mcp' && a._[1] === 'serve');
   const m = await boot(a, serve);
@@ -125,6 +126,8 @@ async function main(argv: string[]): Promise<void> {
         return await cmd.userCmd(m, a);
       case 'token':
         return await cmd.tokenCmd(m, a);
+      case 'audit':
+        return await cmd.auditCmd(m, a);
       case 'plugins':
         return cmd.pluginsCmd(m);
       case 'import-agent':

@@ -166,8 +166,9 @@ export class Mercury {
     this.recorder = new EventRecorder(this.db, this.bus);
     if (config.observability.recordEvents) this.recorder.start();
 
-    this.users = new UserService(this.db, dataDir, config.auth.tokenTtlHours);
-    this.pairing = new PairingService(this.db, this.users);
+    this.audit = new AuditLog(this.db);
+    this.users = new UserService(this.db, dataDir, config.auth.tokenTtlHours, this.audit);
+    this.pairing = new PairingService(this.db, this.users, 30, this.audit);
     this.policy = new PolicyEngine((id) => {
       try {
         return this.users.get(id).policy;
@@ -175,7 +176,6 @@ export class Mercury {
         return {};
       }
     });
-    this.audit = new AuditLog(this.db);
 
     // LLM layer. The router needs judgment, judgment needs the decision engine,
     // and the LLM decision provider needs the LLM service: resolve with a late-bound array.

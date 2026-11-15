@@ -136,10 +136,10 @@ export function registerManageRoutes(app: FastifyInstance, { m, auth, sse }: Ctx
   app.post('/api/gateway/pair/:code', async (req) => {
     const p = auth(req);
     const b = req.body as Body;
-    if (b.reject) return (auth(req, 'gateway.manage'), m.pairing.reject(param(req, 'code')), { ok: true });
+    if (b.reject) return (auth(req, 'gateway.manage'), m.pairing.reject(param(req, 'code'), p.userId), { ok: true });
     // Users link codes to themselves; admins may link to any user.
     const target = p.role === 'admin' && b.userId ? String(b.userId) : p.userId;
-    return m.pairing.approve(param(req, 'code'), target);
+    return m.pairing.approve(param(req, 'code'), target, p.userId);
   });
   app.post('/api/gateway/review/:id', async (req) => {
     auth(req, 'gateway.manage');
@@ -199,7 +199,23 @@ export function registerManageRoutes(app: FastifyInstance, { m, auth, sse }: Ctx
   app.get('/api/debug', async (req) => (auth(req, 'debug'), { breakpoints: m.debug.getGlobal(), paused: m.debug.list() }));
   app.post('/api/debug/breakpoints', async (req) => (auth(req, 'config.manage'), m.debug.setGlobal(req.body as never)));
   app.post('/api/debug/resume/:id', async (req) => (auth(req, 'debug'), { ok: m.debug.resume(param(req), ((req.body as Body) ?? { action: 'continue' }) as never) }));
-  app.get('/api/audit', async (req) => (auth(req, 'audit.read'), { entries: m.audit.list(200), integrity: m.audit.verify() }));
+  app.get('/api/audit', async (req) => {
+    auth(req, 'audit.read');
+    const q = req.query as Body;
+    const num = (v: unknown): number | undefined => (v === undefined || v === '' ? undefined : Number(v));
+    const filtered = q.actor || q.action || q.target || q.since || q.until || q.limit || q.offset;
+    if (!filtered) return { entries: m.audit.list(200), integrity: m.audit.verify() };
+    const { entries, total } = m.audit.query({
+      actor: q.actor ? String(q.actor) : undefined,
+      action: q.action ? String(q.action) : undefined,
+      target: q.target ? String(q.target) : undefined,
+      since: q.since ? String(q.since) : undefined,
+      until: q.until ? String(q.until) : undefined,
+      limit: num(q.limit),
+      offset: num(q.offset),
+    });
+    return { entries, total, integrity: m.audit.verify() };
+  });
 
   // ---- help, i18n, settings ---------------------------------------------------------
   app.get('/api/help', async (req) => {

@@ -17,6 +17,16 @@ export interface AuditEntry {
   hash: string;
 }
 
+export interface AuditQuery {
+  actor?: string;
+  action?: string;
+  target?: string;
+  since?: string;
+  until?: string;
+  limit?: number;
+  offset?: number;
+}
+
 const GENESIS = '0'.repeat(64);
 const digest = (prev: string, ts: string, actor: string, action: string, target: string, details: string) =>
   createHash('sha256').update([prev, ts, actor, action, target, details].join('\u241f')).digest('hex');
@@ -37,6 +47,31 @@ export class AuditLog {
 
   list(limit = 100, offset = 0): AuditEntry[] {
     return this.db.all<AuditEntry>('SELECT * FROM audit ORDER BY seq DESC LIMIT ? OFFSET ?', limit, offset);
+  }
+
+  /**
+   * Filtered, paginated query over the audit log (newest first). All filters are optional
+   * and combine with AND. `action` matches either exactly or as a `prefix.` (e.g. `token`
+   * matches `token.issue` and `token.revoke`); `since`/`until` are ISO timestamps.
+   */
+  query(opts: AuditQuery = {}): { entries: AuditEntry[]; total: number } {
+    const where: string[] = [];
+    const params: (string | number)[] = [];
+    const add = (clause: string, ...values: (string | number)[]): void => {
+      where.push(clause);
+      params.push(...values);
+    };
+    if (opts.actor) add('actor = ?', opts.actor);
+    if (opts.target) add('target = ?', opts.target);
+    if (opts.action) add('(action = ? OR action LIKE ?)', opts.action, `${opts.action}.%`);
+    if (opts.since) add('ts >= ?', opts.since);
+    if (opts.until) add('ts <= ?', opts.until);
+    const clause = where.length ? ` WHERE ${where.join(' AND ')}` : '';
+    const total = this.db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM audit${clause}`, ...params)?.n ?? 0;
+    const limit = Math.min(Math.max(opts.limit ?? 100, 1), 1000);
+    const offset = Math.max(opts.offset ?? 0, 0);
+    const entries = this.db.all<AuditEntry>(`SELECT * FROM audit${clause} ORDER BY seq DESC LIMIT ? OFFSET ?`, ...params, limit, offset);
+    return { entries, total };
   }
 
   /** Recompute the chain. Returns the first broken sequence number, or null if intact. */

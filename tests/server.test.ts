@@ -82,6 +82,23 @@ describe('server', () => {
     expect(ok.body).toContain('serverInfo');
   });
 
+  it('exposes the audit log to admins only, with filtering', async () => {
+    expect((await call('GET', '/api/audit', userToken)).statusCode).toBe(403);
+    const all = await call('GET', '/api/audit', adminToken);
+    expect(all.statusCode).toBe(200);
+    expect(Array.isArray(all.json().entries)).toBe(true);
+    expect(all.json().integrity.ok).toBe(true);
+    // Token issuance earlier in this suite must be audited and filterable by action prefix.
+    const tokens = (await call('GET', '/api/audit?action=token', adminToken)).json();
+    expect(tokens.entries.length).toBeGreaterThan(0);
+    expect(tokens.entries.every((e: { action: string }) => e.action.startsWith('token'))).toBe(true);
+    expect(typeof tokens.total).toBe('number');
+    // The earlier bad login for 'eve' must be recorded as a failure.
+    const fails = (await call('GET', '/api/audit?action=auth.login_failed', adminToken)).json();
+    expect(fails.entries.length).toBeGreaterThan(0);
+    expect(fails.entries.every((e: { action: string }) => e.action === 'auth.login_failed')).toBe(true);
+  });
+
   it('publishes Prometheus metrics', async () => {
     const r = await call('GET', '/metrics');
     expect(r.statusCode).toBe(200);

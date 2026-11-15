@@ -1,7 +1,7 @@
-# Mercury — Build Status (honest snapshot, 2026-11-14)
+# Mercury — Build Status (honest snapshot, 2026-11-15)
 
 **Overall:** all 7 packages compile. From a clean build, `npm install && npm run build && npm test`
-passes (8 files, **69/69 tests**, offline). `npx eslint .` exits 0. The CLI, HTTP server and web UI
+passes (9 files, **90/90 tests**, offline). `npx eslint .` exits 0. The CLI, HTTP server and web UI
 run end-to-end with the offline mock LLM and mock decision provider. Nothing has been exercised
 against a real external service: no real LLM API, no Jev API, no chat platform, no STT/TTS service.
 
@@ -21,6 +21,7 @@ Tested here means covered by the vitest suite (`tests/`) and/or run by hand in t
 | Scheduler | tests: natural-language + cron parsing; create/pause/resume/run/delete |
 | Workflows & skills | tests: bundled specs/templates load, pipeline workflow with subagents, debate workflow, list/create skills |
 | Auth & RBAC | tests: first user admin, JWT login, bad password rejected, role policies, scoped API tokens + revocation |
+| Audit log (auth/authz events) | tests (`tests/audit.test.ts`, 20): successful login (`auth.login`) and each failure branch (`auth.login_failed` with reason `unknown_user` / `bad_password` / `account_disabled`, attempted password never stored), token issue/revoke (`token.issue` / `token.revoke`, no double-log on repeat revoke), pairing approve/reject (`pairing.approve` / `pairing.reject`), filtered+paginated `AuditLog.query` (exact + dotted-prefix action match, actor filter, `since` window, `total`, limit clamping), and tamper-evident chain `verify()`; user lifecycle (`user.register` / `user.update` / `user.delete`) audited at the service layer so CLI admin ops are captured too, each with the operating principal. Server test: `GET /api/audit` is admin-only (403 for a plain user) and honours `?action=` filters |
 | Guardrails / prompt injection | tests: heuristic detection vs benign text, untrusted input blocked (authenticated user only warned), spotlight markers, secret redaction + canary leak detection, dangerous shell commands, path jail, webhook HMAC |
 | Jev decision provider | tests with **mocked HTTP**: request/answer parsing, retry on transient errors, fail fast on 4xx, fallback chain to next provider |
 | MCP | tests: in-memory client↔server roundtrip (list + call `mercury_calculator`), HTTP `/mcp` initialize only with `mcp` scope |
@@ -52,7 +53,9 @@ These areas have code that compiles. In most cases it also has mock-based tests.
 
 - **Mock model:** the mock LLM echoes text and only calls tools on explicit `call:<tool> {json}` syntax. Real agent quality depends on the configured model.
 - **Prompt injection:** the guardrails are heuristics plus a classifier. They reduce prompt-injection risk but cannot eliminate it.
-- **Audit log:** it records registration, user updates and config changes only. Logins, token changes and approvals are not audited yet.
+- **Audit log coverage:** registration, user updates, config changes, logins (success + failure),
+  token issuance/revocation and gateway pairing approvals/rejections are now audited. Mercury has no
+  token-*edit* operation, so "token changes" covers issue and revoke only (not an in-place mutation).
 - **Server scale:**
   - Single process with SQLite (`node:sqlite`, still marked experimental in Node 22). No horizontal scaling.
   - The rate limiter is in-memory.

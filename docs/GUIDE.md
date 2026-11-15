@@ -16,7 +16,7 @@ topic files in [`docs/help/`](help/)).
 > accounting — is laid out, honestly scoped and tested-vs-untested, in [COMPARISON.md](COMPARISON.md).
 
 > **Honest-status note.** Mercury's seven packages compile, `npm install && npm run build && npm test`
-> passes **69/69 tests offline**, and the CLI, HTTP server and web UI run end-to-end with the
+> passes **90/90 tests offline**, and the CLI, HTTP server and web UI run end-to-end with the
 > deterministic offline mock LLM. **Nothing in this guide has been exercised against a real external
 > service** — no real LLM API, no Jev API, no chat platform, no STT/TTS service, no Docker image
 > build, no systemd run. Treat feature descriptions as "implemented and offline-tested"; see
@@ -574,12 +574,23 @@ adapters and their config live under `gateway.adapters.<name>`.
 ## 4.7 Audit log
 
 The audit log is **append-only and hash-chained** (each entry carries the previous entry's hash; SQL
-triggers forbid UPDATE/DELETE, and `verify()` detects tampering). View it in the web **audit** view
-or via `GET /api/audit` (admin).
+triggers forbid UPDATE/DELETE, and `verify()` detects tampering). View it in the web **audit** view,
+via `GET /api/audit` (admin), or with `mercury audit list` / `mercury audit verify` (Appendix A).
 
-> **Scope today:** it records user **registration**, user **updates** (role changes) and **config
-> changes**. Logins, token changes and approvals are **not yet audited**, though guardrail verdicts
-> and every tool/LLM/decision call appear in per-run event traces (Part IX).
+> **Scope:** it records user **registration**, **updates** (role changes) and **deletion**
+> (`user.register` / `user.update` / `user.delete`), **config changes**, successful and failed
+> **logins** (`auth.login` / `auth.login_failed`, the failure tagged with a reason of `unknown_user`,
+> `bad_password` or `account_disabled` — the attempted password is never stored), API **token**
+> issuance and revocation (`token.issue` / `token.revoke`), and gateway **pairing** approvals and
+> rejections (`pairing.approve` / `pairing.reject`). These events are recorded at the service layer,
+> so they are captured whether the action arrives over the HTTP API or the CLI. Guardrail verdicts and
+> every tool/LLM/decision call additionally appear in per-run event traces (Part IX).
+
+**Querying.** `GET /api/audit` accepts optional `actor`, `action`, `target`, `since`, `until`,
+`limit` and `offset` query parameters and returns `{ entries, total, integrity }`. The `action`
+filter matches either an exact value or a dotted prefix, so `?action=token` returns both
+`token.issue` and `token.revoke`. The same filters are available on the CLI, e.g.
+`mercury audit list --action auth.login_failed --since 2026-11-01 --limit 50 --json`.
 
 ## 4.8 Data-directory security & backups
 
@@ -1155,8 +1166,9 @@ SSRF guard on web tools (blocks private/loopback/link-local, caps size); termina
 Low-confidence messages can be routed to human review (triage).
 
 **Audit & observability.** Append-only, hash-chained audit log (SQL triggers forbid UPDATE/DELETE;
-`verify()` detects tampering) — currently records registration, user/role updates and config changes
-(logins/token/approval auditing is not yet implemented, but every run keeps a full event trace).
+`verify()` detects tampering) — records registration, user/role updates, config changes, successful
+and failed logins, API token issuance/revocation and gateway pairing approvals/rejections, and is
+queryable (admin-only `GET /api/audit` and `mercury audit`); every run also keeps a full event trace.
 
 **Deployment checklist.** TLS in front of the server; register admin then disable registration; keep
 `$MERCURY_HOME` private; prefer scoped, expiring tokens over admin JWTs; run under Docker/systemd, not
@@ -1224,6 +1236,7 @@ variables < CLI flags (see Appendix B), and `MERCURY_HOME` overrides the data di
 | `mcp` | MCP client/server helpers. | `list`, `serve` |
 | `user` | User administration (admin only). | `list`, `add`, `passwd`, `role`, `delete` |
 | `token` | Manage API tokens. | `list`, `create <name> --scopes <...>`, `revoke <id>` |
+| `audit` | Read and verify the hash-chained audit log (admin). | `list` (filters: `--actor <id>`, `--action <name\|prefix>`, `--target <t>`, `--since <ISO>`, `--until <ISO>`, `--limit <n>`, `--offset <n>`, `--json`), `verify` |
 | `plugins` | List loaded plugins. | — |
 | `import-agent [path]` | Import an existing Hermes agent/config (default `~/.hermes`). | — |
 | `new <kind> <name>` | Scaffold a new extension. `kind` ∈ `tool\|skill\|workflow\|adapter\|plugin`. | `--lang <python\|js\|go\|cpp\|java>` |
@@ -1232,7 +1245,7 @@ variables < CLI flags (see Appendix B), and `MERCURY_HOME` overrides the data di
 | `doctor` | Environment / configuration health check (see Appendix E). | — |
 | `update` | Self-update the installation. | — |
 | `help [topic]` | Show help; with a topic, prints the matching help doc. | — |
-| `version`, `-v` | Print the version (`mercury 0.1.0`). | — |
+| `version`, `-v` | Print the version (`mercury 0.2.0`). | — |
 
 > Honest-status note: `import-agent`, `update`, and `install.sh` have been exercised only against the
 > offline/mock setup in this repository; they have not been validated against a real Hermes install, a
@@ -1566,7 +1579,7 @@ Admin-only routes require the `admin` role.
 | `POST` | `/api/gateway/review/:id` | Resolve a triage review. |
 | `GET` | `/api/approvals` | Pending tool approvals. |
 | `POST` | `/api/approvals/:id` | Approve / deny. |
-| `GET` | `/api/audit` | Hash-chained audit log. |
+| `GET` | `/api/audit` | Hash-chained audit log; optional `actor`, `action` (exact or dotted prefix), `target`, `since`, `until`, `limit`, `offset` filters, returns `{ entries, total, integrity }`. |
 
 ### Users, tokens, budgets (admin)
 

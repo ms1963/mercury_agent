@@ -69,9 +69,20 @@ injection. Keep approvals on `manual` when the agent reads untrusted content and
 ## Audit and observability
 
 - The **audit log** is hash-chained: each entry includes the hash of the previous one, so tampering
-  is detectable (`verify()` in `security/audit.ts`; SQL triggers forbid UPDATE/DELETE). It currently
-  records user registration, user updates (role changes) and config changes. Logins, token changes
-  and approvals are not audited yet, though guardrail verdicts do appear in run traces.
+  is detectable (`verify()` in `security/audit.ts`; SQL triggers forbid UPDATE/DELETE). It records
+  user registration, updates (role changes) and deletion (`user.register` / `user.update` /
+  `user.delete`, recorded at the service layer so CLI admin actions are captured too), config changes,
+  successful and failed logins
+  (`auth.login` / `auth.login_failed`, the latter tagged with a reason of `unknown_user`,
+  `bad_password` or `account_disabled` — the attempted password is never stored), API token issuance
+  and revocation (`token.issue` / `token.revoke`), and gateway pairing approvals and rejections
+  (`pairing.approve` / `pairing.reject`). These are recorded at the service layer, so they are
+  captured whether the action arrives over the HTTP API or through the CLI. Guardrail verdicts
+  additionally appear in run traces.
+- The audit log is queryable: `AuditLog.query({ actor, action, target, since, until, limit, offset })`
+  supports exact or dotted-prefix action matching (e.g. `token` matches `token.issue` and
+  `token.revoke`) and returns a `total` count alongside the page. It is exposed over the admin-only
+  `GET /api/audit?...` route and the `mercury audit [list|verify]` CLI command.
 - Every run records an event trace (LLM calls, tool calls, decisions, guardrail verdicts),
   viewable in the debug panel or with `mercury replay <runId>`.
 

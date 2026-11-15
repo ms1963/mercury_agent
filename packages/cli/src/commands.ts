@@ -15,11 +15,15 @@ const need = (v: string | undefined, usage: string): string => {
 
 export async function userCmd(m: Mercury, a: Args): Promise<void> {
   const [, sub = 'list', name, pw] = a._;
+  // The operator performing the change (for the audit trail). When the store is empty
+  // (bootstrapping the very first user) there is no operator yet, so the new user is
+  // recorded as its own actor.
+  const operator = m.users.count() > 0 ? m.principalFor(flag(a, 'user')).userId : undefined;
   switch (sub) {
     case 'list':
       return out(m.users.list().map((u) => `${u.username.padEnd(20)} ${u.role.padEnd(6)} ${u.disabled ? 'disabled' : ''}`).join('\n') || '(no users)');
     case 'add': {
-      const u = m.users.register(need(name, 'mercury user add <name> <password> [--admin]'), need(pw, 'mercury user add <name> <password>'), { role: a.flags.admin ? 'admin' : 'user' });
+      const u = m.users.register(need(name, 'mercury user add <name> <password> [--admin]'), need(pw, 'mercury user add <name> <password>'), { role: a.flags.admin ? 'admin' : 'user' }, operator);
       return out(`created ${u.username} (${u.role})`);
     }
     case 'passwd': {
@@ -31,12 +35,12 @@ export async function userCmd(m: Mercury, a: Args): Promise<void> {
     case 'role': {
       const u = m.users.findByUsername(need(name, 'mercury user role <name> admin|user'));
       if (!u) throw new Error('unknown user');
-      m.users.update(u.id, { role: need(pw, 'mercury user role <name> admin|user') as 'admin' | 'user' });
+      m.users.update(u.id, { role: need(pw, 'mercury user role <name> admin|user') as 'admin' | 'user' }, operator);
       return out('role updated');
     }
     case 'delete': {
       const u = m.users.findByUsername(need(name, 'mercury user delete <name>'));
-      if (u) m.users.delete(u.id);
+      if (u) m.users.delete(u.id, operator);
       return out('deleted');
     }
     default:
@@ -49,11 +53,29 @@ export async function tokenCmd(m: Mercury, a: Args): Promise<void> {
   const p = m.principalFor(flag(a, 'user'));
   if (sub === 'create') {
     const scopes = (flag(a, 'scopes') ?? 'chat').split(',');
-    const r = m.users.createToken(p.userId, need(arg, 'mercury token create <name> [--scopes chat,mcp]'), scopes, flag(a, 'days') ? Number(flag(a, 'days')) : undefined);
+    const r = m.users.createToken(p.userId, need(arg, 'mercury token create <name> [--scopes chat,mcp]'), scopes, flag(a, 'days') ? Number(flag(a, 'days')) : undefined, p.userId);
     return out(`${r.token}\n(store it now — it is shown only once; scopes: ${scopes.join(',')})`);
   }
-  if (sub === 'revoke') return (m.users.revokeToken(need(arg, 'mercury token revoke <id>')), out('revoked'));
+  if (sub === 'revoke') return (m.users.revokeToken(need(arg, 'mercury token revoke <id>'), p.userId), out('revoked'));
   return out(m.users.listTokens(p.userId), true);
+}
+
+export async function auditCmd(m: Mercury, a: Args): Promise<void> {
+  const [, sub = 'list'] = a._;
+  if (sub === 'verify') return out(m.audit.verify(), true);
+  const limit = flag(a, 'limit') ? Number(flag(a, 'limit')) : 100;
+  const { entries, total } = m.audit.query({
+    actor: flag(a, 'actor'),
+    action: flag(a, 'action'),
+    target: flag(a, 'target'),
+    since: flag(a, 'since'),
+    until: flag(a, 'until'),
+    limit,
+    offset: flag(a, 'offset') ? Number(flag(a, 'offset')) : 0,
+  });
+  if (a.flags.json) return out({ total, entries }, true);
+  const lines = entries.map((e) => `${e.ts}  ${String(e.actor).padEnd(24)} ${e.action.padEnd(20)} ${e.target ?? ''}`);
+  return out(`${lines.join('\n') || '(no matching entries)'}\n\n${entries.length} of ${total} shown`);
 }
 
 export async function toolsCmd(m: Mercury, a: Args): Promise<void> {
@@ -115,7 +137,8 @@ export async function configCmd(m: Mercury, a: Args): Promise<void> {
 export async function gatewayCmd(m: Mercury, a: Args): Promise<void> {
   const [, sub = 'status', code] = a._;
   if (sub === 'pair') {
-    const r = m.pairing.approve(need(code, 'mercury gateway pair <CODE> [--user name]'), m.principalFor(flag(a, 'user')).userId);
+    const operator = m.principalFor(flag(a, 'user')).userId;
+    const r = m.pairing.approve(need(code, 'mercury gateway pair <CODE> [--user name]'), operator, operator);
     return out(`linked ${r.platform}:${r.externalId}`);
   }
   if (sub === 'pending') return out(m.pairing.listPending(), true);

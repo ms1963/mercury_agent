@@ -6,6 +6,7 @@ import { randomInt } from 'node:crypto';
 import type { Db } from '../db/db.js';
 import { MercuryError, nowIso } from '../types/common.js';
 import type { UserService } from './users.js';
+import type { AuditLog } from '../security/audit.js';
 
 export interface PairingRequest {
   code: string;
@@ -22,7 +23,7 @@ export interface PairingRequest {
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I ambiguity
 
 export class PairingService {
-  constructor(private db: Db, private users: UserService, private ttlMinutes = 30) {}
+  constructor(private db: Db, private users: UserService, private ttlMinutes = 30, private audit?: AuditLog) {}
 
   /** Get the pending code for an identity, or create a new one. */
   request(platform: string, externalId: string, chatId?: string, displayName?: string): PairingRequest {
@@ -49,18 +50,21 @@ export class PairingService {
     return this.db.all<Record<string, string>>("SELECT * FROM pairing_codes WHERE status='pending' AND expires_at > ? ORDER BY created_at DESC", nowIso()).map((r) => this.map(r));
   }
 
-  /** Approve a code for `userId`, linking the chat identity. */
-  approve(code: string, userId: string): PairingRequest {
+  /** Approve a code for `userId`, linking the chat identity. `actor` is who performed the approval. */
+  approve(code: string, userId: string, actor?: string): PairingRequest {
     const req = this.get(code);
     if (!req || req.status !== 'pending') throw new MercuryError('Unknown or already used pairing code', 'pairing_invalid', 'gateway', 404);
     if (req.expiresAt < nowIso()) throw new MercuryError('Pairing code expired', 'pairing_expired', 'gateway', 410);
     this.users.linkIdentity(req.platform, req.externalId, userId, req.displayName);
     this.db.run("UPDATE pairing_codes SET status='approved', user_id=? WHERE code=?", userId, req.code);
+    this.audit?.record(actor ?? userId, 'pairing.approve', req.code, { platform: req.platform, externalId: req.externalId, linkedUserId: userId });
     return this.get(req.code)!;
   }
 
-  reject(code: string): void {
+  reject(code: string, actor?: string): void {
+    const req = this.get(code);
     this.db.run("UPDATE pairing_codes SET status='rejected' WHERE code=?", code.toUpperCase());
+    if (req) this.audit?.record(actor ?? 'system', 'pairing.reject', req.code, { platform: req.platform, externalId: req.externalId });
   }
 
   private map(r: Record<string, string>): PairingRequest {

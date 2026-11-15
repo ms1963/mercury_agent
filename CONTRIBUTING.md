@@ -34,7 +34,7 @@ plugins).
 3. Keep the build and tests green:
    ```bash
    npm run build
-   npm test            # 69 tests across 8 files must pass
+   npm test            # 90 tests across 9 files must pass
    npx eslint .
    ```
 4. **Add or update tests** for any behavior you change. The suite runs offline against a
