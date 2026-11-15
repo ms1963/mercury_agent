@@ -77,7 +77,8 @@ to `~/.mercury/config.yaml` for a documented starting point.
 | **Memory** | Working, episodic (sessions + search), semantic facts, procedural (skills), user model, shared blackboard; `MEMORY.md` / `USER.md` |
 | **Reflection** | Post-run lessons and user-model updates, viewable in the UI |
 | **Skills** | agentskills.io `SKILL.md` format, bundled examples, install from path/git |
-| **Tools** | 76 built-ins in toolsets (files, shell, web, code, memory, scheduling, data, utility…), **polyglot tools** in any language via `tool.json` |
+| **Tools** | 76 built-ins in toolsets (files, shell, web, code, memory, scheduling, data, utility…) — see [docs/TOOLS.md](docs/TOOLS.md); **polyglot tools** in any language via `tool.json` |
+| **Personalities** | One built-in persona (`default`) plus drop-in `*.md` persona files; bundled examples in [`personalities/`](personalities); add your own in `~/.mercury/personalities/` |
 | **MCP** | Client (stdio/HTTP servers become tools) and server (`/mcp` streamable HTTP with scoped tokens, or `mercury mcp serve` over stdio) |
 | **Workflows** | YAML templates: single, pipeline, round-robin, coordinator-worker, tree, map-reduce, router, blackboard, debate |
 | **Scheduler** | Natural-language (“every day at 9am”) or cron schedules that run agent tasks |
@@ -155,6 +156,7 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 | [docs/QUICK.md](docs/QUICK.md) | A fast, plain-language quick start |
 | [docs/GUIDE.md](docs/GUIDE.md) | **The complete manual** — every CLI command, config key, tool, endpoint and extension point ([PDF](docs/GUIDE.pdf)) |
 | [docs/WEB_UI.md](docs/WEB_UI.md) | **Working with the web UI instead of the CLI** — start the server, sign in, and which panel replaces which command |
+| [docs/TOOLS.md](docs/TOOLS.md) | **Complete reference of all 76 built-in tools**, grouped by toolset (auto-generated from source) |
 | [docs/PROVIDERS.md](docs/PROVIDERS.md) | One-line LLM provider setups |
 | [examples/env/](examples/env/) | Copy-paste `.env` files for 15 LLM providers (OpenAI, Anthropic, OpenRouter, ChatLLM, Groq, Mistral, DeepSeek, Gemini, Ollama, …) |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/SECURITY.md](docs/SECURITY.md) · [docs/EXTENDING.md](docs/EXTENDING.md) | Design, security model, and how to extend Mercury |
