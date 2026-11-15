@@ -32,7 +32,7 @@ See [docs/PROVIDERS.md](docs/PROVIDERS.md) for one-line setups.
 Requires **Node.js ≥ 22.5** (uses the built-in `node:sqlite`).
 
 ```bash
-git clone git@github.com:ms1963/mercury_agent.git mercury && cd mercury
+git clone git@github.com/ms1963/mercury_agent.git mercury && cd mercury
 npm install && npm run build
 node packages/cli/dist/bin.js setup            # interactive: admin user + LLM provider
 node packages/cli/dist/bin.js serve            # web UI + API on http://localhost:3000
