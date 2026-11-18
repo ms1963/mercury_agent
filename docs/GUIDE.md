@@ -16,7 +16,7 @@ topic files in [`docs/help/`](help/)).
 > accounting — is laid out, honestly scoped and tested-vs-untested, in [COMPARISON.md](COMPARISON.md).
 
 > **Honest-status note.** Mercury's seven packages compile, `npm install && npm run build && npm test`
-> passes **90/90 tests offline**, and the CLI, HTTP server and web UI run end-to-end with the
+> passes **174/174 tests offline**, and the CLI, HTTP server and web UI run end-to-end with the
 > deterministic offline mock LLM. **Nothing in this guide has been exercised against a real external
 > service** — no real LLM API, no Jev API, no chat platform, no STT/TTS service, no Docker image
 > build, no systemd run. Treat feature descriptions as "implemented and offline-tested"; see
@@ -212,7 +212,7 @@ Copy the documented starting templates if you want them:
 ```bash
 mercury doctor                               # checks Node version, data dir, config, providers, keys
 MERCURY_ENABLE_MOCK=1 mercury chat "hello"   # offline smoke test (no provider needed) → "Echo: hello"
-npm test                                     # run the vitest suite (49 tests, offline)
+npm test                                     # run the vitest suite (174 tests, offline)
 ```
 
 The mock provider is **disabled in normal operation**; it is enabled only when
@@ -418,6 +418,9 @@ The complete, every-key-with-default reference is **Appendix B**. The top-level 
 | `voice` | STT/TTS/wake-word providers |
 | `security` | injection toggles, secret/PII redaction, audit |
 | `observability` | event recording, OTLP endpoint, Prometheus metrics |
+| `wiki` | LLM Wiki — enable, directory, schema file, stub threshold |
+| `addins` | declarative Add-In discovery — enable, directory |
+| `permissions` | per-agent/personality permission-profile directory |
 | `plugins`, `hooks` | plugin module list, event hooks (log/webhook) |
 
 ## 3.4 Configuring LLM providers
@@ -1103,7 +1106,7 @@ production `transport.ts` exports only `wrap()` and `FetchTransport`). Register 
 
 ```bash
 npm run build      # tsc project references
-npm test           # vitest (offline; 49 tests)
+npm test           # vitest (offline; 174 tests)
 npx eslint .       # lint (exits 0)
 ```
 
@@ -1238,6 +1241,9 @@ variables < CLI flags (see Appendix B), and `MERCURY_HOME` overrides the data di
 | `token` | Manage API tokens. | `list`, `create <name> --scopes <...>`, `revoke <id>` |
 | `audit` | Read and verify the hash-chained audit log (admin). | `list` (filters: `--actor <id>`, `--action <name\|prefix>`, `--target <t>`, `--since <ISO>`, `--until <ISO>`, `--limit <n>`, `--offset <n>`, `--json`), `verify` |
 | `plugins` | List loaded plugins. | — |
+| `wiki` | Manage the LLM Wiki — ingest immutable sources, query synthesised pages, lint. See [WIKI.md](WIKI.md). | `init`, `status`, `ingest <path\|->` (`--name`, `--instruction`), `query "<q>"` (`--k <n>`), `lint` (`--delta`, `--no-llm`) |
+| `addin` | Inspect or scaffold declarative add-ins (tools / personalities / permission profiles dropped into `<dataDir>/addins/`, no source edits). See [ADDINS.md](ADDINS.md). | `list`, `scaffold <name>` |
+| `perms` | Inspect per-agent/personality permission profiles and their effective (intersection) policy. See [PERMISSIONS.md](PERMISSIONS.md). | `list`, `show <personality>` |
 | `import-agent [path]` | Import an existing Hermes agent/config (default `~/.hermes`). | — |
 | `new <kind> <name>` | Scaffold a new extension. `kind` ∈ `tool\|skill\|workflow\|adapter\|plugin`. | `--lang <python\|js\|go\|cpp\|java>` |
 | `replay <runId>` | Re-run a recorded run from its persisted events (debugging). | — |
@@ -1297,6 +1303,11 @@ shown is the default applied when the key is omitted. Keys are grouped by their 
 | `llm.retryBackoffMs` | `500` | Base delay for exponential backoff between retries (`base·2^attempt`). |
 | `llm.retryJitter` | `0.5` | Jitter fraction (0..1) added to each backoff delay to avoid thundering-herd retries. |
 | `llm.timeoutMs` | `120000` | LLM call timeout. |
+| `llm.circuitBreaker.enabled` | `true` | Per-model circuit breaker. A model that keeps failing with *retryable* errors (429/5xx/network) trips its breaker and is skipped fast (falling back to the next model) until it cools down; non-retryable 4xx/validation errors never trip it. Set `false` to bypass entirely. See [RELIABILITY.md](RELIABILITY.md). |
+| `llm.circuitBreaker.failureThreshold` | `5` | Retryable failures within the window needed to open the breaker. |
+| `llm.circuitBreaker.cooldownMs` | `30000` | Time the breaker stays open before allowing a trial call (ms). |
+| `llm.circuitBreaker.halfOpenSuccesses` | `1` | Successful trial calls needed to close again from half-open. |
+| `llm.circuitBreaker.windowMs` | `60000` | Rolling window (ms) over which failures are counted while closed. |
 
 ### `router`
 
@@ -1469,6 +1480,34 @@ shown is the default applied when the key is omitted. Keys are grouped by their 
 | `observability.recordEvents` | `true` | Persist the event stream. |
 | `observability.otlpEndpoint` | *(unset)* | OpenTelemetry OTLP endpoint. |
 | `observability.metrics` | `true` | Expose `/metrics`. |
+
+### `wiki`
+
+The LLM-Wiki subsystem (`wiki_*` tools + `mercury wiki` CLI). See [WIKI.md](WIKI.md).
+
+| Key | Default | Notes |
+| --- | --- | --- |
+| `wiki.enabled` | `true` | Master switch for the Wiki tools and CLI. |
+| `wiki.dir` | `''` | Wiki root directory; empty → `<dataDir>/wiki`. |
+| `wiki.schemaFile` | `'SCHEMA.md'` | Schema/convention file inside the wiki dir. |
+| `wiki.stubMinChars` | `200` | Pages shorter than this (chars) are flagged as stubs by lint. |
+
+### `addins`
+
+The declarative Add-In system — drop tools / personalities / permission profiles into `<dataDir>/addins/` with no source edits. Additive and backward-compatible with the legacy `personalities/`, `tools/` and `plugins/` scans. See [ADDINS.md](ADDINS.md).
+
+| Key | Default | Notes |
+| --- | --- | --- |
+| `addins.enabled` | `true` | Master switch for discovering add-ins. |
+| `addins.dir` | `''` | Add-ins root directory; empty → `<dataDir>/addins`. |
+
+### `permissions`
+
+Per-agent / per-personality permission profiles. The effective policy is the **intersection** (most-restrictive) of the base policy and the active profile — a profile can only further-restrict, never escalate. See [PERMISSIONS.md](PERMISSIONS.md).
+
+| Key | Default | Notes |
+| --- | --- | --- |
+| `permissions.dir` | `''` | Permission-profiles directory; empty → `<dataDir>/permissions`. |
 
 ### `plugins` and `hooks`
 
@@ -1651,7 +1690,7 @@ providers, and provider keys, and reports what is missing.
 | Changes to `mcp.json` not picked up | — | It is hot-reloaded; check the file is valid JSON and the server logs. |
 
 > Honest-status note: the mock LLM and the full offline path are exercised by the test suite
-> (49 tests passing). Real external integrations — live LLM providers, the Jev API, chat-platform
+> (174 tests passing). Real external integrations — live LLM providers, the Jev API, chat-platform
 > adapters, STT/TTS engines, Docker/SSH terminal backends, `install.sh`, systemd deployment and
 > `update` — have **not** been validated end-to-end against live services in this repository.
 

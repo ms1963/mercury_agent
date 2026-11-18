@@ -233,6 +233,34 @@ Persistent schedules (cron, natural language, intervals, one-shot) running agent
 with attached skills, delivering to gateway targets; pause/resume/edit/run-now, history,
 retries, budgets.
 
+### 5.10 Reliability & efficiency primitives (`core/src/reliability`)
+A small set of composable, dependency-free primitives: a `CircuitBreaker` (closed → open →
+half-open), a `Saga`/`runSaga` compensation orchestrator (forward steps with LIFO rollback on
+failure), a `TtlCache` (lazy-expiring, size-bounded), `SingleFlight` (coalesces concurrent calls
+for the same key into one in-flight promise), and `retry`/`backoffDelay` (exponential backoff with
+bounded jitter; the backoff logic is shared with `core/src/llm/backoff.ts`). The LLM layer wires the
+circuit breaker and retry/backoff into provider calls (`llm.circuitBreaker.*`, `llm.retry*`). See
+[RELIABILITY.md](RELIABILITY.md).
+
+### 5.11 LLM Wiki (`core/src/wiki`)
+An ingestion-time knowledge base (Karpathy's "LLM wiki" pattern): raw sources are stored immutably
+under `raw/`, the LLM synthesises/updates cross-linked markdown pages under `wiki/`, and `index.md` /
+`log.md` track the corpus. Operations: **ingest** (store raw + synthesise), **query** (consult index,
+read relevant pages, answer with citations) and **lint** (orphans, broken links, stubs, staleness,
+LLM-assisted contradictions, plus a delta-lint of recently touched pages). Exposed as the `wiki_*`
+tools and `mercury wiki …`. The synthesis/query/contradiction quality is **untested against a real
+LLM** — only against a test-local fake. See [WIKI.md](WIKI.md).
+
+### 5.12 Add-Ins & permission profiles (`core/src/addins`, `core/src/auth/policy.ts`)
+A unified declarative Add-In loader discovers tools, personalities and permission profiles dropped
+into `<dataDir>/addins/` (and `<dataDir>/permissions/`) without source edits — additive and
+backward-compatible with the legacy `personalities/`, `tools/` and `plugins/` scans; malformed
+manifests and path-escaping entries are skipped with warnings. `effectivePolicy()` merges a base
+policy with a per-agent/personality profile by **strict intersection** (deny = union, max tool-risk =
+min, allow-lists intersected) so a profile can only further-restrict, never escalate. CLI:
+`mercury addin list|scaffold`, `mercury perms list|show`. See [ADDINS.md](ADDINS.md) and
+[PERMISSIONS.md](PERMISSIONS.md).
+
 ---
 
 ## 6. Extension points
@@ -250,6 +278,8 @@ retries, budgets.
 | Plugin | `Plugin { setup(api) }` | `~/.mercury/plugins/*`, config `plugins` |
 | Memory provider / context engine | `MemoryProvider`, `ContextEngine` | plugins |
 | Personality | `*.md` | `personalities/`, `~/.mercury/personalities` |
+| Add-In (tools/personalities/profiles) | declarative files + manifest | `<dataDir>/addins/*` |
+| Permission profile | declarative policy (name→policy map or single policy) | `<dataDir>/permissions/*` |
 | Hooks | `HookName` handlers | plugins, config `hooks` (webhook/log) |
 
 Scaffolding: `mercury new tool|skill|workflow|adapter|plugin <name>`.

@@ -16,6 +16,11 @@ controls that exist and what they do and do **not** protect against.
   Create with `mercury token create ci --scopes chat,mcp`.
 - **RBAC**: admin-only permissions (users, config, gateway pairing, audit) are enforced per route.
   Each user's sessions, memory and runs are scoped to that user.
+- **Per-agent/personality permission profiles** (`auth/policy.ts` `effectivePolicy()`): a declarative
+  profile (under `<dataDir>/permissions/`) is merged with the base policy by **strict intersection** —
+  deny-lists union, `maxToolRisk` takes the minimum, allow-lists are intersected. A profile can only
+  **further-restrict**, never escalate, so binding a locked-down profile to a personality is safe even
+  if the profile is attacker-supplied. See [PERMISSIONS.md](PERMISSIONS.md).
 - **MCP endpoint** (`/mcp`): requires a bearer token with the `mcp` scope and, for every
   tool, the matching scope (`agent`, `workflow`, `memory`, `skills`, `schedule`). Built-in tools are
   exposed as `mercury_<name>` only with the `tools` scope.
@@ -58,6 +63,11 @@ injection. Keep approvals on `manual` when the agent reads untrusted content and
   `docker` backend (`tools.terminal.backend`), or run Mercury itself in Docker / under the hardened
   systemd unit in `deploy/mercury.service`.
 - **Budgets**: per-user/model token and cost limits (`budgets.rules`) stop runaway loops.
+- **Add-In loading** (`core/src/addins`): declarative add-ins discovered under `<dataDir>/addins/`
+  are loaded by path — the loader rejects any entry whose resolved path escapes the add-ins root
+  (`../` traversal), skips malformed manifests, and records a warning instead of failing. Loaded tools
+  still pass through the same risk/approval gating as built-ins; a permission profile shipped by an
+  add-in can only further-restrict (see above).
 
 ## Chat platforms (gateway)
 

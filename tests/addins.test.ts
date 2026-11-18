@@ -80,6 +80,59 @@ describe('add-in loader', () => {
     expect(r.warnings).toEqual([]);
   });
 
+  it('skips personality/tool paths that escape the add-in dir (path-traversal guard)', () => {
+    const base = mk();
+    const dir = join(base, 'escaper');
+    mkdirSync(dir, { recursive: true });
+    // Create a real file OUTSIDE the add-in dir that the manifest tries to reach via ../.
+    writeFileSync(join(base, 'secret.md'), '# Secret\nShould never be loaded.');
+    writeFileSync(
+      join(dir, 'addin.yaml'),
+      'name: escaper\nversion: 1.0.0\n' +
+        'personalities:\n  - ../secret.md\n' +
+        'tools:\n  - ../../etc\n',
+    );
+    const r = loadAddins([base]);
+    expect(r.addins).toHaveLength(1);
+    expect(r.personalities).toEqual([]); // escaping personality rejected
+    expect(r.toolDirs).toEqual([]); // escaping tool dir rejected
+    expect(r.warnings.some((w) => w.includes('escapes the add-in dir'))).toBe(true);
+  });
+
+  it('warns on a declared personality file that does not exist and a tool dir without tool.json', () => {
+    const base = mk();
+    const dir = join(base, 'incomplete');
+    mkdirSync(join(dir, 'tools', 'empty'), { recursive: true }); // no tool.json inside
+    writeFileSync(
+      join(dir, 'addin.yaml'),
+      'name: incomplete\nversion: 1.0.0\n' +
+        'personalities:\n  - personalities/missing.md\n' +
+        'tools:\n  - tools/empty\n',
+    );
+    const r = loadAddins([base]);
+    expect(r.addins).toHaveLength(1);
+    expect(r.personalities).toEqual([]);
+    expect(r.toolDirs).toEqual([]);
+    expect(r.warnings.some((w) => w.includes('not found'))).toBe(true);
+    expect(r.warnings.some((w) => w.includes('no tool.json'))).toBe(true);
+  });
+
+  it('ignores non-directory entries in a base dir', () => {
+    const base = mk();
+    writeAddin(base, 'real');
+    writeFileSync(join(base, 'loose-file.txt'), 'not an add-in'); // a stray file next to add-ins
+    const r = loadAddins([base]);
+    expect(r.addins.map((a) => a.name)).toEqual(['real']);
+    expect(r.warnings).toEqual([]);
+  });
+
+  it('aggregates enabled add-in permission profiles into the result', () => {
+    const base = mk();
+    writeAddin(base, 'pack'); // its manifest declares a `pirate` permission profile
+    const r = loadAddins([base]);
+    expect(r.permissions.pirate).toMatchObject({ deniedToolsets: ['shell'], maxToolRisk: 'safe' });
+  });
+
   it('duplicate add-in names keep the first and warn on the later copy', () => {
     const base1 = mk();
     const base2 = mk();

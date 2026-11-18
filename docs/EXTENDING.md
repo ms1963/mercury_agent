@@ -9,6 +9,8 @@ Scaffold any of them with `mercury new <tool|skill|workflow|adapter|plugin> <nam
 | Skill | `skills/<name>/`, `$MERCURY_HOME/skills/<name>/`, `skills.dirs` | `SKILL.md` (agentskills.io frontmatter) |
 | Workflow | `workflows/*.yaml`, `$MERCURY_HOME/workflows/*.yaml` | YAML naming a template `type` |
 | Personality | `personalities/*.md` | Markdown system-prompt overlay |
+| Add-In | `$MERCURY_HOME/addins/<name>/` | declarative bundle of tools / personalities / permission profiles (no source edits) |
+| Permission profile | `$MERCURY_HOME/permissions/` | declarative per-agent/personality policy (single policy or name→policy map) |
 | Plugin | `$MERCURY_HOME/plugins/<name>.mjs` or `<name>/index.js`, `plugins: [...]` in config | ES module exporting a `Plugin` |
 | Gateway adapter | via plugin `registerAdapter()` | class implementing `Adapter` |
 | MCP server tools | `mcp.servers` in config / `mercury mcp` | any MCP server (stdio / HTTP) |
@@ -67,6 +69,31 @@ budget: { maxRuns: 8 }
 
 Run with `mercury workflow run debate "Remote work is better"`, from the web UI, or via the
 `run_workflow` MCP tool. `auto` lets the decision engine pick a workflow.
+
+## Add-Ins (declarative, no source edits)
+
+An **Add-In** is a self-contained bundle under `$MERCURY_HOME/addins/<name>/` that can ship
+polyglot tools, personality `*.md` overlays and permission profiles together — end users install
+capabilities by dropping a folder in, never by editing Mercury's source. Discovery is additive and
+backward-compatible: the legacy `personalities/`, `tools/` and `plugins/` scans keep working. The
+loader skips malformed manifests and any entry that tries to escape the add-ins root (`../` paths),
+recording a warning rather than failing. Scaffold and inspect:
+
+```bash
+mercury addin scaffold my_pack     # writes a starter bundle under <dataDir>/addins/my_pack
+mercury addin list                 # shows discovered add-ins and any load warnings
+```
+
+Full manifest format and layout: [ADDINS.md](ADDINS.md).
+
+## Permission profiles
+
+A permission profile is a declarative policy bound to an agent or personality, placed under
+`$MERCURY_HOME/permissions/` (a single policy, or a `name → policy` map). The effective policy for a
+run is the **strict intersection** of the base policy and the active profile — deny-lists union,
+`maxToolRisk` takes the minimum, and allow-lists are intersected — so a profile can only
+further-restrict, never escalate privileges. Inspect with `mercury perms list` and
+`mercury perms show <personality>`. Semantics and a worked example: [PERMISSIONS.md](PERMISSIONS.md).
 
 ## Plugins
 

@@ -95,6 +95,48 @@ describe('WikiService.ingest', () => {
     const svc = new WikiService({ dir: tmp() });
     await expect(svc.ingest('x', { asText: true })).rejects.toThrow(/LLM/);
   });
+
+  it('re-ingesting the same slug UPDATES the page and accumulates its sources', async () => {
+    const dir = tmp();
+    const svc = new WikiService({ dir, llm: fakeLlm() });
+    const first = await svc.ingest('first notes', { asText: true, name: 'a.txt' });
+    expect(first.created).toContain('topic-a');
+    expect(first.updated).toEqual([]);
+
+    const second = await svc.ingest('second notes', { asText: true, name: 'b.txt' });
+    expect(second.updated).toContain('topic-a'); // same slug → update, not create
+    expect(second.created).toEqual([]);
+
+    const page = await svc.readPage('topic-a');
+    // Both raw sources are now recorded on the page (sources accumulate).
+    expect(page?.sources).toEqual(['raw/a.txt', 'raw/b.txt']);
+  });
+
+  it('ingests from a file path (not just literal text) and stores it immutably', async () => {
+    const dir = tmp();
+    const srcDir = tmp();
+    const srcFile = join(srcDir, 'external.txt');
+    writeFileSync(srcFile, 'knowledge from an external file', 'utf8');
+    const svc = new WikiService({ dir, llm: fakeLlm() });
+    const res = await svc.ingest(srcFile, {});
+    expect(res.source).toBe('raw/external.txt');
+    const mode = statSync(join(dir, 'raw', 'external.txt')).mode;
+    expect(mode & 0o200).toBe(0); // read-only copy
+  });
+
+  it('rejects ingesting a non-existent file path', async () => {
+    const svc = new WikiService({ dir: tmp(), llm: fakeLlm() });
+    await expect(svc.ingest(join(tmp(), 'nope.txt'), {})).rejects.toThrow(/not found/);
+  });
+
+  it('gives a unique raw name when two sources share a filename', async () => {
+    const dir = tmp();
+    const svc = new WikiService({ dir, llm: fakeLlm() });
+    const r1 = await svc.ingest('one', { asText: true, name: 'dup.txt' });
+    const r2 = await svc.ingest('two', { asText: true, name: 'dup.txt' });
+    expect(r1.source).toBe('raw/dup.txt');
+    expect(r2.source).toBe('raw/dup-1.txt'); // de-duplicated, original untouched
+  });
 });
 
 describe('WikiService.query', () => {
@@ -106,6 +148,52 @@ describe('WikiService.query', () => {
     expect(res.pages).toContain('topic-a');
     expect(res.sources).toContain('raw/notes.txt');
     expect(res.answer).toContain('topic-a');
+  });
+
+  it('returns a "no pages" answer when the wiki is empty', async () => {
+    const svc = new WikiService({ dir: tmp(), llm: fakeLlm() });
+    const res = await svc.query('anything?');
+    expect(res.pages).toEqual([]);
+    expect(res.sources).toEqual([]);
+    expect(res.answer).toMatch(/no pages/i);
+  });
+
+  it('rejects an empty question and requires an LLM backend', async () => {
+    const dir = tmp();
+    await expect(new WikiService({ dir, llm: fakeLlm() }).query('   ')).rejects.toThrow(/non-empty/);
+    await expect(new WikiService({ dir: tmp() }).query('hi')).rejects.toThrow(/LLM/);
+  });
+
+  it('coalesces identical concurrent queries into a single answer() call', async () => {
+    const dir = tmp();
+    let answerCalls = 0;
+    const svc = new WikiService({
+      dir,
+      llm: fakeLlm({
+        answer: async (input) => {
+          answerCalls++;
+          return `coalesced:${input.pages.map((p) => p.slug).join(',')}`;
+        },
+      }),
+    });
+    await svc.ingest('Raw notes about topic A.', { asText: true, name: 'notes.txt' });
+    const [a, b] = await Promise.all([svc.query('topic A details'), svc.query('topic A details')]);
+    expect(a).toEqual(b);
+    expect(answerCalls).toBe(1); // both callers shared one in-flight synthesis
+  });
+});
+
+describe('WikiService.status', () => {
+  it('reports uninitialized before init, and page/source counts after ingest', async () => {
+    const dir = tmp();
+    const svc = new WikiService({ dir, llm: fakeLlm() });
+    expect((await svc.status()).initialized).toBe(false);
+    await svc.ingest('Raw notes about topic A.', { asText: true, name: 'notes.txt' });
+    const status = await svc.status();
+    expect(status.initialized).toBe(true);
+    expect(status.pages).toBe(1);
+    expect(status.sources).toBe(1);
+    expect(status.lastIngestAt).toBeTruthy();
   });
 });
 

@@ -47,6 +47,13 @@ describe('effectivePolicy (user ∩ personality profile)', () => {
     expect(effectivePolicy({}, { allowedTools: ['only'] }).allowedTools).toEqual(['only']);
     expect(effectivePolicy({ allowedTools: ['only'] }, {}).allowedTools).toEqual(['only']);
   });
+
+  it('allow-list intersection honours glob patterns (a glob on one side keeps matching names)', () => {
+    const eff = effectivePolicy({ allowedTools: ['mcp__github__*'] }, { allowedTools: ['mcp__github__create_issue'] });
+    expect(eff.allowedTools).toContain('mcp__github__create_issue');
+    // The broad glob is narrowed to only the concrete name the profile also permits.
+    expect(eff.allowedTools).not.toContain('mcp__github__delete_repo');
+  });
 });
 
 describe('PolicyEngine with a personality profile (end-to-end enforcement)', () => {
@@ -82,5 +89,36 @@ describe('PolicyEngine with a personality profile (end-to-end enforcement)', () 
     const admin: Principal = { kind: 'user', userId: 'a1', role: 'admin', scopes: ['*'] } as Principal;
     const engine = mkEngine({ deniedTools: ['bash'] }, { locked: { deniedToolsets: ['shell'] } });
     expect(engine.can(admin, 'tool.use', { tool: { name: 'bash', toolset: 'shell', risk: 'dangerous' }, profile: 'locked' })).toBe(true);
+  });
+
+  it('enforces model.use: a profile can deny a model the user alone could use', () => {
+    const engine = mkEngine({}, { cheap: { deniedModels: ['gpt-4o'] } });
+    expect(engine.can(user, 'model.use', { model: 'gpt-4o', profile: 'cheap' })).toBe(false);
+    expect(engine.can(user, 'model.use', { model: 'gpt-4o' })).toBe(true); // user alone may
+    expect(engine.can(user, 'model.use', { model: 'gpt-4o-mini', profile: 'cheap' })).toBe(true); // other model ok
+  });
+
+  it('enforces model.use allow-list intersection via a profile', () => {
+    const engine = mkEngine({ allowedModels: ['gpt-4o', 'claude-3'] }, { narrow: { allowedModels: ['claude-3'] } });
+    expect(engine.can(user, 'model.use', { model: 'gpt-4o', profile: 'narrow' })).toBe(false); // not in intersection
+    expect(engine.can(user, 'model.use', { model: 'claude-3', profile: 'narrow' })).toBe(true);
+  });
+
+  it('enforces workflow.run allow-lists narrowed by a profile', () => {
+    const engine = mkEngine({ allowedWorkflows: ['research', 'triage'] }, { limited: { allowedWorkflows: ['triage'] } });
+    expect(engine.can(user, 'workflow.run', { workflow: 'research', profile: 'limited' })).toBe(false);
+    expect(engine.can(user, 'workflow.run', { workflow: 'triage', profile: 'limited' })).toBe(true);
+    expect(engine.can(user, 'workflow.run', { workflow: 'research' })).toBe(true); // user alone may
+  });
+
+  it('enforces API-token scopes independently of ABAC profiles', () => {
+    const engine = mkEngine({}, {});
+    // A scoped api_client token lacking the "tools" scope cannot use tools...
+    const chatOnly: Principal = { kind: 'api_client', userId: 'svc', role: 'user', scopes: ['chat'] } as Principal;
+    expect(engine.can(chatOnly, 'tool.use', { tool: { name: 'calc', toolset: 'math', risk: 'safe' } })).toBe(false);
+    expect(engine.can(chatOnly, 'chat')).toBe(true);
+    // ...while a token with the scope can.
+    const withTools: Principal = { kind: 'api_client', userId: 'svc2', role: 'user', scopes: ['tools'] } as Principal;
+    expect(withTools.scopes.includes('tools') && engine.can(withTools, 'tool.use', { tool: { name: 'calc', toolset: 'math', risk: 'safe' } })).toBe(true);
   });
 });

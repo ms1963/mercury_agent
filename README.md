@@ -87,6 +87,10 @@ to `~/.mercury/config.yaml` for a documented starting point.
 | **Security** | scrypt + JWT, scoped API tokens, RBAC, layered prompt-injection guardrails, approvals, path jail, SSRF guard, secret redaction, hash-chained audit log; see [docs/SECURITY.md](docs/SECURITY.md) |
 | **Observability** | Event traces for every run, live debug stream with breakpoints and pause/resume, `mercury replay`, Prometheus `/metrics` |
 | **Web UI** | No-build SPA: chat with streaming, tool chips and approvals, attachments, sessions, runs, workflows, memory, skills, tools/MCP, scheduler, integrations, models/budgets, users, debug, reflections, help; dark/light; English/German |
+| **Add-Ins** | Drop-in tools, personalities and permission profiles under `<dataDir>/addins/` — no source edits; `mercury addin list\|scaffold`; see [docs/ADDINS.md](docs/ADDINS.md) |
+| **Permission profiles** | Per-agent/personality policies that can only further-restrict (strict intersection), `mercury perms list\|show`; see [docs/PERMISSIONS.md](docs/PERMISSIONS.md) |
+| **LLM Wiki** | Ingestion-time knowledge synthesis (Karpathy's pattern): immutable `raw/` sources + LLM-authored cross-linked pages, with ingest / query / lint via `wiki_*` tools and `mercury wiki …`; see [docs/WIKI.md](docs/WIKI.md) |
+| **Reliability** | Circuit breaker, saga/compensation, retry + exponential backoff, TTL cache and single-flight coalescing; see [docs/RELIABILITY.md](docs/RELIABILITY.md) |
 | **Extensibility** | Plugins (tools, hooks, providers, patterns, templates, adapters), scaffolding via `mercury new …`; see [docs/EXTENDING.md](docs/EXTENDING.md) |
 
 ## What makes Mercury superior
@@ -102,8 +106,11 @@ differentiators:
   benchmark against the agent (round-trip answers, explicit + natural-language tool dispatch,
   tool-result grounding, memory writes) and reports pass/score so regressions are caught in CI.
 - **Resilient provider calls** — retryable errors retry with **exponential backoff + bounded jitter**
-  (configurable `llm.retryBackoffMs` / `llm.retryJitter`), non-retryable errors fail fast, and a
-  cross-model fallback chain is attempted; every retry emits a structured `llm.retry` event.
+  (configurable `llm.retryBackoffMs` / `llm.retryJitter`), non-retryable errors fail fast, a
+  per-model **circuit breaker** skips a model that keeps failing until it cools down, and a
+  cross-model fallback chain is attempted; every retry emits a structured `llm.retry` event. These
+  and the other reliability/efficiency primitives (saga/compensation, TTL cache, single-flight
+  coalescing) are documented in [docs/RELIABILITY.md](docs/RELIABILITY.md).
 - **Token + cost accounting** — per-call token counts and estimated cost (from per-1M-token model
   rates) recorded to the usage ledger, emitted as events, and surfaced per-run by `mercury eval`.
 
@@ -152,6 +159,7 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 | Guide | For whom |
 | --- | --- |
+| [docs/EASY_START.md](docs/EASY_START.md) | **Absolute-beginner guide** — the gentlest path from zero to a first working chat |
 | [docs/INSTALL_GUIDE.md](docs/INSTALL_GUIDE.md) | **New / non-technical users** — friendly, step-by-step: install, connect ChatLLM or Ollama (and optionally Jev), send prompts, create agents, change settings |
 | [docs/QUICK.md](docs/QUICK.md) | A fast, plain-language quick start |
 | [docs/GUIDE.md](docs/GUIDE.md) | **The complete manual** — every CLI command, config key, tool, endpoint and extension point ([PDF](docs/GUIDE.pdf)) |

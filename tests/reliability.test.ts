@@ -116,6 +116,60 @@ describe('CircuitBreaker', () => {
     expect(cb.state).toBe('closed');
   });
 
+  it('reset() forces the breaker back to CLOSED and lets calls through again', async () => {
+    const cb = new CircuitBreaker({ failureThreshold: 1, cooldownMs: 10_000, now: fakeClock().now });
+    await expect(cb.exec(fail)).rejects.toBeTruthy();
+    expect(cb.state).toBe('open');
+    cb.reset();
+    expect(cb.state).toBe('closed');
+    expect(cb.metrics.windowFailures).toBe(0);
+    await expect(cb.exec(ok)).resolves.toBe('ok');
+  });
+
+  it('accepts resetTimeoutMs as an alias for cooldownMs', async () => {
+    const clock = fakeClock();
+    const cb = new CircuitBreaker({ failureThreshold: 1, resetTimeoutMs: 200, now: clock.now });
+    await expect(cb.exec(fail)).rejects.toBeTruthy();
+    clock.advance(199);
+    await expect(cb.exec(ok)).rejects.toBeInstanceOf(CircuitOpenError); // cooldown not elapsed
+    clock.advance(1);
+    await expect(cb.exec(ok)).resolves.toBe('ok'); // trial allowed → closes
+  });
+
+  it('CircuitOpenError carries the circuit name, retryAfterMs, code and 503 status', async () => {
+    const clock = fakeClock();
+    const cb = new CircuitBreaker({ name: 'llm', failureThreshold: 1, cooldownMs: 1000, now: clock.now });
+    await expect(cb.exec(fail)).rejects.toBeTruthy();
+    clock.advance(400);
+    try {
+      await cb.exec(ok);
+      throw new Error('expected a CircuitOpenError');
+    } catch (err) {
+      expect(err).toBeInstanceOf(CircuitOpenError);
+      const ce = err as CircuitOpenError;
+      expect(ce.circuit).toBe('llm');
+      expect(ce.retryAfterMs).toBe(600); // 1000 cooldown - 400 elapsed
+      expect(ce.code).toBe('circuit_open');
+      expect(ce.status).toBe(503);
+    }
+  });
+
+  it('rejects concurrent HALF_OPEN trials beyond halfOpenMaxConcurrent', async () => {
+    const clock = fakeClock();
+    const cb = new CircuitBreaker({ failureThreshold: 1, successThreshold: 5, halfOpenMaxConcurrent: 1, cooldownMs: 100, now: clock.now });
+    await expect(cb.exec(fail)).rejects.toBeTruthy(); // → open
+    clock.advance(100);
+    let release: (v: string) => void = () => {};
+    const slow = () => new Promise<string>((res) => (release = res));
+    const p1 = cb.exec(slow); // moves to half_open; occupies the single trial slot
+    expect(cb.state).toBe('half_open');
+    // A second concurrent trial is rejected (slot saturated), not executed.
+    await expect(cb.exec(ok)).rejects.toBeInstanceOf(CircuitOpenError);
+    release('done');
+    await expect(p1).resolves.toBe('done');
+    expect(cb.metrics.totalShortCircuited).toBe(1);
+  });
+
   it('fires onStateChange callbacks for transitions', async () => {
     const clock = fakeClock();
     const changes: string[] = [];
@@ -211,6 +265,40 @@ describe('Saga', () => {
     );
     expect(results).toEqual({ x: 10, y: 20 });
   });
+
+  it('emits action/compensation lifecycle events via onEvent', async () => {
+    const phases: string[] = [];
+    const saga = new Saga<Record<string, never>>({
+      name: 'payment',
+      onEvent: (e) => phases.push(`${e.phase}:${e.step}`),
+    })
+      .step({ name: 'reserve', action: async () => 'r', compensate: async () => undefined })
+      .step({
+        name: 'charge',
+        action: async () => {
+          throw new Error('declined');
+        },
+      });
+    await expect(saga.run({})).rejects.toBeInstanceOf(SagaError);
+    expect(phases).toEqual([
+      'action:reserve',
+      'action_ok:reserve',
+      'action:charge',
+      'action_error:charge',
+      'compensate:reserve',
+      'compensate_ok:reserve',
+    ]);
+  });
+
+  it('includes the saga name in the error message', async () => {
+    const saga = new Saga({ name: 'checkout' }).step({
+      name: 'pay',
+      action: async () => {
+        throw new Error('nope');
+      },
+    });
+    await expect(saga.run({})).rejects.toThrow(/saga 'checkout' step 'pay' failed/);
+  });
 });
 
 describe('TtlCache', () => {
@@ -254,6 +342,28 @@ describe('TtlCache', () => {
     expect(cache.size).toBe(2);
   });
 
+  it('delete() removes one entry and clear() empties the cache', () => {
+    const cache = new TtlCache<string, number>({ now: fakeClock().now });
+    cache.set('a', 1).set('b', 2);
+    expect(cache.delete('a')).toBe(true);
+    expect(cache.delete('a')).toBe(false); // already gone
+    expect(cache.has('a')).toBe(false);
+    expect(cache.size).toBe(1);
+    cache.clear();
+    expect(cache.size).toBe(0);
+    expect(cache.has('b')).toBe(false);
+  });
+
+  it('size purges expired entries lazily', () => {
+    const clock = fakeClock();
+    const cache = new TtlCache<string, number>({ ttlMs: 100, now: clock.now });
+    cache.set('a', 1);
+    cache.set('b', 2);
+    expect(cache.size).toBe(2);
+    clock.advance(101);
+    expect(cache.size).toBe(0); // both expired and purged on access
+  });
+
   it('wrap() memoizes resolved values by key', async () => {
     const clock = fakeClock();
     const cache = new TtlCache<string, number>({ ttlMs: 1000, now: clock.now });
@@ -287,6 +397,28 @@ describe('SingleFlight', () => {
     expect(await p1).toBe(7);
     expect(await p2).toBe(7);
     expect(sf.size).toBe(0); // key released after settle
+  });
+
+  it('propagates a rejection to every coalesced caller and releases the key', async () => {
+    const sf = new SingleFlight<string, number>();
+    let calls = 0;
+    let rejectFn: (e: unknown) => void = () => {};
+    const slow = () =>
+      new Promise<number>((_resolve, reject) => {
+        calls++;
+        rejectFn = reject;
+      });
+    const p1 = sf.run('k', slow);
+    const p2 = sf.run('k', slow);
+    expect(calls).toBe(1); // coalesced
+    expect(sf.has('k')).toBe(true);
+    const boom = new Error('boom');
+    rejectFn(boom);
+    await expect(p1).rejects.toBe(boom);
+    await expect(p2).rejects.toBe(boom); // same rejection shared
+    expect(sf.has('k')).toBe(false); // key released after settle
+    // A fresh call after a failed flight starts new work and can succeed.
+    await expect(sf.run('k', async () => 99)).resolves.toBe(99);
   });
 
   it('runs fresh work after the previous call settles', async () => {
@@ -357,6 +489,16 @@ describe('retry wrapper', () => {
     const result = await retry(fn, { retries: 5, baseMs: 0, rng: () => 0, onRetry: (i) => attempts.push(i.attempt) });
     expect(result).toBe('ok');
     expect(attempts).toEqual([1, 2]);
+  });
+
+  it('stops retrying when the abort signal is already aborted', async () => {
+    const fn = vi.fn(async () => {
+      throw new Error('transient');
+    });
+    const controller = new AbortController();
+    controller.abort();
+    await expect(retry(fn, { retries: 5, baseMs: 0, signal: controller.signal })).rejects.toThrow('transient');
+    expect(fn).toHaveBeenCalledTimes(1); // aborted → no further attempts
   });
 
   it('re-exports the shared backoffDelay (same math, not a reimplementation)', () => {
