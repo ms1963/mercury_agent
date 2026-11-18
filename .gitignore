@@ -9,3 +9,4 @@ mercury.db
 mercury.db-*
 *.log
 install.exit
+.abacus.donotdelete
