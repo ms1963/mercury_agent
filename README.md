@@ -65,7 +65,8 @@ to `~/.mercury/config.yaml` for a documented starting point.
 
 
 `mercury setup` runs an interactive first-run wizard. `mercury doctor` checks the environment.
-`mercury help <topic>` and the web **Help** panel document everything.
+`mercury help <topic>` and the web **Help** panel document everything — in English and German
+(German topics are served when the locale is `de`, falling back to English).
 
 ## Feature matrix
 

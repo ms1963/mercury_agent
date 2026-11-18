@@ -81,8 +81,9 @@ What just happened, in plain English:
 | `npm install` | Downloads the parts Mercury needs | Delivery truck drops off supplies 📦 |
 | `npm run build` | Assembles those parts, ready to run | Snapping the LEGO together 🧱 |
 
-> 💡 You might see a yellow **warning** about "esbuild" or "SQLite is experimental". **Ignore it.**
-> Warnings are not errors — they're the computer clearing its throat, not refusing to work.
+> 💡 You might see a yellow **warning** about "SQLite is experimental" (and, on older npm, one about
+> "esbuild"). **Ignore it.** Warnings are not errors — they're the computer clearing its throat, not
+> refusing to work.
 
 **Make `mercury` a magic word (optional but nice).** Run this so you can type just `mercury` anywhere:
 

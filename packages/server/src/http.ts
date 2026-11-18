@@ -40,7 +40,7 @@ export class HttpError extends Error {
 
 export async function createServer(m: Mercury): Promise<FastifyInstance> {
   const app = Fastify({ logger: false, bodyLimit: m.config.server.maxBodyBytes, trustProxy: true });
-  const limiter = new RateLimiter(m.config.server.rateLimit.max, m.config.server.rateLimit.windowMs);
+  const limiter = new RateLimiter(m.db, m.config.server.rateLimit.max, m.config.server.rateLimit.windowMs);
 
   // Keep raw text for JSON/form bodies (webhook signatures); binary uploads arrive as Buffers.
   app.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, done) => {

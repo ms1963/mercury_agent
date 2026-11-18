@@ -103,4 +103,11 @@ CREATE TABLE review_queue (
 );
 CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 `,
+  /* 2: persistent fixed-window rate limiter */ `
+CREATE TABLE rate_limits (
+  bucket TEXT NOT NULL, window_start INTEGER NOT NULL, count INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (bucket, window_start)
+);
+CREATE INDEX idx_rate_limits_window ON rate_limits(window_start);
+`,
 ];

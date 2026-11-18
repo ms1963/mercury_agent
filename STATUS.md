@@ -1,7 +1,7 @@
 # Mercury — Build Status (honest snapshot, 2026-11-18)
 
 **Overall:** all 7 packages compile. From a clean build, `npm install && npm run build && npm test`
-passes (13 files, **174/174 tests**, offline). `npx eslint .` exits 0. The CLI, HTTP server and web UI
+passes (15 files, **185/185 tests**, offline). `npx eslint .` exits 0. The CLI, HTTP server and web UI
 run end-to-end with the offline mock LLM and mock decision provider. Nothing has been exercised
 against a real external service: no real LLM API, no Jev API, no chat platform, no STT/TTS service.
 
@@ -60,10 +60,7 @@ These areas have code that compiles. In most cases it also has mock-based tests.
 - **Audit log coverage:** registration, user updates, config changes, logins (success + failure),
   token issuance/revocation and gateway pairing approvals/rejections are now audited. Mercury has no
   token-*edit* operation, so "token changes" covers issue and revoke only (not an in-place mutation).
-- **Server scale:**
-  - Single process with SQLite (`node:sqlite`, still marked experimental in Node 22). No horizontal scaling.
-  - The rate limiter is in-memory.
+- **Server scale:** single process; no cross-host horizontal scaling (that would need an external shared store such as Postgres/Redis). Persistence uses `node:sqlite`, which Node 22 still marks experimental. The rate limiter is now backed by that SQLite database (`rate_limits` table), so its counters survive restarts and are shared across all requests in the process — but, like the rest of the store, it is single-process-shared, not cross-host.
 - **Feature parity:** Hermes parity covers features, not behaviour. Many features have only smoke-level test depth.
-- **Locales:** the UI ships English and German. Help docs are English only.
-- **Lint:** ESLint reports no problems, but `no-explicit-any` is switched off and short-circuit/ternary expression statements are allowed.
-- **Test runner:** `npm install` warns that esbuild's postinstall script was not approved. Tests run fine regardless.
+- **Locales:** the UI ships English and German, and the help docs now ship English and German too — the German help docs are served when the effective locale is `de` (via `config.locale`), with the English docs as fallback for any topic without a translation.
+- **Lint:** `npx eslint .` exits 0 with the rules hardened — `@typescript-eslint/no-explicit-any` is `error` and `no-unused-expressions` allows no short-circuit or ternary statements. The only `any` left is a single, commented `eslint-disable` on the existential `AnyTool` container type (heterogeneous tool registry), which TypeScript cannot express without `any`.

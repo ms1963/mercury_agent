@@ -89,4 +89,4 @@ provider the same accounting reports real token counts and the estimated cost fr
 ---
 
 *All claims above are grounded in code in this repository and the offline test suite. Build:
-`npm run build` (exit 0). Tests: `MERCURY_ENABLE_MOCK=1 npm test` (174/174 across 13 files, offline).*
+`npm run build` (exit 0). Tests: `MERCURY_ENABLE_MOCK=1 npm test` (185/185 across 15 files, offline).*

@@ -134,7 +134,7 @@ export const weather = defineTool<{ location: string }>({
   risk: 'safe',
   untrustedOutput: true,
   parameters: params({ location: str('City or place name') }, ['location']),
-  async execute(a, ctx) {
+  async execute(a, _ctx) {
     const geo = (await (await safeFetch(`https://geocoding-api.open-meteo.com/v1/search?count=1&name=${encodeURIComponent(a.location)}`)).json()) as { results?: Array<{ latitude: number; longitude: number; name: string; country?: string }> };
     const place = geo.results?.[0];
     if (!place) return { content: `Unknown location "${a.location}"`, isError: true };

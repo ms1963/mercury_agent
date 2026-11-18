@@ -1,25 +1,18 @@
-# systemd unit — copy to /etc/systemd/system/mercury.service, then:
-#   sudo systemctl daemon-reload && sudo systemctl enable --now mercury
 [Unit]
-Description=Mercury agentic AI platform
+Description=Mercury Agent server (HTTP API + web UI)
 After=network-online.target
 Wants=network-online.target
+# /home/ubuntu mounts late at boot (nofail) — never start before the project files exist.
+RequiresMountsFor=/home/ubuntu
 
 [Service]
-Type=simple
-User=mercury
-WorkingDirectory=/opt/mercury
-Environment=NODE_ENV=production
-Environment=MERCURY_HOME=/var/lib/mercury
-EnvironmentFile=-/etc/mercury.env
-ExecStart=/usr/bin/node /opt/mercury/packages/cli/dist/bin.js serve --port 3000
+User=ubuntu
+WorkingDirectory=/home/ubuntu/mercury
+# HOME must be set so Mercury finds ~/.mercury (.env, config.yaml, mercury.db).
+Environment=HOME=/home/ubuntu
+ExecStart=/usr/bin/node /home/ubuntu/mercury/packages/cli/dist/bin.js serve --host 127.0.0.1 --port 3000
 Restart=on-failure
-RestartSec=5
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/var/lib/mercury
+RestartSec=3
 
 [Install]
 WantedBy=multi-user.target

@@ -83,7 +83,7 @@ async function main(argv: string[]): Promise<void> {
   const a = parseArgs(argv);
   const command = a._[0] ?? (a.flags.help ? 'help' : 'chat');
   if (command === 'new') return cmd.newCmd(a);
-  if (command === 'version' || a.flags.v) return console.log('mercury 0.2.0');
+  if (command === 'version' || a.flags.v) return console.log('mercury 0.4.0');
 
   const serve = command === 'serve' || (command === 'mcp' && a._[1] === 'serve');
   const m = await boot(a, serve);

@@ -7,6 +7,32 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-18
+
+### Changed
+- **Rate limiter is now SQLite-backed** instead of in-memory: a new `rate_limits` table (added via
+  migration) holds per-client fixed-window counters in the same `mercury.db`, so limits persist
+  across restarts and are shared across all requests in the process. Same window/limit semantics.
+  Still single-host (cross-replica limiting would need an external store such as Redis/Postgres).
+- **Lint rules hardened**: `@typescript-eslint/no-explicit-any` is now `error`, and
+  `no-unused-expressions` disallows short-circuit and ternary statements
+  (`{ allowShortCircuit: false, allowTernary: false }`). The only remaining `any` is a single
+  commented `eslint-disable` on the existential `AnyTool` container type. `npx eslint .` exits 0.
+- **esbuild postinstall warning silenced**: the root `package.json` pre-approves esbuild's build
+  script (`"allowScripts": { "esbuild": true }`), so clean installs no longer warn on npm versions
+  that gate build scripts.
+- Expanded the unit-test suite from 174 to **185 tests across 15 files** (added
+  `tests/ratelimit.test.ts` and `tests/help.test.ts`).
+
+### Added
+- **German help documentation**: full translations of all 16 help topics under `docs/help/de/`.
+  The help system resolves `docs/help/<locale>/<topic>.md` from the effective `config.locale`
+  (the same key that drives the German UI), falling back to the English topic when no translation
+  exists.
+- Documentation synced with the above (`STATUS.md`, `README.md`, `CONTRIBUTING.md`,
+  `docs/GUIDE.md`, `docs/SECURITY.md`, `docs/COMPARISON.md`, `docs/ARCHITECTURE.md`,
+  `docs/INSTALL_GUIDE.md`, `docs/QUICK.md`).
+
 ## [0.3.0] - 2026-11-18
 
 ### Added

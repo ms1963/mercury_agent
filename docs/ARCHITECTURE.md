@@ -101,7 +101,7 @@ mercury/
 ├─ workflows/         bundled workflow specs (YAML)
 ├─ personalities/     bundled personalities (*.md)
 ├─ locales/           i18n catalogs (en.json, de.json)
-├─ docs/              architecture, security, extending, help topics (docs/help/*.md)
+├─ docs/              architecture, security, extending, help topics (docs/help/*.md + docs/help/de/*.md)
 └─ deploy/            Dockerfile, docker-compose.yml, systemd unit
 ```
 

@@ -2,26 +2,50 @@
  * Rate limiting and webhook signature verification helpers.
  */
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import type { Db } from '../db/db.js';
 
-/** Fixed-window rate limiter keyed by user/IP. */
+/**
+ * Fixed-window rate limiter keyed by user/IP, backed by the SQLite database.
+ *
+ * Counters are persisted in the `rate_limits` table, so they survive process
+ * restarts and are shared across every request handled by this process (not just
+ * a single in-memory map). Each key's window is anchored to its first hit and
+ * resets after `windowMs`, matching the previous in-memory semantics exactly.
+ *
+ * Scope note: this is single-process-shared (one SQLite file). It is NOT a
+ * cross-host distributed limiter — horizontally scaled instances would each
+ * enforce their own counters unless pointed at a shared external store.
+ */
 export class RateLimiter {
-  private windows = new Map<string, { start: number; count: number }>();
-  constructor(private max: number, private windowMs: number) {}
+  private hits = 0;
+
+  constructor(private db: Db, private max: number, private windowMs: number) {}
 
   /** Returns true when the request is allowed. */
   hit(key: string, now = Date.now()): boolean {
-    const w = this.windows.get(key);
-    if (!w || now - w.start >= this.windowMs) {
-      this.windows.set(key, { start: now, count: 1 });
-      if (this.windows.size > 10_000) this.prune(now);
-      return true;
-    }
-    w.count++;
-    return w.count <= this.max;
+    return this.db.transaction(() => {
+      const row = this.db.get<{ window_start: number; count: number }>(
+        'SELECT window_start, count FROM rate_limits WHERE bucket = ? ORDER BY window_start DESC LIMIT 1',
+        key,
+      );
+      if (!row || now - row.window_start >= this.windowMs) {
+        // New window: drop this bucket's expired rows, then open a fresh window.
+        this.db.run('DELETE FROM rate_limits WHERE bucket = ? AND window_start <= ?', key, now - this.windowMs);
+        this.db.run('INSERT OR REPLACE INTO rate_limits (bucket, window_start, count) VALUES (?, ?, 1)', key, now);
+        this.maybePruneAll(now);
+        return true;
+      }
+      const count = row.count + 1;
+      this.db.run('UPDATE rate_limits SET count = ? WHERE bucket = ? AND window_start = ?', count, key, row.window_start);
+      return count <= this.max;
+    });
   }
 
-  private prune(now: number): void {
-    for (const [k, w] of this.windows) if (now - w.start >= this.windowMs) this.windows.delete(k);
+  /** Occasionally sweep expired windows for buckets that never came back. */
+  private maybePruneAll(now: number): void {
+    this.hits++;
+    if (this.hits % 1000 !== 0) return;
+    this.db.run('DELETE FROM rate_limits WHERE window_start <= ?', now - this.windowMs);
   }
 }
 

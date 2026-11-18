@@ -248,7 +248,7 @@ export class Mercury {
     this.debug = new DebugController(this.bus, config.debug);
     this.guardrails = new Guardrails(config, this.judgment, this.bus);
     this.personalities = new Personalities([join(this.assets, 'personalities'), join(dataDir, 'personalities')], () => this.addins.personalities);
-    this.help = new HelpSystem([join(this.assets, 'docs', 'help')]);
+    this.help = new HelpSystem([join(this.assets, 'docs', 'help')], config.locale);
     this.i18n = new I18n(join(this.assets, 'locales'), config.locale);
     this.reflector = new Reflector(config, this.llm, this.judgment, this.memory, this.skills, this.db, this.bus);
     this.mcp = new McpClientManager(this.tools, this.logger, this.llm);

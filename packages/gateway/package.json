@@ -1,9 +1,9 @@
 {
   "name": "@mercury/gateway",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
-  "dependencies": {"@mercury/core": "0.3.0"}
+  "dependencies": {"@mercury/core": "0.4.0"}
 }

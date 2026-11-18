@@ -15,6 +15,16 @@ export interface AnthropicOptions {
 
 type Block = Record<string, unknown>;
 
+/** Shape of the Anthropic Messages streaming SSE events we consume. */
+interface AnthropicStreamEvent {
+  type?: string;
+  index?: number;
+  message?: { usage?: { input_tokens?: number } };
+  content_block?: { type?: string; id?: string; name?: string };
+  delta?: { type?: string; text?: string; partial_json?: string; stop_reason?: string };
+  usage?: { output_tokens?: number };
+}
+
 export class AnthropicProvider implements LLMProvider {
   readonly id: string;
   readonly type = 'anthropic';
@@ -108,18 +118,20 @@ export class AnthropicProvider implements LLMProvider {
     const blocks = new Map<number, { id: string; name: string; json: string }>();
     let stop = 'stop';
     for await (const data of sseData(res)) {
-      const ev = safeJsonParse<Record<string, any>>(data);  
+      const ev = safeJsonParse<AnthropicStreamEvent>(data);
       if (!ev) continue;
       if (ev.type === 'message_start') usage.inputTokens = ev.message?.usage?.input_tokens ?? 0;
-      if (ev.type === 'content_block_start' && ev.content_block?.type === 'tool_use') blocks.set(ev.index, { id: ev.content_block.id, name: ev.content_block.name, json: '' });
+      if (ev.type === 'content_block_start' && ev.content_block?.type === 'tool_use' && ev.index !== undefined) {
+        blocks.set(ev.index, { id: ev.content_block.id ?? '', name: ev.content_block.name ?? '', json: '' });
+      }
       if (ev.type === 'content_block_delta') {
-        if (ev.delta?.type === 'text_delta') {
+        if (ev.delta?.type === 'text_delta' && ev.delta.text !== undefined) {
           content += ev.delta.text;
           onDelta(ev.delta.text);
         }
-        if (ev.delta?.type === 'input_json_delta') {
+        if (ev.delta?.type === 'input_json_delta' && ev.index !== undefined) {
           const b = blocks.get(ev.index);
-          if (b) b.json += ev.delta.partial_json;
+          if (b) b.json += ev.delta.partial_json ?? '';
         }
       }
       if (ev.type === 'message_delta') {

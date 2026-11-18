@@ -24,7 +24,9 @@ controls that exist and what they do and do **not** protect against.
 - **MCP endpoint** (`/mcp`): requires a bearer token with the `mcp` scope and, for every
   tool, the matching scope (`agent`, `workflow`, `memory`, `skills`, `schedule`). Built-in tools are
   exposed as `mercury_<name>` only with the `tools` scope.
-- **Rate limiting**: per-client fixed window (`server.rateLimit`, default 300 requests / minute).
+- **Rate limiting**: per-client fixed window (`server.rateLimit`, default 300 requests / minute),
+  backed by SQLite (`rate_limits` table) so counters persist across restarts and are shared across
+  the process (single-host; not cross-replica).
 - **Webhooks**: adapter webhooks verify platform signatures (e.g. HMAC-SHA256 for the generic
   webhook adapter, Slack signing secret). Requests that fail verification get a 401. Telegram
   uses long polling, so it needs no inbound webhook.

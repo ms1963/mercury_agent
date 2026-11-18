@@ -16,7 +16,7 @@ topic files in [`docs/help/`](help/)).
 > accounting — is laid out, honestly scoped and tested-vs-untested, in [COMPARISON.md](COMPARISON.md).
 
 > **Honest-status note.** Mercury's seven packages compile, `npm install && npm run build && npm test`
-> passes **174/174 tests offline**, and the CLI, HTTP server and web UI run end-to-end with the
+> passes **185/185 tests offline**, and the CLI, HTTP server and web UI run end-to-end with the
 > deterministic offline mock LLM. **Nothing in this guide has been exercised against a real external
 > service** — no real LLM API, no Jev API, no chat platform, no STT/TTS service, no Docker image
 > build, no systemd run. Treat feature descriptions as "implemented and offline-tested"; see
@@ -137,8 +137,10 @@ node packages/cli/dist/bin.js version      # → "mercury 0.1.0"
 node packages/cli/dist/bin.js doctor       # environment check (see Appendix E)
 ```
 
-> **esbuild postinstall warning.** `npm install` may warn that esbuild's postinstall script was not
-> approved. This is harmless — the build and tests run regardless.
+> **esbuild postinstall warning.** The root `package.json` now pre-approves esbuild's postinstall
+> script (`"allowScripts": { "esbuild": true }`), so clean installs are silent on npm versions that
+> gate build scripts. On older npm you may still see a one-line "script was not approved" notice — it
+> is harmless; the build and tests run regardless.
 
 ## 1.3 Install the global `mercury` binary
 
@@ -212,7 +214,7 @@ Copy the documented starting templates if you want them:
 ```bash
 mercury doctor                               # checks Node version, data dir, config, providers, keys
 MERCURY_ENABLE_MOCK=1 mercury chat "hello"   # offline smoke test (no provider needed) → "Echo: hello"
-npm test                                     # run the vitest suite (174 tests, offline)
+npm test                                     # run the vitest suite (185 tests, offline)
 ```
 
 The mock provider is **disabled in normal operation**; it is enabled only when
@@ -334,8 +336,9 @@ location / {
 
 ## 2.6 Rate limiting & body size
 
-Mercury has a built-in **in-memory** per-client fixed-window rate limiter: `server.rateLimit`
-(default 300 requests / 60 000 ms). Request bodies are capped at `server.maxBodyBytes` (default
+Mercury has a built-in **SQLite-backed** per-client fixed-window rate limiter: `server.rateLimit`
+(default 300 requests / 60 000 ms). Counters live in the same `mercury.db` (a `rate_limits` table),
+so they survive restarts and are shared across all requests in the process. Request bodies are capped at `server.maxBodyBytes` (default
 30 MB); uploaded attachments are capped separately at `attachments.maxBytes` (default 25 MB).
 
 ## 2.7 Scaling limits (read before you deploy at scale)
@@ -344,7 +347,9 @@ Per [STATUS.md](../STATUS.md), the current architecture is deliberately single-n
 
 - **Single process + SQLite** (`node:sqlite`, still experimental in Node 22). **No horizontal
   scaling** — do not run multiple instances against the same DB file.
-- **The rate limiter is in-memory**, so it is per-process (not shared across replicas).
+- **The rate limiter is SQLite-backed** (persistent, shared across the process), but it is still
+  **single-host** — its counters are not shared across replicas. Cross-host limiting needs an
+  external store (Redis/Postgres).
 - Suitable for a team / personal / single-host deployment. For higher load, scale **up** (a bigger
   host) rather than out, and keep the data directory on fast local storage.
 
@@ -1106,7 +1111,7 @@ production `transport.ts` exports only `wrap()` and `FetchTransport`). Register 
 
 ```bash
 npm run build      # tsc project references
-npm test           # vitest (offline; 174 tests)
+npm test           # vitest (offline; 185 tests)
 npx eslint .       # lint (exits 0)
 ```
 
@@ -1281,7 +1286,7 @@ shown is the default applied when the key is omitted. Keys are grouped by their 
 | `server.host` | `0.0.0.0` | Bind address. |
 | `server.port` | `3000` | Listen port. |
 | `server.publicUrl` | *(unset)* | External base URL (for links/webhooks). |
-| `server.rateLimit.windowMs` | `60000` | Rate-limit window (ms). In-memory limiter. |
+| `server.rateLimit.windowMs` | `60000` | Rate-limit window (ms). SQLite-backed limiter (`rate_limits` table). |
 | `server.rateLimit.max` | `300` | Max requests per window. |
 | `server.maxBodyBytes` | `31457280` (30 MB) | Max request body size. |
 
@@ -1683,14 +1688,14 @@ providers, and provider keys, and reports what is missing.
 | --- | --- | --- |
 | `node:sqlite` not found / DB won't open | Node older than 22.5 | Upgrade Node to ≥ 22.5. |
 | Agent can't answer, "no provider" | No LLM provider configured/enabled | Run `mercury setup`, or set a provider key env var (e.g. `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `CHATLLM_API_KEY`) — matching providers auto-enable. |
-| `esbuild` postinstall warning | Benign optional-dependency notice | Ignore. |
+| `esbuild` postinstall warning | Pre-approved via `allowScripts` in `package.json`; may still appear on older npm | Benign — ignore. |
 | "ExperimentalWarning: SQLite is an experimental feature" | Expected with `node:sqlite` | Ignore (or set `NODE_NO_WARNINGS=1`). |
 | Want to try it with no real provider | — | Set `MERCURY_ENABLE_MOCK=1` to enable the mock LLM. |
 | Port already in use | Another process on 3000 | `serve --port <n>` or free the port. |
 | Changes to `mcp.json` not picked up | — | It is hot-reloaded; check the file is valid JSON and the server logs. |
 
 > Honest-status note: the mock LLM and the full offline path are exercised by the test suite
-> (174 tests passing). Real external integrations — live LLM providers, the Jev API, chat-platform
+> (185 tests passing). Real external integrations — live LLM providers, the Jev API, chat-platform
 > adapters, STT/TTS engines, Docker/SSH terminal backends, `install.sh`, systemd deployment and
 > `update` — have **not** been validated end-to-end against live services in this repository.
 

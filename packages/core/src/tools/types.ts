@@ -72,7 +72,15 @@ export interface Tool<A = Record<string, unknown>> {
   execute(args: A, ctx: ToolContext): Promise<ToolResult | string>;
 }
 
- 
+/**
+ * Existential tool type for heterogeneous registries/arrays holding tools with
+ * differing argument types. TypeScript cannot express this without `any`: the
+ * argument `A` appears both contravariantly (`needsApproval`, `execute`) and
+ * invariantly (`schema: ZodType<A>`), so neither `unknown` nor `never` makes a
+ * concrete `Tool<Specific>` assignable in both directions. `any` here is confined
+ * to the container boundary; each concrete tool keeps its precise `A` via `defineTool`.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- existential container; see comment above
 export type AnyTool = Tool<any>;
 
 /** Helper for defining tools with type inference. */

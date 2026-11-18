@@ -49,7 +49,8 @@ npm run build
 - `npm install` — downloads the pieces Mercury needs.
 - `npm run build` — gets Mercury ready to run.
 
-> You might see a yellow warning about "esbuild". **Ignore it** — it's harmless.
+> On older npm you might see a yellow warning about "esbuild". **Ignore it** — it's harmless (newer
+> npm no longer shows it, since the script is pre-approved in `package.json`).
 
 To make the word `mercury` work as a command from anywhere, you can also run:
 
