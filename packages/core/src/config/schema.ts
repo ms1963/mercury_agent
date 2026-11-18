@@ -99,6 +99,27 @@ export const ConfigSchema = z.object({
       retryBackoffMs: z.number().default(500),
       /** Jitter fraction (0..1) added on top of each backoff delay to avoid thundering herds. */
       retryJitter: z.number().min(0).max(1).default(0.5),
+      /**
+       * Per-model circuit breaker. A model profile that keeps failing with
+       * *retryable* errors (429/5xx/network) trips its breaker and is skipped
+       * fast (falling back to the next model) until it cools down. Non-retryable
+       * errors (4xx/validation) never trip it. Tunable or fully disablable here
+       * without code changes; defaults are safe and backward-compatible.
+       */
+      circuitBreaker: z
+        .object({
+          /** Master switch. When false the breaker is bypassed entirely. */
+          enabled: z.boolean().default(true),
+          /** Retryable failures within the window needed to open the breaker. */
+          failureThreshold: z.number().int().positive().default(5),
+          /** Time the breaker stays open before allowing a trial call, in ms. */
+          cooldownMs: z.number().int().positive().default(30_000),
+          /** Successful trial calls needed to close again from half-open. */
+          halfOpenSuccesses: z.number().int().positive().default(1),
+          /** Rolling window (ms) over which failures are counted while closed. */
+          windowMs: z.number().int().positive().default(60_000),
+        })
+        .prefault({}),
     })
     .prefault({}),
 

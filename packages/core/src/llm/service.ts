@@ -14,6 +14,7 @@ import type { ChatMessage, DeltaHandler, LLMResponse, ToolSpec } from '../types/
 import type { ProviderRegistry } from './registry.js';
 import { ProviderError } from './provider.js';
 import { backoffDelay } from './backoff.js';
+import { CircuitBreaker, CircuitOpenError } from '../reliability/index.js';
 import { parseTextReact, textReactInstructions } from './text-react.js';
 import type { HookManager } from '../plugins/hooks.js';
 
@@ -56,6 +57,33 @@ export class LLMService {
     private bus: EventBus,
     private hooks?: HookManager,
   ) {}
+
+  /** One circuit breaker per model id (lazily created). */
+  private readonly breakers = new Map<string, CircuitBreaker>();
+
+  /**
+   * Returns the circuit breaker for a model id, creating it on first use. Only
+   * genuinely retryable provider errors (429/5xx/network) count as failures, so a
+   * 4xx/validation error never trips the breaker. State changes are published on the
+   * event bus as `llm.circuit` events for observability.
+   */
+  private breakerFor(modelId: string): CircuitBreaker {
+    let breaker = this.breakers.get(modelId);
+    if (!breaker) {
+      const cb = this.config.llm.circuitBreaker;
+      breaker = new CircuitBreaker({
+        name: modelId,
+        failureThreshold: cb.failureThreshold,
+        successThreshold: cb.halfOpenSuccesses,
+        cooldownMs: cb.cooldownMs,
+        windowMs: cb.windowMs,
+        isFailure: (err) => err instanceof ProviderError && err.retryable,
+        onStateChange: (change) => this.bus.emit({ type: 'llm.circuit', data: { model: modelId, from: change.from, to: change.to } }),
+      });
+      this.breakers.set(modelId, breaker);
+    }
+    return breaker;
+  }
 
   async chat(call: ChatCall): Promise<ChatResult> {
     const task = call.task ?? [...call.messages].reverse().find((m) => m.role === 'user')?.content ?? '';
@@ -100,35 +128,53 @@ export class LLMService {
 
     this.bus.emit({ type: 'llm.request', runId: call.runId, sessionId: call.sessionId, userId: call.principal.userId, data: { model: modelId, messages: messages.length, tools: call.tools?.length ?? 0, textMode } });
     const started = Date.now();
-    let res: LLMResponse | undefined;
-    for (let attempt = 0; ; attempt++) {
-      try {
-        res = await provider.chat(
-          {
-            model,
-            messages,
-            tools: textMode ? undefined : call.tools,
-            temperature: call.temperature ?? this.config.agent.temperature,
-            maxTokens: call.maxTokens,
-            responseFormat: call.responseFormat,
-            signal: call.signal,
-            stop: textMode ? ['\nObservation:'] : undefined,
-          },
-          call.onDelta
-            ? (d) => {
-                call.onDelta!(d);
-                this.bus.emit({ type: 'llm.delta', runId: call.runId, sessionId: call.sessionId, data: { text: d } });
-              }
-            : undefined,
-        );
-        break;
-      } catch (err) {
-        const retryable = err instanceof ProviderError && err.retryable;
-        if (!retryable || attempt >= this.config.llm.retries || call.signal?.aborted) throw err;
-        const delay = backoffDelay(attempt, this.config.llm.retryBackoffMs, this.config.llm.retryJitter);
-        this.bus.emit({ type: 'llm.retry', runId: call.runId, data: { model: modelId, attempt: attempt + 1, maxRetries: this.config.llm.retries, delayMs: delay, error: errorMessage(err) } });
-        await sleep(delay, call.signal);
+    // The provider call + bounded retry loop (built on the shared backoffDelay).
+    const runWithRetries = async (): Promise<LLMResponse> => {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          return await provider.chat(
+            {
+              model,
+              messages,
+              tools: textMode ? undefined : call.tools,
+              temperature: call.temperature ?? this.config.agent.temperature,
+              maxTokens: call.maxTokens,
+              responseFormat: call.responseFormat,
+              signal: call.signal,
+              stop: textMode ? ['\nObservation:'] : undefined,
+            },
+            call.onDelta
+              ? (d) => {
+                  call.onDelta!(d);
+                  this.bus.emit({ type: 'llm.delta', runId: call.runId, sessionId: call.sessionId, data: { text: d } });
+                }
+              : undefined,
+          );
+        } catch (err) {
+          const retryable = err instanceof ProviderError && err.retryable;
+          if (!retryable || attempt >= this.config.llm.retries || call.signal?.aborted) throw err;
+          const delay = backoffDelay(attempt, this.config.llm.retryBackoffMs, this.config.llm.retryJitter);
+          this.bus.emit({ type: 'llm.retry', runId: call.runId, data: { model: modelId, attempt: attempt + 1, maxRetries: this.config.llm.retries, delayMs: delay, error: errorMessage(err) } });
+          await sleep(delay, call.signal);
+        }
       }
+    };
+
+    // Wrap the whole retry loop in a per-model circuit breaker so a model that keeps
+    // failing with retryable errors is skipped fast (and chat() falls back to the
+    // next model). Disablable via config.llm.circuitBreaker.enabled.
+    let res: LLMResponse;
+    if (this.config.llm.circuitBreaker.enabled) {
+      try {
+        res = await this.breakerFor(modelId).exec(runWithRetries);
+      } catch (err) {
+        if (err instanceof CircuitOpenError) {
+          this.bus.emit({ type: 'llm.circuit_open', runId: call.runId, data: { model: modelId, retryAfterMs: err.retryAfterMs } });
+        }
+        throw err;
+      }
+    } else {
+      res = await runWithRetries();
     }
     if (textMode) {
       const parsed = parseTextReact(res.content);

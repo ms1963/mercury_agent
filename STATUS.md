@@ -1,7 +1,7 @@
 # Mercury — Build Status (honest snapshot, 2026-11-15)
 
 **Overall:** all 7 packages compile. From a clean build, `npm install && npm run build && npm test`
-passes (9 files, **90/90 tests**, offline). `npx eslint .` exits 0. The CLI, HTTP server and web UI
+passes (10 files, **116/116 tests**, offline). `npx eslint .` exits 0. The CLI, HTTP server and web UI
 run end-to-end with the offline mock LLM and mock decision provider. Nothing has been exercised
 against a real external service: no real LLM API, no Jev API, no chat platform, no STT/TTS service.
 
@@ -16,6 +16,7 @@ Tested here means covered by the vitest suite (`tests/`) and/or run by hand in t
 | Memory | tests: facts remember/recall/forget per user, curated MEMORY.md / USER.md |
 | Router & budgets | tests: routes to configured model, explicit model honoured, token budget blocks a user, router tag inference (code/reasoning/writing/fast) |
 | Resilience (retries) | tests: jittered exponential-backoff math with injectable RNG; a **retryable** provider error is retried on the same model and recovers (emitting `llm.retry`); a **non-retryable** error fails fast without retrying. Fault injected via the mock provider's scripted-response queue |
+| Reliability & efficiency patterns | tests (`tests/reliability.test.ts`, 26, offline + deterministic via injectable clocks/RNG): **CircuitBreaker** state machine (opens at threshold, fast-rejects with `CircuitOpenError` while open, OPEN→HALF_OPEN after cooldown, HALF_OPEN→CLOSED after successes, re-opens on a half-open failure, rolling-window pruning, non-failure predicate ignored, `onStateChange` events); **Saga** success + reverse-order compensation, per-step result passed to compensate, compensation errors collected without masking the original; **TtlCache** TTL expiry, per-entry override, LRU eviction, `wrap` memoizer; **SingleFlight** concurrent-call dedup + key release; **retry** wrapper (reuses `backoffDelay`). Wired into `LLMService` as one breaker per model (only `ProviderError.retryable` trips it); declarative `llm.circuitBreaker.*` config keys (default on). See [docs/RELIABILITY.md](docs/RELIABILITY.md) |
 | Cost/token accounting | tests: `costOf` math (per-1M-token input/output rates; 0 when no model profile); per-run token/cost totals aggregated from `llm.response` events |
 | Self-eval harness | tests: pure `scoreTask` scoring (pass/partial/notContains/regex/error), tag-filtered `selectEvals`, and an **end-to-end run of the built-in suite (5/5 tasks pass)** through the real agent loop on the mock LLM. CLI: `mercury eval [--tag <t>] [--json]` run by hand → 5/5 passed |
 | Scheduler | tests: natural-language + cron parsing; create/pause/resume/run/delete |

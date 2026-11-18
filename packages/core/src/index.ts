@@ -58,6 +58,7 @@ export * from './plugins/builtin-hooks.js';
 export * from './plugins/hooks.js';
 export * from './plugins/plugin.js';
 export * from './reflection/reflector.js';
+export * from './reliability/index.js';
 export * from './router/router.js';
 export * from './scheduler/cron.js';
 export * from './scheduler/natural.js';

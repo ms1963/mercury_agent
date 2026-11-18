@@ -160,6 +160,7 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 | [docs/PROVIDERS.md](docs/PROVIDERS.md) | One-line LLM provider setups |
 | [examples/env/](examples/env/) | Copy-paste `.env` files for 15 LLM providers (OpenAI, Anthropic, OpenRouter, ChatLLM, Groq, Mistral, DeepSeek, Gemini, Ollama, …) |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/SECURITY.md](docs/SECURITY.md) · [docs/EXTENDING.md](docs/EXTENDING.md) | Design, security model, and how to extend Mercury |
+| [docs/RELIABILITY.md](docs/RELIABILITY.md) | **Reliability & efficiency patterns** — circuit breaker, saga/compensation, retry/backoff, TTL cache, single-flight, and the `llm.circuitBreaker` config keys |
 | [docs/COMPARISON.md](docs/COMPARISON.md) | **Mercury vs Hermes Agent** — what Mercury adds beyond the parity baseline, honestly marked tested-vs-untested |
 | [STATUS.md](STATUS.md) | Honest tested-vs-untested status of every subsystem |
 
