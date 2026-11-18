@@ -74,7 +74,7 @@ ESM, an npm-workspaces monorepo). In one process it provides:
 - a **web UI** (a no-build single-page app) and a **REST + SSE HTTP API**,
 - **chat-platform gateways** (16 adapters: Telegram, Discord, Slack, WhatsApp, Signal, Matrix,
   Mattermost, Teams, IRC, Email, SMS, Home Assistant, RSS, webhook, webchat, CLI),
-- **multi-agent workflows**, **persistent memory**, **skills**, **76 built-in tools** plus
+- **multi-agent workflows**, **persistent memory**, **skills**, **79 built-in tools** plus
   polyglot (any-language) tools,
 - an **MCP** client *and* server,
 - a **scheduler**, **voice** (STT/TTS), and a full **security** stack (RBAC, API tokens, budgets,
@@ -856,7 +856,7 @@ gateway transcribes inbound voice memos. `voice.wakeWord.command` sets an option
 
 # Part VI — Tools reference
 
-Mercury ships **76 built-in tools** in **18 toolsets**. Every tool has a **risk** level — `safe`
+Mercury ships **79 built-in tools** in **19 toolsets**. Every tool has a **risk** level — `safe`
 (runs freely), `moderate` (gated by approval policy when derived from untrusted content), or
 `dangerous` (always needs approval). Tools whose output comes from outside (web, files, MCP) are
 tagged *untrusted* so they can never silently trigger a sensitive action.

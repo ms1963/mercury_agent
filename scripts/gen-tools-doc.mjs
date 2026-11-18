@@ -33,6 +33,7 @@ const TOOLSET_TITLES = {
   skills: 'Skills',
   system: 'System',
   vector: 'Vector search',
+  wiki: 'Wiki',
 };
 
 const tools = [];

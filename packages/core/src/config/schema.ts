@@ -306,6 +306,19 @@ export const ConfigSchema = z.object({
     })
     .prefault({}),
 
+  wiki: z
+    .object({
+      /** Master switch for the LLM-Wiki subsystem (tools + CLI). */
+      enabled: z.boolean().default(true),
+      /** Wiki root directory. Empty → `<dataDir>/wiki`, resolved in the runtime. */
+      dir: z.string().default(''),
+      /** Schema/convention file name inside the wiki dir. */
+      schemaFile: z.string().default('SCHEMA.md'),
+      /** Pages whose body is shorter than this (chars) are flagged as stubs by lint. */
+      stubMinChars: z.number().int().positive().default(200),
+    })
+    .prefault({}),
+
   plugins: z.array(z.string()).default([]),
   hooks: z
     .array(z.object({ event: z.string(), type: z.enum(['log', 'webhook']).default('log'), url: z.string().optional() }))

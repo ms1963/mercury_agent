@@ -81,6 +81,7 @@ export * from './tools/types.js';
 export * from './types/common.js';
 export * from './types/messages.js';
 export * from './voice/voice.js';
+export * from './wiki/service.js';
 export * from './workflows/engine.js';
 export * from './workflows/spawner.js';
 export * from './workflows/templates/collaborative.js';

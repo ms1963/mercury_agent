@@ -265,3 +265,61 @@ export async function evalCmd(m: Mercury, a: Args): Promise<void> {
     offUsage();
   }
 }
+
+export async function wikiCmd(m: Mercury, a: Args): Promise<void> {
+  const wiki = m.wiki;
+  const [, sub = 'status', arg] = a._;
+  switch (sub) {
+    case 'init': {
+      await wiki.init();
+      return out(`Wiki initialised at ${wiki.dir}`);
+    }
+    case 'status': {
+      const s = await wiki.status();
+      if (!s.initialized) return out(`Wiki not initialised (dir: ${s.dir}). Run \`mercury wiki init\`.`);
+      return out(
+        `Wiki: ${s.dir}\n  pages:   ${s.pages}\n  sources: ${s.sources}\n  last ingest: ${s.lastIngestAt ?? '(never)'}\n  last lint:   ${s.lastLintAt ?? '(never)'}`,
+      );
+    }
+    case 'ingest': {
+      const src = need(arg, 'mercury wiki ingest <path|->');
+      const name = flag(a, 'name');
+      const instruction = flag(a, 'instruction');
+      const res = src === '-'
+        ? await wiki.ingest(readFileSync(0, 'utf8'), { asText: true, name: name ?? 'stdin.md', instruction })
+        : await wiki.ingest(src, { name, instruction });
+      const parts = [`Ingested ${res.source}.`];
+      if (res.created.length) parts.push(`Created: ${res.created.join(', ')}.`);
+      if (res.updated.length) parts.push(`Updated: ${res.updated.join(', ')}.`);
+      return out(parts.join(' '));
+    }
+    case 'query': {
+      const q = need(arg, 'mercury wiki query "<question>"');
+      const res = await wiki.query(q, { k: flag(a, 'k') ? Number(flag(a, 'k')) : undefined });
+      return out(`${res.answer}${res.sources.length ? `\n\nSources: ${res.sources.join(', ')}` : ''}${res.pages.length ? `\nPages: ${res.pages.join(', ')}` : ''}`);
+    }
+    case 'lint': {
+      const report = await wiki.lint({ delta: !!a.flags.delta, noLlm: !!a.flags['no-llm'] });
+      if (a.flags.json) {
+        out(report, true);
+        if (report.issues.length) process.exitCode = 1;
+        return;
+      }
+      if (!report.issues.length) {
+        return out(`No issues. Checked ${report.checkedPages}/${report.totalPages} page(s)${report.delta ? ' (delta)' : ''}; contradiction check ${report.llmUsed ? 'ran' : 'skipped'}.`);
+      }
+      const byType = new Map<string, string[]>();
+      for (const i of report.issues) {
+        const list = byType.get(i.type) ?? [];
+        list.push(`${i.page ? `[${i.page}] ` : ''}${i.detail}`);
+        byType.set(i.type, list);
+      }
+      const sections = [...byType.entries()].map(([type, items]) => `${type} (${items.length}):\n  - ${items.join('\n  - ')}`);
+      out(`${report.issues.length} issue(s) across ${report.checkedPages}/${report.totalPages} page(s)${report.delta ? ' (delta)' : ''}:\n\n${sections.join('\n\n')}`);
+      process.exitCode = 1;
+      return;
+    }
+    default:
+      throw new Error('usage: mercury wiki init|status|ingest <path|->|query "<q>"|lint [--delta] [--no-llm]');
+  }
+}

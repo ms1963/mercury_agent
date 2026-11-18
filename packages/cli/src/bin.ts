@@ -23,6 +23,7 @@ Usage: mercury <command> [options]
   skills [list|view|install <src>]
   schedule [list|add|pause|resume|delete|run]   e.g. schedule add --when "every day at 9am" Summarise news
   workflow [list|run <name> <input>]
+  wiki [init|status|ingest <path|->|query "<q>"|lint [--delta] [--no-llm]]
   config [path|get <key>|set <key> <value>]
   gateway [status|start|pending|pair <CODE>]
   mcp [list|serve]          List MCP client connections, or serve Mercury over MCP stdio
@@ -118,6 +119,8 @@ async function main(argv: string[]): Promise<void> {
         return await cmd.skillsCmd(m, a);
       case 'schedule':
         return await cmd.scheduleCmd(m, a);
+      case 'wiki':
+        return await cmd.wikiCmd(m, a);
       case 'config':
         return await cmd.configCmd(m, a);
       case 'gateway':

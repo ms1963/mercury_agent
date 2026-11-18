@@ -34,7 +34,7 @@ in this repo; the **Tested (offline)** column reflects Mercury's own suite.
 | Multi-agent workflows | ✓ YAML templates (pipeline, debate, map-reduce, coordinator-worker, tree, router, blackboard…) | ✓ | ✓ (pipeline + debate run offline) |
 | Persistent memory | ✓ working, episodic, semantic, procedural (skills), user model, blackboard | ✓ | ✓ (facts, curated MEMORY.md/USER.md) |
 | Skills (`SKILL.md`) | ✓ agentskills.io format | ✓ | ✓ (list/create; install from path/git untested) |
-| Tool library | ✓ 76 built-ins + polyglot (any language) | ✓ | ✓ (catalogue, safe tools, Python+JS polyglot) |
+| Tool library | ✓ 79 built-ins + polyglot (any language) | ✓ | ✓ (catalogue, safe tools, Python+JS polyglot) |
 | MCP client **and** server | ✓ both | Typically client-side | ✓ (in-memory client↔server roundtrip; `/mcp` scope) |
 | Reasoning patterns | ✓ react, cot, plan-execute, reflexion, tot, self-consistency, critic | ✓ | ✓ (via agent-loop tests) |
 | Security: auth, RBAC, guardrails | ✓ scrypt+JWT, scoped tokens, RBAC, injection guardrails, path jail, SSRF guard, secret redaction, audit log | ✓ | ✓ (dedicated security suite) |

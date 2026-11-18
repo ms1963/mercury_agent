@@ -27,6 +27,9 @@ import {
   JevDecisionProvider,
   Judgment,
   LLMService,
+  WikiService,
+  type WikiContradiction,
+  type WikiSynthesizedPage,
   LlmDecisionProvider,
   MemoryManager,
   Metrics,
@@ -80,6 +83,22 @@ export interface CreateOptions {
   logger?: Logger;
   /** Optional HTTP transport override for gateway adapters (defaults to FetchTransport; tests inject a scriptable one). */
   transport?: HttpTransport;
+}
+
+/** Parse a JSON object out of an LLM reply, tolerating code fences or surrounding prose. */
+function parseJsonObject(text: string): Record<string, unknown> | unknown[] | undefined {
+  const trimmed = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  try {
+    return JSON.parse(trimmed) as Record<string, unknown>;
+  } catch {
+    const m = /[[{][\s\S]*[\]}]/.exec(trimmed);
+    if (!m) return undefined;
+    try {
+      return JSON.parse(m[0]) as Record<string, unknown>;
+    } catch {
+      return undefined;
+    }
+  }
 }
 
 /** Build the decision provider chain for `decision.provider`. */
@@ -151,6 +170,7 @@ export class Mercury {
   readonly scheduler: Scheduler;
   readonly mcp: McpClientManager;
   readonly gateway: Gateway;
+  readonly wiki: WikiService;
   readonly services: ToolServices;
   readonly plugins: LoadedPlugin[] = [];
   private loadedPlugins: Plugin[] = [];
@@ -211,10 +231,20 @@ export class Mercury {
     this.reflector = new Reflector(config, this.llm, this.judgment, this.memory, this.skills, this.db, this.bus);
     this.mcp = new McpClientManager(this.tools, this.logger, this.llm);
 
+    // LLM-Wiki subsystem. The LLM work is injected as a WikiLlm backed by the real
+    // LLMService (so it inherits the circuit-breaker + retry); tests inject a
+    // deterministic implementation instead — no mock provider runs in this path.
+    this.wiki = new WikiService({
+      dir: config.wiki.dir || join(dataDir, 'wiki'),
+      schemaFile: config.wiki.schemaFile,
+      stubMinChars: config.wiki.stubMinChars,
+      llm: this.buildWikiLlm(),
+    });
+
     this.services = {
       config, logger: this.logger, llm: this.llm, memory: this.memory, skills: this.skills, decisions: this.decisions,
       judgment: this.judgment, jail: this.jail, checkpoints: this.checkpoints, attachments: this.attachments,
-      voice: this.voice, tools: this.tools, executor: this.executor, extra: {},
+      voice: this.voice, tools: this.tools, executor: this.executor, wiki: config.wiki.enabled ? this.wiki : undefined, extra: {},
     };
     this.agent = new Agent({
       config, db: this.db, bus: this.bus, hooks: this.hooks, llm: this.llm, tools: this.tools, executor: this.executor,
@@ -239,6 +269,69 @@ export class Mercury {
     Object.assign(this.services, { scheduler: this.scheduler, spawner: this.spawner, workflows: this.workflows, deliver });
     this.services.extra.platforms = () => this.gateway.platforms();
     installConfiguredHooks(config, this.hooks, this.logger);
+  }
+
+  /**
+   * Build the real WikiLlm backing the wiki subsystem. Every call goes through the
+   * existing LLMService (circuit-breaker + retry), as the system principal with the
+   * auxiliary budget override — never a mock provider.
+   */
+  private buildWikiLlm() {
+    const ask = (system: string, user: string, json: boolean) =>
+      this.llm.complete(SYSTEM_PRINCIPAL, [
+        { role: 'system', content: system },
+        { role: 'user', content: user },
+      ], { responseFormat: json ? 'json' : 'text', budgetOverride: true, kind: 'auxiliary' });
+    return {
+      synthesize: async (input: {
+        sourceRef: string;
+        sourceText: string;
+        existingPages: Array<{ slug: string; title: string; sources: string[]; content: string }>;
+        instruction?: string;
+      }): Promise<WikiSynthesizedPage[]> => {
+        const system =
+          'You maintain an "LLM Wiki": human-readable, cross-linked markdown knowledge pages synthesised from sources. ' +
+          'Given a new source and the existing pages, decide which page(s) to create or update so the knowledge is captured and cross-linked. ' +
+          'Reply with a single JSON object: {"pages":[{"slug":"kebab-case","title":"...","content":"markdown body (no frontmatter)","links":["other-slug"]}]}. ' +
+          'Prefer focused pages; update an existing slug (reuse it verbatim) rather than duplicating a topic. Only return pages you actually want written.';
+        const existing = input.existingPages.map((p) => `### ${p.slug} — ${p.title}\n${p.content.slice(0, 1500)}`).join('\n\n') || '(none yet)';
+        const user = `${input.instruction ? `Guidance: ${input.instruction}\n\n` : ''}New source (${input.sourceRef}):\n"""\n${input.sourceText.slice(0, 12_000)}\n"""\n\nExisting pages:\n${existing}`;
+        const res = await ask(system, user, true);
+        const obj = parseJsonObject(res.content);
+        const pages = Array.isArray(obj) ? obj : Array.isArray((obj as Record<string, unknown>)?.pages) ? ((obj as Record<string, unknown>).pages as unknown[]) : [];
+        return (pages as unknown[])
+          .map((p) => p as Record<string, unknown>)
+          .filter((p) => typeof p.slug === 'string' && typeof p.content === 'string')
+          .map((p) => ({
+            slug: String(p.slug),
+            title: typeof p.title === 'string' ? p.title : String(p.slug),
+            content: String(p.content),
+            links: Array.isArray(p.links) ? (p.links as unknown[]).map(String) : [],
+          }));
+      },
+      answer: async (input: { question: string; pages: Array<{ slug: string; title: string; sources: string[]; content: string }> }): Promise<string> => {
+        const system =
+          'Answer the question using ONLY the supplied wiki pages. Cite the underlying raw source file(s) named in each page. ' +
+          'If the pages do not contain the answer, say so plainly.';
+        const ctx = input.pages.map((p) => `## ${p.title} (${p.slug})\nsources: ${p.sources.join(', ') || 'none'}\n\n${p.content}`).join('\n\n---\n\n');
+        const res = await ask(system, `Question: ${input.question}\n\nWiki pages:\n${ctx}`, false);
+        return res.content.trim();
+      },
+      detectContradictions: async (input: { pages: Array<{ slug: string; title: string; sources: string[]; content: string }> }): Promise<WikiContradiction[]> => {
+        const system =
+          'You check a set of wiki pages for factual contradictions between them. ' +
+          'Reply with a single JSON object {"contradictions":[{"pages":["slug-a","slug-b"],"detail":"what conflicts"}]}. ' +
+          'Return an empty array if the pages are consistent. Do not invent conflicts.';
+        const ctx = input.pages.map((p) => `## ${p.slug}\n${p.content.slice(0, 2000)}`).join('\n\n---\n\n');
+        const res = await ask(system, `Pages:\n${ctx}`, true);
+        const obj = parseJsonObject(res.content);
+        const list = Array.isArray(obj) ? obj : Array.isArray((obj as Record<string, unknown>)?.contradictions) ? ((obj as Record<string, unknown>).contradictions as unknown[]) : [];
+        return (list as unknown[])
+          .map((c) => c as Record<string, unknown>)
+          .filter((c) => Array.isArray(c.pages) && typeof c.detail === 'string')
+          .map((c) => ({ pages: (c.pages as unknown[]).map(String), detail: String(c.detail) }));
+      },
+    };
   }
 
   /** Scheduled jobs run as their owner, on the "scheduler" platform, without a persistent session. */

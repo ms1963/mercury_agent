@@ -15,6 +15,7 @@ import type { VoiceService } from '../voice/voice.js';
 import type { Scheduler } from '../scheduler/scheduler.js';
 import type { Spawner } from '../workflows/spawner.js';
 import type { WorkflowEngine } from '../workflows/engine.js';
+import type { WikiService } from '../wiki/service.js';
 import type { ToolRegistry } from './registry.js';
 import type { ToolExecutor } from './executor.js';
 import type { Attachment } from '../types/messages.js';
@@ -39,6 +40,8 @@ export interface ToolServices {
   scheduler?: Scheduler;
   spawner?: Spawner;
   workflows?: WorkflowEngine;
+  /** LLM-Wiki subsystem (ingest/query/lint). Present when `wiki.enabled`. */
+  wiki?: WikiService;
   deliver?: DeliverFn;
   /** Extension slot for plugins and tool packages (terminal/browser backends...). */
   extra: Record<string, unknown>;

@@ -3,7 +3,7 @@
 <!-- GENERATED FILE — do not edit by hand.
      Regenerate with: node scripts/gen-tools-doc.mjs -->
 
-Mercury ships **76 built-in tools**, registered automatically at startup
+Mercury ships **79 built-in tools**, registered automatically at startup
 (`registerBuiltinTools()` in `packages/tools/src/index.ts`). These are compiled
 TypeScript, not files on disk — the `tools/` directory at the repository root holds
 only *example* external tools (Go / JS / Python) that show how to add your own.
@@ -34,7 +34,8 @@ for approvals, the path jail and the SSRF guard that govern tool use.
 | Utility | 11 |
 | Vector search | 2 |
 | Web | 5 |
-| **Total** | **76** |
+| Wiki | 3 |
+| **Total** | **79** |
 
 ## Agents & workflows
 
@@ -201,4 +202,12 @@ for approvals, the path jail and the SSRF guard that govern tool use.
 | `weather` | Current weather and 3-day forecast for a place (Open-Meteo, no API key). |
 | `web_fetch` | Fetch a web page and return readable text (format=text), raw HTML (html) or the list of links (links). |
 | `web_search` | Search the web. Returns titles, URLs and snippets. |
+
+## Wiki
+
+| Tool | Description |
+| --- | --- |
+| `wiki_ingest` | Ingest a source into the LLM Wiki: the source is stored immutably under raw/, then the LLM synthesises or updates cross-linked markdown pages and the index. Provide either text (literal content) or path (a file to read). Optionally name the stored source and give synthesis guidance. |
+| `wiki_lint` | Run quality checks over the LLM Wiki: orphan pages, broken internal links, stub/gap pages, stale pages (a raw source newer than the page) and (LLM-assisted) contradictions. delta only checks pages touched since the last lint; no_llm skips the contradiction check. |
+| `wiki_query` | Answer a question from the LLM Wiki: consults the index, reads the most relevant pages and answers, citing the underlying raw source files. |
 
