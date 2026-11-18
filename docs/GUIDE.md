@@ -1251,7 +1251,7 @@ variables < CLI flags (see Appendix B), and `MERCURY_HOME` overrides the data di
 | `doctor` | Environment / configuration health check (see Appendix E). | — |
 | `update` | Self-update the installation. | — |
 | `help [topic]` | Show help; with a topic, prints the matching help doc. | — |
-| `version`, `-v` | Print the version (`mercury 0.2.0`). | — |
+| `version`, `-v` | Print the version (`mercury 0.3.0`). | — |
 
 > Honest-status note: `import-agent`, `update`, and `install.sh` have been exercised only against the
 > offline/mock setup in this repository; they have not been validated against a real Hermes install, a

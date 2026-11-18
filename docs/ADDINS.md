@@ -8,7 +8,7 @@ An Add-In unifies the three pre-existing drop-in mechanisms (markdown personalit
 polyglot `tool.json` tool folders, and permission profiles) behind a single manifest, so
 one self-contained folder can ship all three together.
 
-> Status (v0.2.0): the loader, permission-profile merge and scaffold are covered by
+> Status (v0.3.0): the loader, permission-profile merge and scaffold are covered by
 > offline unit tests (`tests/addins.test.ts`, `tests/permissions.test.ts`). The runtime
 > wiring (discovery on start, personalities/tools/permissions made live) is exercised
 > indirectly; end-to-end execution of a scaffolded polyglot tool depends on your having

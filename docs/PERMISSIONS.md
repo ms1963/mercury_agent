@@ -10,7 +10,7 @@ A **permission profile** is a `UserPolicy`-shaped object attached to a personali
 applies — so you can, for example, give a "pirate" personality no shell access even for a
 user who normally has it.
 
-> Status (v0.2.0): the merge function `effectivePolicy` and its enforcement through
+> Status (v0.3.0): the merge function `effectivePolicy` and its enforcement through
 > `PolicyEngine` are covered by offline unit tests (`tests/permissions.test.ts`). The
 > declarative loading from `<dataDir>/permissions/` and add-in manifests is unit-tested in
 > `tests/addins.test.ts`. No "production-ready" claim is made.

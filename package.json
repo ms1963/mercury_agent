@@ -1,6 +1,6 @@
 {
   "name": "mercury-agent",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Mercury - an extensible, self-hosted agentic AI platform (TypeScript)",
   "type": "module",

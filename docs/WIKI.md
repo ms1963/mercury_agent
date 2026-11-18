@@ -1,6 +1,6 @@
 # LLM Wiki
 
-Mercury v0.2.0 ships an **LLM Wiki** subsystem — an implementation of Andrej
+Mercury v0.3.0 ships an **LLM Wiki** subsystem — an implementation of Andrej
 Karpathy's "LLM wiki" pattern. Instead of doing retrieval at *query* time (classic
 RAG), the LLM synthesises knowledge into a human-readable, cross-linked markdown wiki
 at **ingestion** time. Queries then read the finished pages, and a dedicated **lint**
@@ -158,7 +158,7 @@ They are part of the `wiki` toolset and are listed in
 
 ## Status: tested vs. untested
 
-Consistent with the honest tone of [STATUS.md](../STATUS.md) — this is v0.2.0, **not**
+Consistent with the honest tone of [STATUS.md](../STATUS.md) — this is v0.3.0, **not**
 "production-ready":
 
 **Tested (offline, deterministic, `tests/wiki.test.ts`):**

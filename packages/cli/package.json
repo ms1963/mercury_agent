@@ -1,9 +1,9 @@
 {
   "name": "@mercury/cli",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
-  "dependencies": {"@mercury/core": "0.2.0", "@mercury/runtime": "0.2.0", "@mercury/server": "0.2.0", "@mercury/mcp": "0.2.0"}
+  "dependencies": {"@mercury/core": "0.3.0", "@mercury/runtime": "0.3.0", "@mercury/server": "0.3.0", "@mercury/mcp": "0.3.0"}
 }

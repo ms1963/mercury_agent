@@ -7,6 +7,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-18
+
+### Added
+- **Reliability & efficiency patterns** (`packages/core/src/reliability/`): a `CircuitBreaker`
+  (closed/open/half-open with `CircuitOpenError`), a `Saga` orchestrator with compensating
+  rollback, a `TtlCache` with expiry/clear, and `SingleFlight` request coalescing. Exponential
+  backoff with bounded jitter is reused from the LLM layer. Documented in `docs/RELIABILITY.md`.
+- **LLM Wiki subsystem** (ingest / query / lint): a retrieval-and-synthesis knowledge store
+  exposed as `wiki_*` built-in tools and a `mercury wiki` CLI command, with re-ingest
+  accumulation, deduplication and concurrent-query coalescing. Documented in `docs/WIKI.md`.
+- **Declarative Add-In system** (`packages/core/src/addins/`): manifest-driven add-ins loaded
+  from `~/.mercury/addins/`, with a path-traversal guard, malformed/missing-manifest skipping,
+  and a `mercury addin` CLI. Documented in `docs/ADDINS.md`.
+- **Per-agent / per-personality permission profiles**: an `effectivePolicy` strict-intersection
+  merge enforced across model use, workflow runs, tool globs and token scope, with a
+  `mercury perms` CLI. Documented in `docs/PERMISSIONS.md`.
+
+### Changed
+- Expanded the unit-test suite from 147 to 174 tests covering the reliability, wiki, add-in and
+  permission subsystems.
+- Documentation synced with the new features (`README.md`, `STATUS.md`, `docs/COMPARISON.md`,
+  `docs/GUIDE.md`, `docs/ARCHITECTURE.md`, `docs/EXTENDING.md`, `docs/SECURITY.md`); regenerated
+  `README.pdf` and `docs/GUIDE.pdf`.
+
 ## [0.2.0] - 2026-11-15
 
 ### Added
@@ -57,6 +81,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   audit log), observability (event traces, replay, Prometheus `/metrics`) and a no-build web UI.
 - MIT license.
 
-[Unreleased]: https://github.com/ms1963/mercury_agent/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/ms1963/mercury_agent/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/ms1963/mercury_agent/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ms1963/mercury_agent/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ms1963/mercury_agent/releases/tag/v0.1.0
