@@ -3,7 +3,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { cpSync, existsSync, readFileSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { getPath, installSkills, mercuryHome, runEvalSuite, scaffold, selectEvals, setConfigValue, type EvalObservation, type ExtensionKind } from '@mercury/core';
+import { getPath, installSkills, mercuryHome, runEvalSuite, scaffold, scaffoldAddin, selectEvals, setConfigValue, type EvalObservation, type ExtensionKind } from '@mercury/core';
 import type { Mercury } from '@mercury/runtime';
 import { flag, type Args } from './args.js';
 
@@ -322,4 +322,71 @@ export async function wikiCmd(m: Mercury, a: Args): Promise<void> {
     default:
       throw new Error('usage: mercury wiki init|status|ingest <path|->|query "<q>"|lint [--delta] [--no-llm]');
   }
+}
+
+/**
+ * `mercury addin [list|scaffold <name>]` — inspect discovered add-ins or write a
+ * ready-to-copy starter add-in into the DATA DIR (never the product source).
+ */
+export async function addinCmd(m: Mercury, a: Args): Promise<void> {
+  const [, sub = 'list', name] = a._;
+  const json = Boolean(a.flags.json);
+  if (sub === 'scaffold') {
+    const n = need(name, 'mercury addin scaffold <name>');
+    const r = scaffoldAddin(n, join(m.config.dataDir, 'addins'));
+    return out(
+      json
+        ? r
+        : `Created add-in "${n}" at ${r.path}\n  ${r.files.join('\n  ')}\n\nEnabled on next start. Inspect with: mercury addin list`,
+      json,
+    );
+  }
+  if (sub === 'list') {
+    const rows = m.addins.addins.map((x) => ({
+      name: x.name,
+      enabled: x.enabled,
+      version: x.version,
+      personalities: x.personalities.length,
+      tools: x.toolDirs.length,
+      permissions: Object.keys(x.permissions).length,
+      description: x.description,
+    }));
+    if (json) return out(rows, true);
+    if (!rows.length) return out('No add-ins found. Create one with: mercury addin scaffold <name>');
+    const lines = rows.map(
+      (r) => `${r.enabled ? '●' : '○'} ${r.name}@${r.version} — ${r.personalities} personality(ies), ${r.tools} tool(s), ${r.permissions} profile(s)${r.description ? `  (${r.description})` : ''}`,
+    );
+    if (m.addins.warnings.length) lines.push('', 'Warnings:', ...m.addins.warnings.map((w) => `  ! ${w}`));
+    return out(lines.join('\n'));
+  }
+  throw new Error('usage: mercury addin [list|scaffold <name>]');
+}
+
+/**
+ * `mercury perms [list|show <personality>]` — inspect configured per-agent/personality
+ * permission profiles. These only FURTHER RESTRICT the acting user (intersection); the
+ * effective policy at runtime also depends on the user's own base policy.
+ */
+export async function permsCmd(m: Mercury, a: Args): Promise<void> {
+  const [, sub = 'list', nameArg] = a._;
+  const json = Boolean(a.flags.json);
+  const profiles = m.permissionProfiles;
+  if (sub === 'list') {
+    const names = Object.keys(profiles).sort();
+    if (json) return out(names, true);
+    if (!names.length) return out('No permission profiles configured (<dataDir>/permissions/ or add-in manifests).');
+    return out(`Permission profiles:\n${names.map((n) => `  - ${n}`).join('\n')}`);
+  }
+  if (sub === 'show') {
+    const name = need(nameArg, 'mercury perms show <personality>');
+    const profile = profiles[name];
+    if (!profile) throw new Error(`no permission profile named "${name}"`);
+    if (json) return out({ name, profile }, true);
+    return out(
+      `Permission profile "${name}":\n${JSON.stringify(profile, null, 2)}\n\n` +
+        `Note: this profile only further RESTRICTS the acting user — the effective policy is the\n` +
+        `intersection of this profile and the user's own base policy (see docs/PERMISSIONS.md).`,
+    );
+  }
+  throw new Error('usage: mercury perms [list|show <personality>]');
 }

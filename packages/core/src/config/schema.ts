@@ -319,6 +319,29 @@ export const ConfigSchema = z.object({
     })
     .prefault({}),
 
+  /**
+   * Unified Add-In system. End users add tools, personalities and permission profiles
+   * by dropping declarative packages into `<dataDir>/addins/` — no source edits. Additive
+   * and backward-compatible: the legacy dataDir/personalities, dataDir/tools and
+   * dataDir/plugins scans keep working unchanged.
+   */
+  addins: z
+    .object({
+      /** Master switch for discovering add-ins. */
+      enabled: z.boolean().default(true),
+      /** Add-ins root directory. Empty → `<dataDir>/addins`, resolved in the runtime. */
+      dir: z.string().default(''),
+    })
+    .prefault({}),
+
+  /** Per-agent / per-personality permission profiles (declarative). */
+  permissions: z
+    .object({
+      /** Permission profiles directory. Empty → `<dataDir>/permissions`, resolved in the runtime. */
+      dir: z.string().default(''),
+    })
+    .prefault({}),
+
   plugins: z.array(z.string()).default([]),
   hooks: z
     .array(z.object({ event: z.string(), type: z.enum(['log', 'webhook']).default('log'), url: z.string().optional() }))

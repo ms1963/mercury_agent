@@ -57,7 +57,7 @@ export class ToolExecutor {
     const tool = this.registry.get(call.name);
     if (!tool) return fail(`Unknown tool "${call.name}". Available tools are listed in your tool definitions.`);
     if (!this.registry.isEnabled(tool, ctx.platform, ctx.allowedToolsets)) return fail(`Tool "${call.name}" is disabled for this agent/platform.`, 'denied');
-    const denied = this.policy.check(ctx.principal, 'tool.use', { tool: { name: tool.name, toolset: tool.toolset, risk: tool.risk } });
+    const denied = this.policy.check(ctx.principal, 'tool.use', { tool: { name: tool.name, toolset: tool.toolset, risk: tool.risk }, profile: ctx.personality });
     if (denied) return fail(`Permission denied: ${denied}`, 'denied');
 
     let args = call.arguments ?? {};

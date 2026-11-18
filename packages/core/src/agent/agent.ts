@@ -174,6 +174,7 @@ export class Agent {
       workdir,
       depth,
       allowedToolsets: opts.toolsets,
+      personality: opts.personality ?? d.config.agent.personality,
       services: d.services,
       emit: (type, data) => d.bus.emit({ type, runId, sessionId, userId: opts.principal.userId, data }),
       requestApproval: (req) => d.approvals.request(req, { runId, userId: opts.principal.userId, platform }),

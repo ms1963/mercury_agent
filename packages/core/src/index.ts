@@ -11,6 +11,7 @@ export * from './agent/personalities.js';
 export * from './agent/prompt.js';
 export * from './agent/references.js';
 export * from './agent/run-state.js';
+export * from './addins/index.js';
 export * from './attachments/store.js';
 export * from './auth/crypto.js';
 export * from './auth/pairing.js';

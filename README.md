@@ -162,6 +162,8 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/SECURITY.md](docs/SECURITY.md) · [docs/EXTENDING.md](docs/EXTENDING.md) | Design, security model, and how to extend Mercury |
 | [docs/RELIABILITY.md](docs/RELIABILITY.md) | **Reliability & efficiency patterns** — circuit breaker, saga/compensation, retry/backoff, TTL cache, single-flight, and the `llm.circuitBreaker` config keys |
 | [docs/WIKI.md](docs/WIKI.md) | **LLM Wiki** — ingestion-time knowledge synthesis (Karpathy's pattern): the `wiki_ingest`/`wiki_query`/`wiki_lint` tools, the `mercury wiki` CLI, directory layout and config keys |
+| [docs/ADDINS.md](docs/ADDINS.md) | **Add-Ins** — add tools, personalities and permission profiles by dropping declarative files into `<dataDir>/addins/`, no source edits; manifest format, layout, the `mercury addin` CLI |
+| [docs/PERMISSIONS.md](docs/PERMISSIONS.md) | **Per-agent/personality permission profiles** — the effective-policy merge (intersection / most-restrictive) semantics with a worked example, and the `mercury perms` CLI |
 | [docs/COMPARISON.md](docs/COMPARISON.md) | **Mercury vs Hermes Agent** — what Mercury adds beyond the parity baseline, honestly marked tested-vs-untested |
 | [STATUS.md](STATUS.md) | Honest tested-vs-untested status of every subsystem |
 

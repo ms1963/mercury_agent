@@ -20,7 +20,12 @@ const BUILTIN: Personality[] = [
 export class Personalities {
   private items = new Map<string, Personality>();
 
-  constructor(private dirs: string[]) {
+  /**
+   * @param dirs  directories scanned for drop-in `*.md` personalities.
+   * @param extra optional provider of additional personalities (e.g. contributed by
+   *              Add-Ins). Evaluated on every reload so hot-reloaded add-ins apply.
+   */
+  constructor(private dirs: string[], private extra: () => Personality[] = () => []) {
     this.reload();
   }
 
@@ -35,6 +40,8 @@ export class Personalities {
         this.items.set(basename(f, '.md'), { name: basename(f, '.md'), title, prompt: text.replace(/^#.*\n?/, '').trim() });
       }
     }
+    // Add-in personalities are applied last (they can override drop-ins by name).
+    for (const p of this.extra()) this.items.set(p.name, p);
   }
 
   list(): Personality[] {

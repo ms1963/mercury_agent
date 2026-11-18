@@ -40,6 +40,10 @@ import {
   PatternRegistry,
   Personalities,
   PolicyEngine,
+  loadAddins,
+  loadPermissionProfiles,
+  type AddinLoadResult,
+  type UserPolicy,
   ProviderRegistry,
   Reflector,
   SYSTEM_PRINCIPAL,
@@ -159,6 +163,10 @@ export class Mercury {
   readonly debug: DebugController;
   readonly guardrails: Guardrails;
   readonly personalities: Personalities;
+  /** Loaded Add-Ins (personalities + polyglot tool dirs + permission profiles). */
+  readonly addins: AddinLoadResult;
+  /** Resolved permission profiles (name → policy), merged from permission dir + add-ins. */
+  readonly permissionProfiles: Record<string, UserPolicy>;
   readonly patterns = new PatternRegistry();
   readonly reflector: Reflector;
   readonly agent: Agent;
@@ -189,13 +197,27 @@ export class Mercury {
     this.audit = new AuditLog(this.db);
     this.users = new UserService(this.db, dataDir, config.auth.tokenTtlHours, this.audit);
     this.pairing = new PairingService(this.db, this.users, 30, this.audit);
-    this.policy = new PolicyEngine((id) => {
-      try {
-        return this.users.get(id).policy;
-      } catch {
-        return {};
-      }
-    });
+    // Unified Add-In discovery (declarative, no source edits). Additive and
+    // backward-compatible: the legacy dataDir/personalities + dataDir/tools scans
+    // keep working. Pure FS+parse — malformed add-ins are skipped with a warning.
+    this.addins = config.addins.enabled
+      ? loadAddins([config.addins.dir || join(dataDir, 'addins')])
+      : { addins: [], personalities: [], toolDirs: [], permissions: {}, warnings: [] };
+    const perms = loadPermissionProfiles([config.permissions.dir || join(dataDir, 'permissions')]);
+    // Merge: standalone permission files first, then add-in permissions (add-ins win on clash).
+    this.permissionProfiles = { ...perms.profiles, ...this.addins.permissions };
+    for (const w of [...this.addins.warnings, ...perms.warnings]) this.logger.warn('addin', { warning: w });
+
+    this.policy = new PolicyEngine(
+      (id) => {
+        try {
+          return this.users.get(id).policy;
+        } catch {
+          return {};
+        }
+      },
+      (name) => this.permissionProfiles[name],
+    );
 
     // LLM layer. The router needs judgment, judgment needs the decision engine,
     // and the LLM decision provider needs the LLM service: resolve with a late-bound array.
@@ -225,7 +247,7 @@ export class Mercury {
     this.jail = new PathJail(config.tools.jail.roots.length ? config.tools.jail.roots : [process.cwd(), join(dataDir, 'workspace')], config.tools.jail.allowOutside);
     this.debug = new DebugController(this.bus, config.debug);
     this.guardrails = new Guardrails(config, this.judgment, this.bus);
-    this.personalities = new Personalities([join(this.assets, 'personalities'), join(dataDir, 'personalities')]);
+    this.personalities = new Personalities([join(this.assets, 'personalities'), join(dataDir, 'personalities')], () => this.addins.personalities);
     this.help = new HelpSystem([join(this.assets, 'docs', 'help')]);
     this.i18n = new I18n(join(this.assets, 'locales'), config.locale);
     this.reflector = new Reflector(config, this.llm, this.judgment, this.memory, this.skills, this.db, this.bus);
@@ -345,7 +367,7 @@ export class Mercury {
   /** Load plugins, polyglot tools and start background services. */
   async start(opts: { services?: boolean } = {}): Promise<void> {
     const { config } = this;
-    const polyDirs = [join(this.assets, 'tools'), join(config.dataDir, 'tools'), ...config.tools.polyglotDirs];
+    const polyDirs = [join(this.assets, 'tools'), join(config.dataDir, 'tools'), ...config.tools.polyglotDirs, ...this.addins.toolDirs];
     this.cleanups.push(registerPolyglotTools(this.tools, polyDirs, { onError: (e) => this.logger.warn('polyglot tool', { error: e }) }));
     await this.loadPlugins();
     if (opts.services === false) return;

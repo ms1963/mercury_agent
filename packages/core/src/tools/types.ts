@@ -41,6 +41,8 @@ export interface ToolContext {
   depth: number;
   /** Toolsets this agent may use (subagents get restricted sets). Undefined = all enabled. */
   allowedToolsets?: string[];
+  /** Active personality/agent profile name — its permission profile also applies to tool authz. */
+  personality?: string;
   services: ToolServices;
   emit(type: string, data: Record<string, unknown>): void;
   /** Ask a human (or the configured policy) for approval. */

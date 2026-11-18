@@ -24,6 +24,8 @@ Usage: mercury <command> [options]
   schedule [list|add|pause|resume|delete|run]   e.g. schedule add --when "every day at 9am" Summarise news
   workflow [list|run <name> <input>]
   wiki [init|status|ingest <path|->|query "<q>"|lint [--delta] [--no-llm]]
+  addin [list|scaffold <name>]   Manage declarative add-ins (tools/personalities/permissions)
+  perms [list|show <personality>]   Inspect per-agent/personality permission profiles
   config [path|get <key>|set <key> <value>]
   gateway [status|start|pending|pair <CODE>]
   mcp [list|serve]          List MCP client connections, or serve Mercury over MCP stdio
@@ -121,6 +123,10 @@ async function main(argv: string[]): Promise<void> {
         return await cmd.scheduleCmd(m, a);
       case 'wiki':
         return await cmd.wikiCmd(m, a);
+      case 'addin':
+        return await cmd.addinCmd(m, a);
+      case 'perms':
+        return await cmd.permsCmd(m, a);
       case 'config':
         return await cmd.configCmd(m, a);
       case 'gateway':
