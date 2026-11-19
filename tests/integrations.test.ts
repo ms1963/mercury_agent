@@ -49,7 +49,9 @@ describe('with a Mercury instance', () => {
   let admin: Principal;
   const transport = new MockTransport();
   beforeAll(async () => {
-    ctx = await makeMercury({ gateway: { triage: false, pairing: true } }, { transport });
+    // Use the test-only mock voice ports (MERCURY_ENABLE_MOCK=1 is set in vitest.config.ts) so the
+    // telegram voice-memo path produces a real transcript instead of relying on an unconfigured default.
+    ctx = await makeMercury({ gateway: { triage: false, pairing: true }, voice: { stt: { provider: 'mock' }, tts: { provider: 'mock' } } }, { transport });
     admin = await ctx.m.localPrincipal();
   });
   afterAll(() => ctx.close());

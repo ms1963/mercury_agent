@@ -283,8 +283,41 @@ export const ConfigSchema = z.object({
 
   voice: z
     .object({
-      stt: z.object({ provider: z.string().default('openai'), command: z.string().optional(), model: z.string().default('whisper-1') }).prefault({}),
-      tts: z.object({ provider: z.string().default('openai'), command: z.string().optional(), voice: z.string().default('alloy') }).prefault({}),
+      // Speech-to-text. `provider` picks the port:
+      //   'openai' | 'openai-compatible' → OpenAI-style /audio/transcriptions (point `baseUrl`
+      //      at a self-hosted server such as faster-whisper-server/Speaches to go fully open source),
+      //   'whisper' | 'command' → local CLI via `command`, 'mock' → test-only (MERCURY_ENABLE_MOCK=1).
+      stt: z
+        .object({
+          provider: z.string().default('openai'),
+          command: z.string().optional(),
+          model: z.string().default('whisper-1'),
+          /** OpenAI-compatible base URL (default https://api.openai.com/v1). Point this at a self-hosted server. */
+          baseUrl: z.string().optional(),
+          /** Env var holding the API key for the OpenAI-compatible path. */
+          apiKeyEnv: z.string().default('OPENAI_API_KEY'),
+          /** Optional response_format passed to the OpenAI-compatible endpoint (e.g. 'json', 'text'). */
+          format: z.string().optional(),
+        })
+        .prefault({}),
+      // Text-to-speech. `provider`: 'openai' | 'openai-compatible' → /audio/speech (point `baseUrl`
+      // at e.g. openedai-speech/Kokoro-FastAPI), 'edge-tts' | 'piper' | 'command' → local/open CLI,
+      // 'mock' → test-only (MERCURY_ENABLE_MOCK=1).
+      tts: z
+        .object({
+          provider: z.string().default('openai'),
+          command: z.string().optional(),
+          voice: z.string().default('alloy'),
+          /** OpenAI-compatible base URL (default https://api.openai.com/v1). Point this at a self-hosted server. */
+          baseUrl: z.string().optional(),
+          /** Env var holding the API key for the OpenAI-compatible path. */
+          apiKeyEnv: z.string().default('OPENAI_API_KEY'),
+          /** Model for the OpenAI-compatible path. */
+          model: z.string().default('gpt-4o-mini-tts'),
+          /** Output audio format for the OpenAI-compatible path ('mp3' | 'wav' | 'opus' | ...). */
+          format: z.string().optional(),
+        })
+        .prefault({}),
       wakeWord: z.object({ command: z.string().optional() }).prefault({}),
     })
     .prefault({}),

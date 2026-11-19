@@ -1,35 +1,46 @@
 /**
- * Voice: speech-to-text and text-to-speech behind small provider interfaces.
+ * Voice: speech-to-text and text-to-speech behind small, swappable provider ports.
  *
- * STT providers: mock | openai (Whisper API) | whisper (local CLI) | command (custom CLI)
- * TTS providers: mock | openai | edge-tts | piper | command
+ * VoiceService is a thin facade. The actual work is delegated to an {@link SttPort} / {@link TtsPort}
+ * built by the config-driven factory (see ./factory.ts), so STT and TTS can each be switched between
+ * a commercial cloud API and an open-source/self-hosted server with a single config change:
  *
- * Command templates may use {input} and {output} placeholders, e.g.
+ *   STT providers: openai | openai-compatible (OpenAI-style /audio/transcriptions; point baseUrl at a
+ *                  self-hosted server) | whisper | command (local CLI) | mock (test-only)
+ *   TTS providers: openai | openai-compatible (OpenAI-style /audio/speech) | edge-tts | piper |
+ *                  command (local CLI) | mock (test-only)
+ *
+ * Command templates may use {input}, {output}, {outdir} and {text} placeholders, e.g.
  *   stt.command: "whisper-cli -m ggml-base.bin -f {input} -otxt -of {output}"
  *   tts.command: "piper --model en_US-lessac-medium.onnx --output_file {output}"   (text on stdin)
- * Wake-word: `voice.wakeWord.command` is an external detector process that prints a
- * line whenever the wake word is heard; `startWakeWord()` turns lines into callbacks.
+ * Wake-word: `voice.wakeWord.command` is an external detector process that prints a line whenever the
+ * wake word is heard; `startWakeWord()` turns lines into callbacks.
  */
-import { execFile, spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
-import { basename, join } from 'node:path';
-import { promisify } from 'node:util';
+import { spawn, type ChildProcess } from 'node:child_process';
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import type { MercuryConfig } from '../config/schema.js';
-import { MercuryError, newId } from '../types/common.js';
-
-const run = promisify(execFile);
-
-export interface SpeechResult {
-  path: string;
-  mime: string;
-}
+import { splitArgs } from './exec.js';
+import { createSttPort, createTtsPort } from './factory.js';
+import type { SpeechResult, SttPort, TtsPort } from './ports.js';
 
 export class VoiceService {
   private outDir: string;
+  private _stt?: SttPort;
+  private _tts?: TtsPort;
 
   constructor(private config: MercuryConfig) {
     this.outDir = join(config.dataDir, 'attachments', 'tts');
     mkdirSync(this.outDir, { recursive: true });
+  }
+
+  // Ports are built lazily so an invalid/test-only provider only fails when voice is actually used
+  // (and the gateway's transcribe try/catch keeps working), not at runtime construction time.
+  private get stt(): SttPort {
+    return (this._stt ??= createSttPort(this.config, this.outDir));
+  }
+  private get tts(): TtsPort {
+    return (this._tts ??= createTtsPort(this.config, this.outDir));
   }
 
   get sttProvider(): string {
@@ -40,69 +51,11 @@ export class VoiceService {
   }
 
   async transcribe(path: string, mime = 'audio/wav'): Promise<string> {
-    const stt = this.config.voice.stt;
-    switch (stt.provider) {
-      case 'openai': {
-        const key = process.env.OPENAI_API_KEY;
-        if (!key) throw new MercuryError('OPENAI_API_KEY is not set for STT', 'stt_unconfigured', 'voice');
-        const form = new FormData();
-        form.append('file', new Blob([readFileSync(path)], { type: mime }), basename(path));
-        form.append('model', stt.model ?? 'whisper-1');
-        const res = await fetch('https://api.openai.com/v1/audio/transcriptions', { method: 'POST', headers: { authorization: `Bearer ${key}` }, body: form });
-        if (!res.ok) throw new MercuryError(`STT failed: ${res.status} ${await res.text()}`, 'stt_failed', 'voice');
-        return ((await res.json()) as { text: string }).text;
-      }
-      case 'whisper':
-      case 'command': {
-        const template = stt.command ?? 'whisper {input} --model base --output_format txt --output_dir {outdir}';
-        const out = join(this.outDir, newId('stt'));
-        const { stdout } = await runTemplate(template, { input: path, output: out, outdir: this.outDir });
-        for (const candidate of [`${out}.txt`, join(this.outDir, `${basename(path).replace(/\.[^.]+$/, '')}.txt`)]) {
-          if (existsSync(candidate)) {
-            const text = readFileSync(candidate, 'utf8');
-            unlinkSync(candidate);
-            return text.trim();
-          }
-        }
-        return stdout.trim();
-      }
-      default:
-        throw new MercuryError(`Unknown STT provider ${stt.provider}`, 'stt_unconfigured', 'voice');
-    }
+    return this.stt.transcribe(path, mime);
   }
 
   async speak(text: string, voice?: string): Promise<SpeechResult> {
-    const tts = this.config.voice.tts;
-    const v = voice ?? tts.voice;
-    switch (tts.provider) {
-      case 'openai': {
-        const key = process.env.OPENAI_API_KEY;
-        if (!key) throw new MercuryError('OPENAI_API_KEY is not set for TTS', 'tts_unconfigured', 'voice');
-        const res = await fetch('https://api.openai.com/v1/audio/speech', {
-          method: 'POST',
-          headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-          body: JSON.stringify({ model: 'gpt-4o-mini-tts', voice: v ?? 'alloy', input: text.slice(0, 4000) }),
-        });
-        if (!res.ok) throw new MercuryError(`TTS failed: ${res.status}`, 'tts_failed', 'voice');
-        const path = join(this.outDir, `${newId('tts')}.mp3`);
-        writeFileSync(path, Buffer.from(await res.arrayBuffer()));
-        return { path, mime: 'audio/mpeg' };
-      }
-      case 'edge-tts': {
-        const path = join(this.outDir, `${newId('tts')}.mp3`);
-        await run('edge-tts', ['--voice', v ?? 'en-US-AriaNeural', '--text', text.slice(0, 4000), '--write-media', path], { timeout: 120_000 });
-        return { path, mime: 'audio/mpeg' };
-      }
-      case 'piper':
-      case 'command': {
-        const path = join(this.outDir, `${newId('tts')}.wav`);
-        const template = tts.command ?? `piper --model ${v ?? 'en_US-lessac-medium'} --output_file {output}`;
-        await runTemplate(template, { output: path, text }, text);
-        return { path, mime: 'audio/wav' };
-      }
-      default:
-        throw new MercuryError(`Unknown TTS provider ${tts.provider}`, 'tts_unconfigured', 'voice');
-    }
+    return this.tts.speak(text, voice);
   }
 
   /** Start the external wake-word detector; returns a stop function (or undefined if not configured). */
@@ -115,29 +68,3 @@ export class VoiceService {
     return () => child.kill();
   }
 }
-
-function splitArgs(cmd: string): string[] {
-  return (cmd.match(/"[^"]*"|'[^']*'|\S+/g) ?? []).map((a) => a.replace(/^["']|["']$/g, ''));
-}
-
-/** Run a command template; placeholders are substituted per argument (no shell). */
-async function runTemplate(template: string, vars: Record<string, string>, stdin?: string): Promise<{ stdout: string }> {
-  const [bin, ...args] = splitArgs(template).map((a) => a.replace(/\{(\w+)\}/g, (_, k: string) => vars[k] ?? ''));
-  return new Promise((resolve, reject) => {
-    const child = spawn(bin!, args, { stdio: ['pipe', 'pipe', 'pipe'] });
-    let stdout = '';
-    let stderr = '';
-    const timer = setTimeout(() => child.kill('SIGKILL'), 300_000);
-    child.stdout.on('data', (d: Buffer) => (stdout += d.toString()));
-    child.stderr.on('data', (d: Buffer) => (stderr += d.toString()));
-    child.on('error', (e) => reject(new MercuryError(`Voice command failed: ${e.message}`, 'voice_command', 'voice')));
-    child.on('close', (code) => {
-      clearTimeout(timer);
-      if (code === 0) resolve({ stdout });
-      else reject(new MercuryError(`Voice command exited ${code}: ${stderr.slice(0, 500)}`, 'voice_command', 'voice'));
-    });
-    if (stdin) child.stdin.write(stdin);
-    child.stdin.end();
-  });
-}
-
