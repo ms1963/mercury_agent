@@ -7,6 +7,33 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-19
+
+### Added
+- **Named voice presets — swap the STT/TTS solution (offline or online) with one command.**
+  Building on the swappable `SttPort` / `TtsPort` layer from 0.5.0, a new preset catalogue
+  (`packages/core/src/voice/presets.ts`) ships ready-made, schema-validated configuration blocks
+  for the common engines, so switching no longer requires knowing the individual
+  `baseUrl` / `command` / `model` keys:
+  - **STT:** `openai` (online, commercial cloud Whisper), `speaches` (offline, self-hosted
+    faster-whisper, OpenAI-compatible), `whisper` (offline, local `whisper` / `whisper.cpp` CLI,
+    no server).
+  - **TTS:** `openai` (online, commercial), `openedai` (offline, self-hosted openedai-speech),
+    `kokoro` (offline, self-hosted Kokoro-FastAPI), `piper` (offline, local Piper CLI),
+    `edge-tts` (online, free edge-tts voices).
+- **New `mercury voice` CLI command:**
+  - `mercury voice presets` — list every STT and TTS preset with its offline/online and
+    open-source/commercial tags.
+  - `mercury voice use <stt|tts> <name>` — apply a preset; it writes the **entire** `voice.stt`
+    or `voice.tts` block in one declarative reconfiguration, so no stale keys from the previous
+    engine are left behind.
+  - `mercury voice show` — print the current voice configuration.
+- Each preset is validated against `ConfigSchema` in the test suite, so an applied preset is
+  always a valid configuration.
+
+### Changed
+- Test suite expanded to **200 tests across 17 files** (added `tests/voicepresets.test.ts`).
+
 ## [0.5.0] - 2026-11-19
 
 ### Changed

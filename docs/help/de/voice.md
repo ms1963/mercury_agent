@@ -5,6 +5,31 @@ und kann Antworten vorlesen. Sprache-zu-Text (STT) und Text-zu-Sprache (TTS) sin
 voneinander austauschbar** zwischen einer kommerziellen Cloud-API und einer quelloffenen /
 selbst gehosteten Lösung — eine einzige Konfigurationsänderung, keine Codeänderung.
 
+## Benannte Presets — ein Befehl (empfohlen)
+
+Der schnellste Weg, die STT/TTS-Lösung (offline oder online) auszutauschen, ist ein benanntes
+Preset. Jedes Preset bündelt die passenden Schlüssel `provider` / `baseUrl` / `command` / `model`
+für eine bekannte Engine, sodass du sie nicht einzeln setzen musst.
+
+```sh
+mercury voice presets              # alle STT- und TTS-Presets mit Offline/Online-Kennzeichnung auflisten
+mercury voice use stt whisper      # vollständig offline, lokales CLI-STT
+mercury voice use tts kokoro       # selbst gehostetes quelloffenes TTS (Kokoro-FastAPI)
+mercury voice use tts openai       # zurück zum kommerziellen OpenAI-Cloud-TTS
+mercury voice show                 # aktuelle Sprachkonfiguration anzeigen
+```
+
+`use` schreibt den **gesamten** `voice.stt`- oder `voice.tts`-Block in einer deklarativen
+Neukonfiguration, sodass keine veralteten Schlüssel der vorherigen Engine zurückbleiben.
+
+- **STT-Presets:** `openai` (online, kommerziell), `speaches` (offline, selbst gehostet,
+  faster-whisper), `whisper` (offline, lokales CLI).
+- **TTS-Presets:** `openai` (online, kommerziell), `openedai` (offline, selbst gehostet),
+  `kokoro` (offline, selbst gehostet), `piper` (offline, lokales CLI), `edge-tts` (online, kostenlos).
+
+Die einzelnen Schlüssel unten bleiben für die Feinabstimmung nach dem Anwenden eines Presets
+verfügbar.
+
 ## Sprache-zu-Text — `voice.stt.provider`
 
 - `openai` (Standard) / `openai-compatible` — OpenAI-Stil `POST {baseUrl}/audio/transcriptions`.

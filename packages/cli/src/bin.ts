@@ -27,6 +27,9 @@ Usage: mercury <command> [options]
   addin [list|scaffold <name>]   Manage declarative add-ins (tools/personalities/permissions)
   perms [list|show <personality>]   Inspect per-agent/personality permission profiles
   config [path|get <key>|set <key> <value>]
+  voice [presets|show|use <stt|tts> <preset>]
+                            Swap the STT/TTS stack in one step (openai, speaches,
+                            whisper, openedai, kokoro, piper, edge-tts)
   gateway [status|start|pending|pair <CODE>]
   mcp [list|serve]          List MCP client connections, or serve Mercury over MCP stdio
   user [list|add|passwd|role|delete]
@@ -129,6 +132,8 @@ async function main(argv: string[]): Promise<void> {
         return await cmd.permsCmd(m, a);
       case 'config':
         return await cmd.configCmd(m, a);
+      case 'voice':
+        return cmd.voiceCmd(m, a);
       case 'gateway':
         return await cmd.gatewayCmd(m, a);
       case 'user':

@@ -5,6 +5,30 @@ speak replies. Speech-to-text (STT) and text-to-speech (TTS) are **independently
 between a commercial cloud API and an open-source / self-hosted server — a single config change,
 no code edits.
 
+## Named presets — one command (recommended)
+
+The fastest way to exchange the STT/TTS solution (offline or online) is a named preset. Each
+preset bundles the right `provider` / `baseUrl` / `command` / `model` keys for a known engine, so
+you don't have to set them individually.
+
+```sh
+mercury voice presets              # list all STT and TTS presets with offline/online tags
+mercury voice use stt whisper      # fully offline local CLI STT
+mercury voice use tts kokoro       # self-hosted open-source TTS (Kokoro-FastAPI)
+mercury voice use tts openai       # back to commercial OpenAI cloud TTS
+mercury voice show                 # show the current voice configuration
+```
+
+`use` writes the **entire** `voice.stt` or `voice.tts` block in one declarative reconfiguration,
+so no stale keys from the previous engine remain.
+
+- **STT presets:** `openai` (online, commercial), `speaches` (offline, self-hosted
+  faster-whisper), `whisper` (offline, local CLI).
+- **TTS presets:** `openai` (online, commercial), `openedai` (offline, self-hosted),
+  `kokoro` (offline, self-hosted), `piper` (offline, local CLI), `edge-tts` (online, free).
+
+The individual keys below are still available for fine-tuning after applying a preset.
+
 ## Speech-to-text — `voice.stt.provider`
 
 - `openai` (default) / `openai-compatible` — OpenAI-style `POST {baseUrl}/audio/transcriptions`.

@@ -3,7 +3,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { cpSync, existsSync, readFileSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { getPath, installSkills, mercuryHome, runEvalSuite, scaffold, scaffoldAddin, selectEvals, setConfigValue, type EvalObservation, type ExtensionKind } from '@mercury/core';
+import { getPath, installSkills, mercuryHome, resolveVoicePreset, runEvalSuite, scaffold, scaffoldAddin, selectEvals, setConfigValue, voicePresets, type EvalObservation, type ExtensionKind, type VoiceKind } from '@mercury/core';
 import type { Mercury } from '@mercury/runtime';
 import { flag, type Args } from './args.js';
 
@@ -122,6 +122,34 @@ export async function scheduleCmd(m: Mercury, a: Args): Promise<void> {
     default:
       return out(m.scheduler.list(p.userId).map((s) => `${s.id}  ${s.status.padEnd(6)} ${s.spec.padEnd(18)} next=${s.nextRun ?? '-'}  ${s.task.slice(0, 50)}`).join('\n') || '(no schedules)');
   }
+}
+
+/**
+ * `mercury voice ...` — inspect and swap the speech stack in one declarative step.
+ *   voice presets                 List built-in STT/TTS presets (online + offline).
+ *   voice show                    Show the current voice.stt / voice.tts config.
+ *   voice use <stt|tts> <name>    Apply a preset (writes the whole voice.<kind> block).
+ */
+export function voiceCmd(m: Mercury, a: Args): void {
+  const [, sub, kindArg, name] = a._;
+  if (sub === 'show') return out({ stt: m.config.voice.stt, tts: m.config.voice.tts }, true);
+  if (sub === 'use') {
+    const kind = need(kindArg, 'mercury voice use <stt|tts> <preset>') as VoiceKind;
+    if (kind !== 'stt' && kind !== 'tts') throw new Error('kind must be "stt" or "tts"');
+    const patch = resolveVoicePreset(kind, need(name, `mercury voice use ${kind} <preset>`));
+    const file = setConfigValue(`voice.${kind}`, patch, m.configFile);
+    return out(`✔ ${kind.toUpperCase()} preset "${name}" applied → ${file}\n${JSON.stringify(patch)}`);
+  }
+  // Default: list presets for both kinds.
+  const lines: string[] = [];
+  for (const kind of ['stt', 'tts'] as VoiceKind[]) {
+    lines.push(`${kind.toUpperCase()} presets:`);
+    for (const [id, p] of Object.entries(voicePresets(kind))) {
+      lines.push(`  ${id.padEnd(10)} [${p.reach}, ${p.openSource ? 'open-source' : 'commercial'}]  ${p.description}`);
+    }
+  }
+  lines.push('\nApply with:  mercury voice use <stt|tts> <name>');
+  return out(lines.join('\n'));
 }
 
 export async function configCmd(m: Mercury, a: Args): Promise<void> {

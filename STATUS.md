@@ -1,7 +1,7 @@
 # Mercury — Build Status (honest snapshot, 2026-11-18)
 
 **Overall:** all 7 packages compile. From a clean build, `npm install && npm run build && npm test`
-passes (16 files, **195/195 tests**, offline). `npx eslint .` exits 0. The CLI, HTTP server and web UI
+passes (17 files, **200/200 tests**, offline). `npx eslint .` exits 0. The CLI, HTTP server and web UI
 run end-to-end with the offline mock LLM and mock decision provider. Nothing has been exercised
 against a real external service: no real LLM API, no Jev API, no chat platform, no STT/TTS service.
 
