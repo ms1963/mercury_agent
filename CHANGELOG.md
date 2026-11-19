@@ -7,6 +7,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-19
+
+### Changed
+- **Swappable STT/TTS providers (commercial ↔ open-source via one declarative config change).**
+  The voice layer was refactored behind small `SttPort` / `TtsPort` abstractions
+  (`packages/core/src/voice/ports.ts`) built by a config-driven factory (`voice/factory.ts`);
+  `VoiceService` is now a thin facade with the same public API. The OpenAI path is now
+  **OpenAI-compatible**: `voice.stt.baseUrl` / `voice.tts.baseUrl` (plus `apiKeyEnv`, `model`,
+  `format`) let Mercury talk to any server implementing the `/audio/transcriptions` and
+  `/audio/speech` routes — so switching from paid OpenAI to a self-hosted open-source server
+  (e.g. faster-whisper-server / Speaches for STT, openedai-speech / Kokoro-FastAPI for TTS) is
+  just `mercury config set voice.stt.baseUrl http://localhost:8000/v1`, no code change. The API
+  key is required only for the real OpenAI host and optional for self-hosted endpoints.
+- Fully-offline open-source paths remain first-class: STT via local `whisper` / `whisper.cpp`
+  (`voice.stt.command`), TTS via `piper` or `edge-tts`.
+- Config schema (`voice.stt` / `voice.tts`) extended additively with `baseUrl`, `apiKeyEnv`,
+  `model`, `format`; existing configs keep working unchanged.
+- Resolved the `mock` voice default inconsistency in the help docs. Mock STT/TTS providers are
+  strictly test-only (gated on `MERCURY_ENABLE_MOCK=1`, never a production default).
+- Test suite expanded to **195 tests across 16 files** (added `tests/voice.test.ts`).
+
 ## [0.4.0] - 2026-11-18
 
 ### Changed
