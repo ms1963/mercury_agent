@@ -18,9 +18,26 @@ export const renderScheduler = (view) => panel(view, t('scheduler.title'), async
   const whenIn = field(t('scheduler.when'), { className: 'grow' });
   const task = field(t('scheduler.task'), { className: 'grow' });
   const history = h('div');
+  const editor = h('div');
   const act = (s, a) => safe(async () => (await api(`/api/schedules/${s.id}/${a}`, { body: {} }), reload()));
   const showHistory = async (s) =>
     history.replaceChildren(card(`${t('scheduler.history')}: ${s.name}`, json((await api(`/api/schedules/${s.id}/history`)).runs)));
+  // Inline editor: change name, schedule (when) and task of an existing schedule.
+  const showEditor = (s) => {
+    const nameIn = field(t('common.name'), { value: s.name, className: 'grow' });
+    const whenEdit = field(t('scheduler.when'), { value: s.nl || s.spec, className: 'grow' });
+    const taskEdit = field(t('scheduler.task'), { value: s.task, className: 'grow' });
+    const save = safe(async () => {
+      await api(`/api/schedules/${s.id}`, { method: 'PATCH', body: { name: nameIn.value, when: whenEdit.value, task: taskEdit.value } });
+      editor.replaceChildren();
+      toast(t('common.saved'));
+      await reload();
+    });
+    editor.replaceChildren(card(`${t('common.edit', 'Edit')}: ${s.name}`,
+      h('div.row', {}, nameIn, whenEdit, taskEdit),
+      h('div.row', {}, h('button.primary', { onclick: save }, t('common.save', 'Save')),
+        h('button', { onclick: safe(() => editor.replaceChildren()) }, t('common.cancel', 'Cancel')))));
+  };
   // Run now returns immediately (the run executes in the background), so give the user
   // explicit feedback: a toast plus the schedule's history, which shows the "running" entry.
   const runNow = (s) => safe(async () => {
@@ -36,10 +53,12 @@ export const renderScheduler = (view) => panel(view, t('scheduler.title'), async
       [t('common.actions'), (s) => h('span', {},
         s.status === 'active' ? h('button', { onclick: act(s, 'pause') }, t('common.pause')) : h('button', { onclick: act(s, 'resume') }, t('common.resume')),
         h('button', { onclick: runNow(s) }, t('scheduler.runNow')),
+        h('button', { onclick: safe(() => showEditor(s)) }, t('common.edit', 'Edit')),
         h('button', { onclick: safe(() => showHistory(s)) }, t('scheduler.history')),
         h('button.danger', { onclick: safe(async () => confirm(t('common.confirmDelete')) && (await api(`/api/schedules/${s.id}`, { method: 'DELETE' }), reload())) }, '×'))],
     ])),
     card(t('common.create'), h('div.row', {}, whenIn, task, h('button.primary', { onclick: safe(async () => (await api('/api/schedules', { body: { when: whenIn.value, task: task.value, delivery: { platform: 'web' } } }), reload())) }, t('common.create')))),
+    editor,
     history,
   ];
 });

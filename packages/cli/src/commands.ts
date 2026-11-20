@@ -111,6 +111,21 @@ export async function scheduleCmd(m: Mercury, a: Args): Promise<void> {
       const s = m.scheduler.create(p.userId, { when, task: need(rest.join(' '), 'task text'), delivery: deliver ? { platform: deliver[0]!, target: deliver.slice(1).join(':') } : undefined });
       return out(`created ${s.id}: ${s.kind} ${s.spec} → next ${s.nextRun}`);
     }
+    case 'edit':
+    case 'update': {
+      const id = need(rest[0], 'mercury schedule edit <id> [--when "..."] [--name "..."] [--task "..."] [--deliver platform:target] [--max-retries N]');
+      const patch: Record<string, unknown> = {};
+      if (flag(a, 'when')) patch.when = flag(a, 'when');
+      if (flag(a, 'name')) patch.name = flag(a, 'name');
+      // Task text may be given via --task or as trailing words after the id.
+      const taskText = flag(a, 'task') ?? (rest.length > 1 ? rest.slice(1).join(' ') : undefined);
+      if (taskText) patch.task = taskText;
+      if (flag(a, 'deliver')) { const d = flag(a, 'deliver')!.split(':'); patch.delivery = { platform: d[0]!, target: d.slice(1).join(':') }; }
+      if (flag(a, 'max-retries')) patch.maxRetries = Number(flag(a, 'max-retries'));
+      if (!Object.keys(patch).length) throw new Error('nothing to change — pass at least one of --when, --name, --task, --deliver, --max-retries');
+      const s = m.scheduler.update(id, patch, p.userId);
+      return out(`updated ${s.id}: ${s.kind} ${s.spec} → next ${s.nextRun}`);
+    }
     case 'pause':
       return out(m.scheduler.pause(need(rest[0], 'id'), p.userId), true);
     case 'resume':
