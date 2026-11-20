@@ -18,6 +18,30 @@ async function readCapped(res: Response, max: number): Promise<string> {
   return buf.subarray(0, max).toString('utf8');
 }
 
+/** Decode a DuckDuckGo redirect href (/l/?uddg=...) to the real target URL. */
+function ddgUrl(raw: string): string {
+  const uddg = /uddg=([^&]+)/.exec(raw);
+  return uddg ? decodeURIComponent(uddg[1]!) : raw;
+}
+
+/** Parse the main html.duckduckgo.com result page. */
+function parseDdgHtml(html: string, n: number): SearchHit[] {
+  const hits: SearchHit[] = [];
+  const re = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
+  for (const m of html.matchAll(re)) {
+    hits.push({ title: htmlToText(m[2]!), url: ddgUrl(m[1]!), snippet: htmlToText(m[3]!) });
+    if (hits.length >= n) break;
+  }
+  return hits;
+}
+
+/** Parse the lite.duckduckgo.com result page (table-based; separate infrastructure). */
+function parseDdgLite(html: string, n: number): SearchHit[] {
+  const links = [...html.matchAll(/<a\b[^>]*href="([^"]+)"[^>]*class=['"]result-link['"][^>]*>([\s\S]*?)<\/a>/g)];
+  const snippets = [...html.matchAll(/<td[^>]*class=['"]result-snippet['"][^>]*>([\s\S]*?)<\/td>/g)].map((m) => htmlToText(m[1]!));
+  return links.slice(0, n).map((m, i) => ({ title: htmlToText(m[2]!), url: ddgUrl(m[1]!), snippet: snippets[i] ?? '' }));
+}
+
 /** Search providers. DuckDuckGo (HTML endpoint) needs no key; SearXNG/Brave require config. */
 export async function webSearch(ctx: ToolContext, query: string, n: number): Promise<SearchHit[]> {
   const cfg = ctx.services.config.tools.web;
@@ -34,18 +58,32 @@ export async function webSearch(ctx: ToolContext, query: string, n: number): Pro
     const data = (await res.json()) as { web?: { results?: Array<{ title: string; url: string; description?: string }> } };
     return (data.web?.results ?? []).slice(0, n).map((r) => ({ title: r.title, url: r.url, snippet: htmlToText(r.description ?? '') }));
   }
-  const res = await safeFetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, { headers: { 'User-Agent': 'Mozilla/5.0 (Mercury agent)' } });
-  const html = await res.text();
-  const hits: SearchHit[] = [];
-  const re = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
-  for (const m of html.matchAll(re)) {
-    let url = m[1]!;
-    const uddg = /uddg=([^&]+)/.exec(url);
-    if (uddg) url = decodeURIComponent(uddg[1]!);
-    hits.push({ title: htmlToText(m[2]!), url, snippet: htmlToText(m[3]!) });
-    if (hits.length >= n) break;
+  // Keyless DuckDuckGo scraping. The main HTML endpoint aggressively rate-limits rapid or
+  // automated queries (e.g. a scheduled roundup firing several searches at once), returning
+  // a challenge/empty page the parser can't match. Fall back to the `lite` endpoint, which
+  // runs on separate infrastructure and often answers when the main one is throttled.
+  const headers = { 'User-Agent': 'Mozilla/5.0 (Mercury agent)' };
+  const errors: string[] = [];
+  try {
+    const hits = parseDdgHtml(await (await safeFetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, { headers })).text(), n);
+    if (hits.length) return hits;
+  } catch (err) {
+    errors.push(`html endpoint: ${err instanceof Error ? err.message : String(err)}`);
   }
-  return hits;
+  try {
+    const hits = parseDdgLite(await (await safeFetch(`https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}`, { headers })).text(), n);
+    if (hits.length) return hits;
+  } catch (err) {
+    errors.push(`lite endpoint: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  // Both keyless endpoints returned nothing or failed — almost always rate-limiting/blocking,
+  // not a genuinely empty result set. Surface an actionable error instead of a silent "No results".
+  throw new Error(
+    `web_search: DuckDuckGo returned no results for "${query}" — the keyless endpoints are likely rate-limiting this IP ` +
+      `(common when several searches fire in quick succession). For reliable automated search, set tools.web.searchProvider ` +
+      `to "brave" (with BRAVE_API_KEY) or "searxng" (with tools.web.searxngUrl), then restart the server.` +
+      (errors.length ? ` [${errors.join('; ')}]` : ''),
+  );
 }
 
 export const webSearchTool = defineTool<{ query: string; max_results?: number }>({
