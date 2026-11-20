@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-11-20
+
 ### Fixed
 - **execute_code sandbox no longer crashes the server on a closed RPC pipe.** When a
   sandboxed script made a tool call and then exited (or was killed on timeout) before the
@@ -301,7 +303,8 @@ First stable major release, consolidating the five frontier-autonomy feature are
   audit log), observability (event traces, replay, Prometheus `/metrics`) and a no-build web UI.
 - MIT license.
 
-[Unreleased]: https://github.com/ms1963/mercury_agent/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/ms1963/mercury_agent/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/ms1963/mercury_agent/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/ms1963/mercury_agent/compare/v0.7.0...v1.0.0
 [0.3.0]: https://github.com/ms1963/mercury_agent/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ms1963/mercury_agent/compare/v0.1.0...v0.2.0

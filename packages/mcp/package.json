@@ -1,9 +1,9 @@
 {
   "name": "@mercury/mcp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
-  "dependencies": {"@mercury/core": "1.0.0", "@modelcontextprotocol/sdk": "^1.32.0", "zod": "^4.1.0"}
+  "dependencies": {"@mercury/core": "1.0.1", "@modelcontextprotocol/sdk": "^1.32.0", "zod": "^4.1.0"}
 }
