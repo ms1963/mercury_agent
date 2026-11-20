@@ -119,8 +119,16 @@ export function registerManageRoutes(app: FastifyInstance, { m, auth, sse }: Ctx
         return m.scheduler.pause(id, owner);
       case 'resume':
         return m.scheduler.resume(id, owner);
-      case 'run':
-        return m.scheduler.runNow(id, owner);
+      case 'run': {
+        // A manual run executes the full agent loop, which can take minutes. The server
+        // uses synchronous SQLite on a single thread, so awaiting the run here would hold
+        // the HTTP request open and starve every other request (pause/refresh/auth hang,
+        // panels render blank). Validate ownership synchronously, then fire-and-forget.
+        const s = m.scheduler.get(id);
+        if (!s || (owner && s.userId !== owner)) throw new HttpError(404, 'schedule not found');
+        void m.scheduler.runNow(id, owner).catch((err) => req.log.error({ err, id }, 'manual schedule run failed'));
+        return { ok: true, started: true };
+      }
       default:
         throw new HttpError(400, 'unknown action');
     }
