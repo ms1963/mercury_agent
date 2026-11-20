@@ -282,6 +282,43 @@ export function registerManageRoutes(app: FastifyInstance, { m, auth, sse }: Ctx
     return m.codePolicies.evaluate(String(b.tool), (b.args as Body) ?? {}, { tainted: Boolean(b.tainted) });
   });
 
+  // ---- built-in verification: evidence-based completion checks + confidence + escalations ----
+  app.get('/api/verifications', async (req) => {
+    auth(req, 'audit.read');
+    const taskId = (req.query as Body).taskId as string | undefined;
+    return { enabled: m.config.verification.enabled, config: m.config.verification, verifications: m.verifier.list(taskId) };
+  });
+  app.get('/api/verifications/:id', async (req) => {
+    auth(req, 'audit.read');
+    const v = m.verifier.get(param(req));
+    if (!v) throw new HttpError(404, 'verification not found');
+    return v;
+  });
+  app.post('/api/verify', async (req) => {
+    const p = auth(req);
+    const b = req.body as Body;
+    if (!Array.isArray(b.checks)) throw new HttpError(400, 'checks (array) is required');
+    return m.verifier.verify({
+      taskId: b.taskId ? String(b.taskId) : undefined,
+      runId: b.runId ? String(b.runId) : undefined,
+      userId: p.userId,
+      goal: b.goal ? String(b.goal) : undefined,
+      output: b.output ? String(b.output) : undefined,
+      result: b.result,
+      checks: b.checks as never,
+      threshold: b.threshold === undefined ? undefined : Number(b.threshold),
+    });
+  });
+  app.get('/api/escalations', async (req) => {
+    auth(req, 'audit.read');
+    const status = ((req.query as Body).status as string) ?? 'open';
+    return { escalations: m.verifier.escalations(status as never) };
+  });
+  app.post('/api/escalations/:id/resolve', async (req) => {
+    auth(req, 'config.manage');
+    return { resolved: m.verifier.resolveEscalation(param(req)) };
+  });
+
   // ---- help, i18n, settings ---------------------------------------------------------
   app.get('/api/help', async (req) => {
     const q = req.query as Body;

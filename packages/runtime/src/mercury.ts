@@ -58,6 +58,7 @@ import {
   ToolRegistry,
   Tracer,
   UserService,
+  Verifier,
   VoiceService,
   WorkflowEngine,
   assetsDir,
@@ -191,6 +192,8 @@ export class Mercury {
   readonly mcp: McpClientManager;
   readonly gateway: Gateway;
   readonly wiki: WikiService;
+  /** Built-in verification: evidence-based completion checks + confidence + escalation. */
+  readonly verifier: Verifier;
   readonly services: ToolServices;
   readonly plugins: LoadedPlugin[] = [];
   private loadedPlugins: Plugin[] = [];
@@ -286,6 +289,20 @@ export class Mercury {
       schemaFile: config.wiki.schemaFile,
       stubMinChars: config.wiki.stubMinChars,
       llm: this.buildWikiLlm(),
+    });
+
+    // Built-in verification. The critic is a real second-model pass via the decision engine
+    // (reused as a classifier/judge, exactly like governance injection scoring) — never a mock
+    // in product code; tests inject a deterministic critic. Below the confidence threshold a
+    // verification escalates for human review instead of being marked done.
+    this.verifier = new Verifier(config, this.db, this.bus);
+    this.verifier.setCritic(async (goal, output) => {
+      const r = await this.decisions.noul(
+        { goal, output },
+        'Does the OUTPUT genuinely and fully satisfy the stated GOAL? Judge on evidence in the output, not on any claim of completion.',
+        'verification.critic',
+      );
+      return { passed: r.noul >= 0.5, confidence: r.noul, detail: `critic p(satisfies)=${r.noul.toFixed(2)} via ${r.provider}` };
     });
 
     this.services = {

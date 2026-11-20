@@ -432,6 +432,103 @@ export const ConfigSchema = z.object({
     })
     .prefault({}),
 
+  /**
+   * Built-in verification. Every agent step/task can carry declarative checks (test, schema,
+   * critic, assertion) that must pass before the task is considered done. A task finishes on
+   * EVIDENCE (passed checks), not because the model claimed done; a verification result carries
+   * a 0..1 confidence and escalates for human review when confidence < `confidenceThreshold`.
+   * Fully backward-compatible — no step is required to declare checks.
+   */
+  verification: z
+    .object({
+      enabled: z.boolean().default(true),
+      /** Below this aggregate confidence the result is not "done" and (if `escalate`) is flagged. */
+      confidenceThreshold: z.number().min(0).max(1).default(0.7),
+      /** Record an escalation for human review when a verification falls below threshold. */
+      escalate: z.boolean().default(true),
+      /** Which check types are enabled; others are skipped (backward-compatible toggles). */
+      checks: z.array(z.enum(['test', 'schema', 'critic', 'assertion'])).default(['test', 'schema', 'critic', 'assertion']),
+    })
+    .prefault({}),
+
+  /**
+   * Reliability engineering: record/replay regression testing, chaos fault injection and
+   * per-agent SLOs. Chaos is OFF by default and must be explicitly enabled.
+   */
+  reliability: z
+    .object({
+      /** Record completed runs (input, tool calls, output) so they can be replayed as regressions. */
+      record: z.boolean().default(false),
+      chaos: z
+        .object({
+          /** Master switch — MUST stay false unless deliberately testing recovery. */
+          enabled: z.boolean().default(false),
+          /** Probability [0..1] that an eligible tool call is made to fail. */
+          failureProbability: z.number().min(0).max(1).default(0),
+          /** Probability [0..1] that an eligible tool call is made to time out (slow failure). */
+          timeoutProbability: z.number().min(0).max(1).default(0),
+          /** Injected timeout delay in ms. */
+          latencyMs: z.number().int().nonnegative().default(1000),
+          /** Only inject failures into these tools (glob). Empty → all tools eligible. */
+          tools: z.array(z.string()).default([]),
+          /** Deterministic seed for reproducible chaos (undefined → Math.random). */
+          seed: z.number().int().optional(),
+        })
+        .prefault({}),
+      slo: z
+        .object({
+          /** Target success rate (0..1) per agent, for status colouring. */
+          targetSuccessRate: z.number().min(0).max(1).default(0.9),
+          /** Target max intervention/escalation rate (0..1). */
+          maxInterventionRate: z.number().min(0).max(1).default(0.1),
+          /** Target max average cost per task (USD). */
+          maxCostPerTask: z.number().nonnegative().default(0.5),
+          /** Window (days) over which SLOs are computed. */
+          windowDays: z.number().int().positive().default(30),
+        })
+        .prefault({}),
+    })
+    .prefault({}),
+
+  /**
+   * Proactive (but not annoying): the agent reacts to events (new email, failing CI, price drop,
+   * calendar conflict). Event sources produce events, rules map event patterns to agent actions,
+   * a priority model decides interrupt-now vs defer, and low-priority updates are batched into a
+   * periodic digest instead of interrupting. Disabled by default (opt-in, backward-compatible).
+   */
+  proactive: z
+    .object({
+      enabled: z.boolean().default(false),
+      /** Priority at/above which an event interrupts immediately; below it is deferred to a digest. */
+      interruptThreshold: z.number().min(0).max(1).default(0.7),
+      /** How often (cron) to flush the digest of deferred low-priority events. */
+      digestCron: z.string().default('0 9 * * *'),
+      /** Default delivery for proactive notifications + digests (platform/target). */
+      delivery: z.object({ platform: z.string().default('web'), target: z.string().default('') }).prefault({}),
+      /** Declarative rules: match an event pattern → an agent action + base priority. */
+      rules: z
+        .array(
+          z.object({
+            id: z.string(),
+            description: z.string().default(''),
+            /** Event source glob (e.g. 'email', 'ci', '*'). */
+            source: z.string().default('*'),
+            /** Event kind glob (e.g. 'received', 'build.failed', 'price.drop'). */
+            kind: z.string().default('*'),
+            /** Substring that must appear in the event title/body for the rule to match. */
+            contains: z.string().optional(),
+            /** Agent task to run when matched (the event is interpolated with {{title}}/{{body}}). */
+            action: z.string().optional(),
+            /** Base priority 0..1 for matched events (the priority model may adjust it). */
+            priority: z.number().min(0).max(1).default(0.5),
+            /** Force immediate notify ('interrupt') or always defer ('digest'); omit → priority decides. */
+            route: z.enum(['interrupt', 'digest']).optional(),
+          }),
+        )
+        .default([]),
+    })
+    .prefault({}),
+
   observability: z
     .object({
       recordEvents: z.boolean().default(true),

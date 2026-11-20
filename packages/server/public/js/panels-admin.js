@@ -204,6 +204,152 @@ export const renderAccount = (view) => panel(view, t('account.title'), async (re
 
 
 /**
+ * Verification: evidence-based completion. Shows recent verification results (passed checks,
+ * per-check breakdown, confidence vs threshold) and open escalations flagged for human review.
+ * Includes a form to run an ad-hoc verification (test/schema/critic/assertion checks) via POST
+ * /api/verify. Reads need audit.read; resolving escalations needs config.manage (admin).
+ */
+export const renderVerification = (view) => panel(view, t('verification.title', 'Verification'), async (reload) => {
+  const [v, esc] = await Promise.all([api('/api/verifications').catch(() => null), api('/api/escalations?status=open').catch(() => ({ escalations: [] }))]);
+  const confBadge = (x) => h(`span.badge.${x.passed ? 'on' : 'off'}`, {}, `${Number(x.confidence).toFixed(2)} / ${x.threshold}`);
+
+  const resultsCard = v ? card(t('verification.results', 'Verification results'),
+    h('p.small.muted', {}, `${t('verification.intro', 'A task is done only on evidence (passed checks), not because the model claimed done.')} ${v.enabled ? '' : '(disabled)'} · threshold ${v.config?.confidenceThreshold ?? ''} · escalate ${v.config?.escalate ? 'on' : 'off'}`),
+    table(v.verifications, [
+      [t('verification.task', 'Task'), (x) => h('span.small', {}, x.taskId || x.runId || x.id)],
+      [t('verification.goal', 'Goal'), (x) => h('span.small', {}, x.goal || '')],
+      [t('common.status'), (x) => badge(x.passed, t('verification.done', 'done'), t('verification.notDone', 'not done'))],
+      [t('verification.confidence', 'Confidence'), confBadge],
+      [t('verification.checks', 'Checks'), (x) => h('details', {}, h('summary', {}, `${(x.checks || []).filter((c) => c.passed).length}/${(x.checks || []).length}`),
+        h('ul.small', {}, (x.checks || []).map((c) => h('li', {}, `${c.passed ? '✓' : '✗'} ${c.type}${c.required ? '*' : ''} (${Number(c.score).toFixed(2)}) — ${c.detail}`))))],
+      [t('verification.escalated', 'Escalated'), (x) => x.escalated ? h('span.badge.off', {}, '⚠') : ''],
+      ['Time', (x) => when(x.createdAt)],
+    ])) : null;
+
+  const escCard = card(t('verification.escalations', 'Escalations (human review)'),
+    h('p.small.muted', {}, t('verification.escIntro', 'Low-confidence results flagged for a human instead of being marked done.')),
+    table(esc.escalations, [
+      [t('verification.task', 'Task'), (x) => h('span.small', {}, x.taskId || x.runId || x.id)],
+      [t('verification.reason', 'Reason'), (x) => h('span.small', {}, x.reason)],
+      [t('verification.confidence', 'Confidence'), (x) => (x.confidence ?? '') !== '' ? Number(x.confidence).toFixed(2) : ''],
+      ['Time', (x) => when(x.createdAt)],
+      ['', (x) => isAdmin() ? h('button', { onclick: safe(async () => (await api(`/api/escalations/${x.id}/resolve`, { body: {} }), toast(t('common.saved')), reload())) }, t('verification.resolve', 'Resolve')) : null],
+    ]));
+
+  // ad-hoc verification runner
+  const goal = field(t('verification.goal', 'goal'), { className: 'grow' });
+  const output = field(t('verification.output', 'output text (for critic)'), { className: 'grow' });
+  const checksIn = field(t('verification.checksJson', 'checks JSON e.g. [{"type":"assertion","checker":"file_exists","params":{"path":"/etc/hostname"},"required":true}]'), { className: 'grow' });
+  const runOut = h('div');
+  const runCard = card(t('verification.run', 'Run a verification'),
+    h('div.row', {}, goal, output), h('div.row', {}, checksIn, h('button.primary', { onclick: safe(async () => {
+      let checks = [];
+      try { checks = checksIn.value ? JSON.parse(checksIn.value) : []; } catch { return toast(t('verification.badJson', 'checks must be valid JSON'), true); }
+      const r = await api('/api/verify', { body: { goal: goal.value || undefined, output: output.value || undefined, checks } });
+      runOut.replaceChildren(h('p', {}, t('verification.result', 'Result') + ': ', confBadge(r), ` — ${r.summary}`), json(r));
+      await reload();
+    }) }, t('common.run'))), runOut);
+
+  return [resultsCard, escCard, runCard];
+});
+
+/**
+ * Reliability engineering: per-agent SLOs (success rate, intervention/escalation rate, cost per
+ * task), recorded runs that can be replayed as regression tests, and chaos fault-injection status.
+ */
+export const renderReliability = (view) => panel(view, t('reliability.title', 'Reliability'), async (reload) => {
+  const [slo, rec, chaos] = await Promise.all([
+    api('/api/slo').catch(() => null),
+    api('/api/recordings').catch(() => ({ recordings: [] })),
+    api('/api/chaos').catch(() => null),
+  ]);
+  const replayOut = h('div');
+
+  const sloCard = slo ? card(t('reliability.slo', 'SLOs per agent'),
+    h('p.small.muted', {}, `${t('reliability.sloIntro', 'Service-level objectives computed from run history.')} · window ${slo.windowDays}d · targets: success ≥ ${slo.targets.targetSuccessRate}, intervention ≤ ${slo.targets.maxInterventionRate}, cost/task ≤ $${slo.targets.maxCostPerTask}`),
+    table(slo.agents, [
+      [t('reliability.agent', 'Agent'), (x) => h('code', {}, x.agent)],
+      [t('reliability.runs', 'Runs'), (x) => x.runs],
+      [t('reliability.successRate', 'Success rate'), (x) => badge(x.meetsSuccess, `${Math.round(x.successRate * 100)}%`, `${Math.round(x.successRate * 100)}%`)],
+      [t('reliability.interventionRate', 'Intervention'), (x) => badge(x.meetsIntervention, `${Math.round(x.interventionRate * 100)}%`, `${Math.round(x.interventionRate * 100)}%`)],
+      [t('reliability.costPerTask', 'Cost/task $'), (x) => badge(x.meetsCost, Number(x.costPerTask).toFixed(4), Number(x.costPerTask).toFixed(4))],
+      [t('reliability.escalations', 'Escalations'), (x) => x.escalations],
+    ])) : null;
+
+  const chaosCard = chaos ? card(t('reliability.chaos', 'Chaos testing'),
+    h('p.small.muted', {}, t('reliability.chaosIntro', 'Deliberately injects tool failures/timeouts to verify the agent recovers (retries, fallbacks). OFF by default.')),
+    h('p', {}, t('common.status') + ': ', badge(!chaos.enabled, t('reliability.chaosOff', 'off (safe)'), t('reliability.chaosOn', 'ON — injecting failures')),
+      chaos.enabled ? h('span.small', {}, ` · fail ${Math.round(chaos.failureProbability * 100)}% · timeout ${Math.round(chaos.timeoutProbability * 100)}% · injected ${chaos.injections}`) : null)) : null;
+
+  const recCard = card(t('reliability.recordings', 'Recorded runs (replay as regression)'),
+    h('p.small.muted', {}, t('reliability.recIntro', 'Replay a recorded run and diff the outcome — a regression test for model/prompt/skill changes.')),
+    table(rec.recordings, [
+      [t('common.name'), (x) => h('span.small', {}, x.name || x.id)],
+      [t('verification.input', 'Input'), (x) => h('span.small', {}, (x.input || '').slice(0, 80))],
+      [t('reliability.toolCalls', 'Tools'), (x) => (x.toolCalls || []).length],
+      ['Time', (x) => when(x.createdAt)],
+      ['', (x) => h('button', { onclick: safe(async () => {
+        replayOut.replaceChildren(h('p.muted', {}, t('reliability.replaying', 'Replaying…')));
+        const r = await api(`/api/recordings/${x.id}/replay`, { body: {} });
+        replayOut.replaceChildren(h('p', {}, t('reliability.diff', 'Diff') + ': ', badge(r.match, t('reliability.match', 'match'), t('reliability.regression', 'regression')), ` — ${r.summary}`), json(r));
+      }) }, t('reliability.replay', 'Replay'))],
+    ]), replayOut);
+
+  return [sloCard, chaosCard, recCard];
+});
+
+/**
+ * Proactive (but not annoying): pending/reacted events, the deferred digest queue and the
+ * notification rules that map events to actions and interrupt-vs-defer routing.
+ */
+export const renderProactive = (view) => panel(view, t('proactive.title', 'Proactive'), async (reload) => {
+  const data = await api('/api/proactive').catch(() => null);
+  if (!data) return card(null, h('p.muted', {}, 'proactive subsystem unavailable'));
+  const prioBadge = (x) => h(`span.badge.${x.decision === 'interrupt' ? 'on' : ''}`, {}, `${Number(x.priority).toFixed(2)} ${x.decision}`);
+
+  const emit = { source: field('source e.g. ci'), kind: field('kind e.g. build.failed'), title: field('title', { className: 'grow' }), body: field('body', { className: 'grow' }) };
+
+  return [
+    card(t('proactive.rules', 'Notification rules'),
+      h('p.small.muted', {}, `${t('proactive.intro', 'Events map to actions; high-priority events interrupt immediately, low-priority ones are batched into a digest.')} ${data.enabled ? '' : '(disabled)'} · interrupt ≥ ${data.config?.interruptThreshold ?? ''} · digest ${data.config?.digestCron ?? ''}`),
+      table(data.rules, [
+        ['Id', (r) => h('code', {}, r.id)],
+        [t('proactive.source', 'Source'), (r) => h('code', {}, r.source)],
+        [t('proactive.kind', 'Kind'), (r) => h('code', {}, r.kind)],
+        [t('proactive.route', 'Route'), (r) => r.route || t('proactive.auto', 'auto')],
+        [t('proactive.priority', 'Priority'), (r) => r.priority],
+        [t('common.description'), (r) => h('span.small', {}, r.description)],
+      ])),
+    card(t('proactive.pending', 'Recent events'),
+      table(data.events, [
+        [t('proactive.source', 'Source'), (x) => h('code', {}, `${x.source}/${x.kind}`)],
+        [t('proactive.eventTitle', 'Title'), (x) => h('span.small', {}, x.title || '')],
+        [t('proactive.priority', 'Priority'), prioBadge],
+        [t('common.status'), (x) => badge(x.status !== 'pending', x.status, x.status)],
+        ['Rule', (x) => h('span.small', {}, x.rule || '')],
+        ['Time', (x) => when(x.createdAt)],
+      ])),
+    card(t('proactive.digest', 'Digest queue (deferred)'),
+      h('p.small.muted', {}, t('proactive.digestIntro', 'Low-priority updates waiting to be bundled into the next digest instead of interrupting.')),
+      table(data.digest, [
+        [t('proactive.source', 'Source'), (x) => h('code', {}, `${x.source}/${x.kind}`)],
+        [t('proactive.eventTitle', 'Title'), (x) => h('span.small', {}, x.title || '')],
+        [t('proactive.priority', 'Priority'), (x) => Number(x.priority).toFixed(2)],
+        ['Time', (x) => when(x.createdAt)],
+      ]),
+      isAdmin() ? h('div.row', {}, h('button.primary', { onclick: safe(async () => (await api('/api/proactive/digest/flush', { body: {} }), toast(t('proactive.flushed', 'Digest flushed')), reload())) }, t('proactive.flush', 'Flush digest now')),
+        h('button', { onclick: safe(async () => (await api('/api/proactive/poll', { body: {} }), toast(t('common.saved')), reload())) }, t('proactive.poll', 'Poll sources'))) : null),
+    isAdmin() ? card(t('proactive.testEvent', 'Inject a test event'),
+      h('div.row', {}, ...Object.values(emit), h('button.primary', { onclick: safe(async () => {
+        if (!emit.source.value || !emit.kind.value) return toast('source and kind required', true);
+        await api('/api/proactive/events', { body: { source: emit.source.value, kind: emit.kind.value, title: emit.title.value, body: emit.body.value } });
+        toast(t('common.saved'));
+        await reload();
+      }) }, t('common.create')))) : null,
+  ];
+});
+
+/**
  * Governance & security: time-limited capability grants, policy-as-code, and the replayable
  * audit trail ("why did you do that?"). Reads are available to audit.read holders; issuing and
  * revoking grants require config.manage (admin).

@@ -110,4 +110,32 @@ CREATE TABLE rate_limits (
 );
 CREATE INDEX idx_rate_limits_window ON rate_limits(window_start);
 `,
+  /* 3: built-in verification — results + escalations (Feature: verification) */ `
+CREATE TABLE verifications (
+  id TEXT PRIMARY KEY, task_id TEXT, run_id TEXT, user_id TEXT, goal TEXT, passed INTEGER NOT NULL,
+  confidence REAL NOT NULL, threshold REAL NOT NULL, escalated INTEGER NOT NULL DEFAULT 0,
+  checks TEXT NOT NULL, summary TEXT, created_at TEXT NOT NULL
+);
+CREATE INDEX idx_verifications_task ON verifications(task_id, created_at);
+CREATE TABLE escalations (
+  id TEXT PRIMARY KEY, verification_id TEXT, task_id TEXT, run_id TEXT, user_id TEXT, reason TEXT,
+  confidence REAL, status TEXT NOT NULL DEFAULT 'open', created_at TEXT NOT NULL, resolved_at TEXT
+);
+CREATE INDEX idx_escalations_status ON escalations(status, created_at);
+`,
+  /* 4: reliability — recorded runs for replay regression (Feature: reliability) */ `
+CREATE TABLE recordings (
+  id TEXT PRIMARY KEY, name TEXT, run_id TEXT, user_id TEXT, input TEXT NOT NULL, tool_calls TEXT NOT NULL,
+  output TEXT NOT NULL, model TEXT, created_at TEXT NOT NULL
+);
+CREATE INDEX idx_recordings_created ON recordings(created_at);
+`,
+  /* 5: proactive — event queue + digest batching (Feature: proactive) */ `
+CREATE TABLE proactive_events (
+  id TEXT PRIMARY KEY, source TEXT NOT NULL, kind TEXT NOT NULL, user_id TEXT, title TEXT, body TEXT,
+  data TEXT, priority REAL NOT NULL DEFAULT 0.5, decision TEXT NOT NULL DEFAULT 'defer',
+  status TEXT NOT NULL DEFAULT 'pending', rule TEXT, created_at TEXT NOT NULL, handled_at TEXT
+);
+CREATE INDEX idx_proactive_status ON proactive_events(status, created_at);
+`,
 ];

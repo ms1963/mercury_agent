@@ -86,6 +86,7 @@ export * from './tools/services.js';
 export * from './tools/types.js';
 export * from './types/common.js';
 export * from './types/messages.js';
+export * from './verification/index.js';
 export * from './voice/voice.js';
 export * from './voice/ports.js';
 export * from './voice/factory.js';
