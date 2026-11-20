@@ -8,6 +8,50 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Economics & routing — spend the least money likely to succeed, with hard per-task budgets
+  and a live cost-vs-value readout.** Builds on the existing model router and budgets subsystem;
+  all config is backward-compatible (new keys default to sensible values).
+  - **Cheapest-model-likely-to-succeed selection with local vs frontier lanes.** Each model
+    profile gains a `lane` (`local` | `frontier` | `default`). The router infers a task's likely
+    difficulty from cheap offline signals (`inferDifficulty`) and picks the cheapest model whose
+    quality tier clears that bar (`selectCheapestSufficient`): routine tasks may use the near-zero-cost
+    local lane, while harder tasks exclude local so real reasoning goes to frontier/default models.
+    Configure under `router.economics` (`enabled`, `localLaneMaxDifficulty`, `qualityMargin`). The
+    route decision now also reports the chosen `lane` and `qualityNeed`.
+  - **Hard per-task budgets with halt/escalate on exceed.** A new `TaskBudgetService` enforces a
+    cost/token ceiling scoped to a single task/run (distinct from the recurring per-user/per-model
+    quotas). The `LLMService` checks the task budget before every model call; exceeding it throws a
+    `TaskBudgetExceededError` and the task is halted or escalated per `budgets.perTask.onExceed`.
+    Configure under `budgets.perTask` (`enabled`, `maxCost`, `maxTokens`, `onExceed`, `projectedSteps`).
+  - **Running cost-vs-value estimate** exposed via `GET /api/tasks` / `GET /api/tasks/:id` and a new
+    card in the **Models & budgets** Web UI panel: cost so far, projected final cost, configured task
+    value, value/cost ratio, budget-used fraction and an over-budget flag.
+- **Governance & security — least-privilege grants, policy-as-code, prompt-injection taint tracking
+  and a replayable audit trail.** Extends the existing permissions, injection-defense and
+  event-stream subsystems; disabled paths stay backward-compatible.
+  - **Least-privilege per-task credential grants (no standing keys).** A new `GrantBroker` issues
+    scoped, time-limited `Grant`s bound to a task; a sensitive capability is denied
+    (`GrantDeniedError`) unless a live grant exists. Grants have a TTL (clamped to
+    `security.grants.maxTtlMs`), optional use caps, and can be revoked individually or per task.
+    Ephemeral credentials are minted against a grant and kept only in memory for its lifetime —
+    never persisted — and vanish the instant the grant expires or is revoked. Tools opt in via a
+    `capability` (and optional `capabilityScope`) declaration. API: `GET/POST /api/grants`,
+    `DELETE /api/grants/:id`.
+  - **Policy-as-code enforced before sensitive actions.** A new `PolicyCodeEngine` evaluates
+    declarative rules (config-driven, with a built-in payment-cap and external-email rule set) that
+    yield `allow` / `deny` / `approve`; the strictest effect wins. The tool executor blocks `deny`
+    and forces an approval gate on `approve` — even in auto mode — before the action runs. Configure
+    under `security.policies` (`builtins`, `paymentApprovalThreshold`, `currency`,
+    `allowedEmailDomains`, custom `rules`). API: `GET /api/policies`, `POST /api/policies/test`.
+  - **Prompt-injection taint tracking of tool outputs.** A new `TaintTracker` marks tool outputs
+    that cross the trust boundary as tainted (scanning them with the existing injection scanner),
+    propagates taint monotonically across a run, and maintains a value-level provenance graph.
+    Policy rules can gate on taint (`whenTainted`) so a sensitive action driven by untrusted content
+    is routed to approval or blocked.
+  - **Replayable audit trail ("why did you do that?").** A new `buildTrace` turns a run's recorded
+    event stream into an ordered, human-readable trace (per-step explanations plus run-level totals:
+    cost, tokens, LLM/tool/decision counts, taint, duration). Exposed via `GET /api/runs/:id/trace`
+    and a new **Governance** Web UI panel that also manages grants and tests policies.
 - **Three new native gateway adapters**, bringing the built-in total to 19:
   - **facebook** — Facebook Messenger, bidirectional. Inbound via the Meta Messenger webhook
     (GET verification handshake + HMAC-verified POSTs, `x-hub-signature-256`), outbound via the

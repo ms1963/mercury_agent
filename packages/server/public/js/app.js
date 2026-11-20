@@ -2,14 +2,14 @@
 import { api, h, loadLocale, safe, setToken, state, t, translate } from './core.js';
 import { renderChat } from './chat.js';
 import { renderMemory, renderRuns, renderSessions, renderSkills, renderTools, renderWorkflows } from './panels-work.js';
-import { renderAccount, renderDebug, renderHelp, renderIntegrations, renderModels, renderReflections, renderScheduler, renderUsers, stopDebug } from './panels-admin.js';
+import { renderAccount, renderDebug, renderGovernance, renderHelp, renderIntegrations, renderModels, renderReflections, renderScheduler, renderUsers, stopDebug } from './panels-admin.js';
 
 const PANELS = {
   chat: renderChat, sessions: renderSessions, runs: renderRuns, workflows: renderWorkflows, memory: renderMemory, skills: renderSkills,
   tools: renderTools, scheduler: renderScheduler, integrations: renderIntegrations, models: renderModels,
-  users: renderUsers, debug: renderDebug, reflections: renderReflections, help: renderHelp, account: renderAccount,
+  governance: renderGovernance, users: renderUsers, debug: renderDebug, reflections: renderReflections, help: renderHelp, account: renderAccount,
 };
-const ADMIN_ONLY = new Set(['users']);
+const ADMIN_ONLY = new Set(['users', 'governance']);
 const $ = (id) => document.getElementById(id);
 
 function go(name) {

@@ -12,6 +12,9 @@ import type { EventBus } from '../events/bus.js';
 import type { Judgment } from '../decision/judgment.js';
 import type { HookManager } from '../plugins/hooks.js';
 import type { AuditLog } from '../security/audit.js';
+import type { PolicyCodeEngine } from '../security/policy-code.js';
+import type { TaintTracker } from '../security/taint.js';
+import type { GrantBroker } from '../auth/grants.js';
 import { redactSecrets } from '../security/redact.js';
 import { scanForInjection, spotlight } from '../security/injection.js';
 import { errorMessage, truncate } from '../types/common.js';
@@ -25,6 +28,8 @@ export interface RunSecurityState {
   untrustedSeen: boolean;
   /** The authenticated user's request (used by the smart approval gate). */
   userRequest: string;
+  /** Sources that tainted this run's context (for the audit trail), newest last. */
+  taintedSources?: string[];
 }
 
 export interface ExecutedTool {
@@ -45,6 +50,12 @@ export class ToolExecutor {
     private judgment: Judgment | undefined,
     private hooks: HookManager | undefined,
     private audit: AuditLog | undefined,
+    /** Policy-as-code engine (declarative rules enforced before sensitive actions). */
+    private codePolicies?: PolicyCodeEngine,
+    /** Least-privilege grant broker (time-limited scoped capabilities, no standing keys). */
+    private grants?: GrantBroker,
+    /** Prompt-injection taint tracker (tool outputs marked/propagated per run). */
+    private taint?: TaintTracker,
   ) {}
 
   async execute(call: ToolCall, ctx: ToolContext, state: RunSecurityState): Promise<ExecutedTool> {
@@ -98,9 +109,14 @@ export class ToolExecutor {
     const untrusted = (tool.untrustedOutput || result.untrusted) && !result.isError;
     if (untrusted) {
       state.untrustedSeen = true;
+      const source = `tool:${tool.name}`;
       const scan = scanForInjection(content);
+      // Taint tracking: record that untrusted content entered this run's context and propagate it.
+      const marked = this.taint?.mark(ctx.runId, source, content);
+      (state.taintedSources ??= []).push(source);
+      this.bus.emit({ type: 'taint.mark', runId: ctx.runId, data: { source, suspicious: marked?.suspicious ?? scan.suspicious, matches: scan.matches } });
       if (scan.suspicious) this.bus.emit({ type: 'guardrail', runId: ctx.runId, data: { layer: 'tool_output', tool: tool.name, injection: scan, blocked: false } });
-      content = spotlight(content, `tool:${tool.name}`);
+      content = spotlight(content, source);
     }
     const durationMs = Date.now() - started;
     const ok = !result.isError;
@@ -109,14 +125,42 @@ export class ToolExecutor {
     return { call: { ...call, arguments: args }, result, modelContent: ok ? content : `Error: ${content}`, ok, durationMs };
   }
 
-  /** Decide whether a call may run, consulting policy, the smart gate and/or a human. */
+  /** Decide whether a call may run, consulting grants, policy-as-code, the smart gate and/or a human. */
   private async approve(tool: AnyTool, args: Record<string, unknown>, ctx: ToolContext, state: RunSecurityState): Promise<{ ok: boolean; reason: string }> {
+    const taintedCtx = state.untrustedSeen || this.taint?.isTainted(ctx.runId) || false;
+
+    // (1) Least-privilege: a tool declaring a capability must hold a live, scoped grant for the
+    // task — the agent holds no standing keys. Absent/expired/revoked grant → hard deny.
+    if (tool.capability && this.grants && this.config.security.grants.enabled) {
+      const scope = tool.capabilityScope?.(args, ctx);
+      if (!this.grants.check(ctx.runId ?? '', tool.capability, scope)) {
+        this.audit?.record(ctx.principal.username, 'grant.denied', tool.name, { capability: tool.capability, scope, runId: ctx.runId });
+        this.bus.emit({ type: 'grant.denied', runId: ctx.runId, data: { tool: tool.name, capability: tool.capability, scope } });
+        return { ok: false, reason: `no valid capability grant for "${tool.capability}"${scope ? ` (scope: ${scope})` : ''}` };
+      }
+    }
+
+    // (2) Policy-as-code: declarative rules evaluated before the action. `deny` blocks outright;
+    // `approve` routes to the gate/human even in auto mode.
+    const verdict =
+      this.codePolicies && this.config.security.policies.enabled ? this.codePolicies.evaluate(tool.name, args, { tainted: taintedCtx }) : undefined;
+    if (verdict?.decision === 'deny') {
+      this.audit?.record(ctx.principal.username, 'policy.deny', tool.name, { rule: verdict.rule?.id, reason: verdict.reason, runId: ctx.runId });
+      this.bus.emit({ type: 'policy.denied', runId: ctx.runId, data: { tool: tool.name, rule: verdict.rule?.id, reason: verdict.reason } });
+      return { ok: false, reason: `blocked by policy${verdict.rule?.id ? ` ${verdict.rule.id}` : ''}: ${verdict.reason}` };
+    }
+
     const reasons: string[] = [];
     if (tool.risk === 'dangerous') reasons.push(`${tool.name} is a dangerous tool`);
     const per = tool.needsApproval?.(args, ctx);
     if (per) reasons.push(typeof per === 'string' ? per : `${tool.name} requires approval for these arguments`);
-    const untrustedDerived = state.untrustedSeen && !!tool.sensitive;
+    const untrustedDerived = taintedCtx && !!tool.sensitive;
     if (untrustedDerived) reasons.push('the context contains untrusted content and this tool acts on the outside world');
+    const policyApprove = verdict?.decision === 'approve';
+    if (policyApprove) {
+      reasons.push(`policy${verdict!.rule?.id ? ` ${verdict!.rule.id}` : ''} requires approval: ${verdict!.reason}`);
+      this.bus.emit({ type: 'policy.approval', runId: ctx.runId, data: { tool: tool.name, rule: verdict!.rule?.id, reason: verdict!.reason } });
+    }
     if (!reasons.length) return { ok: true, reason: 'not required' };
 
     const mode = this.config.tools.approvals.mode;
@@ -124,13 +168,13 @@ export class ToolExecutor {
     if (mode === 'deny') return { ok: false, reason: `approval required (${reason}) and approvals.mode=deny` };
 
     const gate = async () =>
-      this.judgment?.gateToolCall({ tool: tool.name, args, userRequest: state.userRequest, risk: tool.risk, untrustedContext: state.untrustedSeen }, ctx.runId) ?? { approve: false, probability: 0 };
+      this.judgment?.gateToolCall({ tool: tool.name, args, userRequest: state.userRequest, risk: tool.risk, untrustedContext: taintedCtx }, ctx.runId) ?? { approve: false, probability: 0 };
 
     if (mode === 'auto') {
-      // Auto mode never lets untrusted content alone drive a sensitive action: the gate must agree.
-      if (!untrustedDerived) return { ok: true, reason: 'auto-approved' };
+      // Auto mode never lets untrusted content or a policy-approve call proceed unchecked: the gate must agree.
+      if (!untrustedDerived && !policyApprove) return { ok: true, reason: 'auto-approved' };
       const g = await gate();
-      return g.approve ? { ok: true, reason: `gate approved (p=${g.probability})` } : { ok: false, reason: `untrusted-derived call rejected by gate (p=${g.probability})` };
+      return g.approve ? { ok: true, reason: `gate approved (p=${g.probability})` } : { ok: false, reason: `approval-required call rejected by gate (p=${g.probability})` };
     }
     if (mode === 'smart') {
       const g = await gate();

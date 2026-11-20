@@ -30,6 +30,14 @@ const ModelProfileSchema = z.object({
   vision: z.boolean().default(false),
   audio: z.boolean().default(false),
   json: z.boolean().default(true),
+  /**
+   * Economic lane for cost-aware routing:
+   *  - 'local'    — routine/cheap work on a self-hosted lane (e.g. a DGX Spark cluster
+   *                 endpoint), treated as near-zero marginal cost.
+   *  - 'frontier' — hard reasoning on a premium hosted model.
+   *  - 'default'  — unclassified; eligible for any task (backward-compatible default).
+   */
+  lane: z.enum(['local', 'frontier', 'default']).default('default'),
   enabled: z.boolean().default(true),
 });
 
@@ -133,6 +141,28 @@ export const ConfigSchema = z.object({
       fallback: z.array(z.string()).default([]),
       useDecisions: z.boolean().default(true),
       topK: z.number().default(3),
+      /**
+       * Cost-aware, lane-based selection: pick the CHEAPEST enabled model whose quality
+       * tier is sufficient for the task's estimated difficulty. Routine work stays on the
+       * cheap/local lane; only hard-reasoning tasks escalate to frontier models. Fully
+       * backward-compatible — disable to fall back to the pure weighted score.
+       */
+      economics: z
+        .object({
+          enabled: z.boolean().default(true),
+          /**
+           * A task whose estimated quality-need is at or below this threshold is "routine"
+           * and may be served by the local lane; above it the task needs harder reasoning
+           * and the local lane is excluded in favour of frontier/default models.
+           */
+          localLaneMaxDifficulty: z.number().min(0).max(1).default(0.55),
+          /**
+           * Minimum quality headroom a candidate must have over the estimated need to be
+           * considered "likely to succeed" (guards against picking a just-barely model).
+           */
+          qualityMargin: z.number().min(0).max(1).default(0),
+        })
+        .prefault({}),
     })
     .prefault({}),
 
@@ -141,6 +171,25 @@ export const ConfigSchema = z.object({
       enabled: z.boolean().default(true),
       adminBypass: z.boolean().default(true),
       rules: z.array(BudgetRuleSchema).default([]),
+      /**
+       * Hard PER-TASK budgets (distinct from the per-user/period rules above). A single
+       * task/run may accumulate at most this much cost and/or tokens; when the cap would be
+       * exceeded the task is halted/escalated instead of silently continuing. Caps left
+       * undefined mean "no per-task cap" (backward-compatible default).
+       */
+      perTask: z
+        .object({
+          enabled: z.boolean().default(true),
+          /** Max USD a single task may spend. Undefined → unlimited. */
+          maxCost: z.number().positive().optional(),
+          /** Max tokens a single task may consume. Undefined → unlimited. */
+          maxTokens: z.number().positive().optional(),
+          /** When a cap is exceeded: 'escalate' (emit + mark escalated) or 'halt' (just stop). */
+          onExceed: z.enum(['escalate', 'halt']).default('escalate'),
+          /** Assumed steps-to-completion used to project a running task's total cost. */
+          projectedSteps: z.number().int().positive().default(6),
+        })
+        .prefault({}),
     })
     .prefault({}),
 
@@ -328,6 +377,58 @@ export const ConfigSchema = z.object({
       redactSecrets: z.boolean().default(true),
       redactPiiInOutput: z.boolean().default(false),
       audit: z.boolean().default(true),
+      /**
+       * Least-privilege capability/credential broker. The agent never holds standing keys:
+       * a sensitive action must hold a scoped, time-limited grant (issued per task, expiring
+       * after `defaultTtlMs`) or it is denied. Disable only for trusted single-user setups.
+       */
+      grants: z
+        .object({
+          enabled: z.boolean().default(true),
+          /** Default grant lifetime in ms when a caller does not specify one. */
+          defaultTtlMs: z.number().int().positive().default(5 * 60_000),
+          /** Hard upper bound on any requested TTL (clamped). */
+          maxTtlMs: z.number().int().positive().default(60 * 60_000),
+        })
+        .prefault({}),
+      /**
+       * Policy-as-code. Declarative rules are evaluated BEFORE sensitive tool actions and can
+       * allow, deny or route an action to human approval (e.g. "no payments over €100 without
+       * approval", "never email external domains"). A small built-in rule set is enabled by
+       * default; add/override rules here without code changes.
+       */
+      policies: z
+        .object({
+          enabled: z.boolean().default(true),
+          /** Load the built-in payment-cap + external-email rules. */
+          builtins: z.boolean().default(true),
+          /** Max payment/charge amount (in `currency`) allowed without an approval, for the built-in rule. */
+          paymentApprovalThreshold: z.number().nonnegative().default(100),
+          currency: z.string().default('EUR'),
+          /** Domains that email/send tools may target without approval (built-in external-email rule). */
+          allowedEmailDomains: z.array(z.string()).default([]),
+          /** Extra declarative rules. Evaluated in order; first matching non-allow effect wins. */
+          rules: z
+            .array(
+              z.object({
+                id: z.string(),
+                description: z.string().default(''),
+                /** Tool-name glob this rule applies to (e.g. "pay*", "*", "email_send"). */
+                tool: z.string().default('*'),
+                effect: z.enum(['allow', 'deny', 'approve']).default('approve'),
+                /** Numeric arg + ceiling: trigger when `args[field] > max`. */
+                maxAmountField: z.string().optional(),
+                maxAmount: z.number().optional(),
+                /** String arg that must match one of `allowedValues` (glob) or the rule triggers. */
+                field: z.string().optional(),
+                allowedValues: z.array(z.string()).optional(),
+                /** Trigger only when the acting context is tainted by untrusted content. */
+                whenTainted: z.boolean().default(false),
+              }),
+            )
+            .default([]),
+        })
+        .prefault({}),
     })
     .prefault({}),
 

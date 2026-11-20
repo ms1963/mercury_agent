@@ -4,7 +4,7 @@
  * observability/debug, help, i18n and settings.
  */
 import type { FastifyInstance } from 'fastify';
-import { installSkills, insights, redactDeep, setConfigValue, type MercuryEvent } from '@mercury/core';
+import { installSkills, insights, redactDeep, setConfigValue, buildTrace, type MercuryEvent } from '@mercury/core';
 import { directToolContext } from '@mercury/runtime';
 import { HttpError, type Ctx } from '../http.js';
 
@@ -168,6 +168,19 @@ export function registerManageRoutes(app: FastifyInstance, { m, auth, sse }: Ctx
   app.post('/api/budgets', async (req) => (auth(req, 'budgets.manage'), m.budgets.setBudget(req.body as never)));
   app.delete('/api/budgets/:id', async (req) => (auth(req, 'budgets.manage'), m.budgets.deleteBudget(param(req)), { ok: true }));
 
+  // ---- per-task economics: hard budgets + running cost-vs-value estimate --------
+  app.get('/api/tasks', async (req) => {
+    auth(req);
+    const tasks = m.taskBudgets.all().map((t) => ({ ...t, costVsValue: m.taskBudgets.costVsValue(t.taskId) }));
+    return { config: m.config.budgets.perTask, economics: m.config.router.economics, active: tasks.filter((t) => t.state === 'active'), tasks };
+  });
+  app.get('/api/tasks/:id', async (req) => {
+    auth(req);
+    const budget = m.taskBudgets.get(param(req));
+    if (!budget) throw new HttpError(404, 'task not found');
+    return { budget, costVsValue: m.taskBudgets.costVsValue(param(req)) };
+  });
+
   // ---- reflections & decisions (Jev) ---------------------------------------------
   app.get('/api/reflections', async (req) => {
     const p = auth(req);
@@ -223,6 +236,50 @@ export function registerManageRoutes(app: FastifyInstance, { m, auth, sse }: Ctx
       offset: num(q.offset),
     });
     return { entries, total, integrity: m.audit.verify() };
+  });
+
+  // ---- replayable audit trail: full ordered "why did you do that?" trace per run -----
+  app.get('/api/runs/:id/trace', async (req) => {
+    const p = auth(req);
+    const events = m.recorder.replay(param(req));
+    if (p.role !== 'admin' && events.some((e) => e.userId && e.userId !== p.userId)) throw new HttpError(404, 'run not found');
+    return buildTrace(events, param(req));
+  });
+
+  // ---- governance: least-privilege capability grants (time-limited, no standing keys) ----
+  app.get('/api/grants', async (req) => {
+    auth(req, 'audit.read');
+    const taskId = (req.query as Body).taskId as string | undefined;
+    return { enabled: m.config.security.grants.enabled, config: m.config.security.grants, grants: m.grants.list(taskId) };
+  });
+  app.post('/api/grants', async (req) => {
+    const p = auth(req, 'config.manage');
+    const b = req.body as Body;
+    if (!b.capability || !b.taskId) throw new HttpError(400, 'capability and taskId are required');
+    return m.grants.issue({
+      capability: String(b.capability),
+      taskId: String(b.taskId),
+      scope: b.scope ? String(b.scope) : undefined,
+      grantedBy: p.username,
+      ttlMs: b.ttlMs === undefined ? undefined : Number(b.ttlMs),
+      maxUses: b.maxUses === undefined ? undefined : Number(b.maxUses),
+    });
+  });
+  app.delete('/api/grants/:id', async (req) => {
+    const p = auth(req, 'config.manage');
+    return { revoked: m.grants.revoke(param(req), p.username) };
+  });
+
+  // ---- governance: policy-as-code (declarative rules before sensitive actions) --------
+  app.get('/api/policies', async (req) => {
+    auth(req, 'audit.read');
+    return { enabled: m.config.security.policies.enabled, config: m.config.security.policies, rules: m.codePolicies.list() };
+  });
+  app.post('/api/policies/test', async (req) => {
+    auth(req, 'audit.read');
+    const b = req.body as Body;
+    if (!b.tool) throw new HttpError(400, 'tool is required');
+    return m.codePolicies.evaluate(String(b.tool), (b.args as Body) ?? {}, { tainted: Boolean(b.tainted) });
   });
 
   // ---- help, i18n, settings ---------------------------------------------------------

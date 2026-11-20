@@ -182,6 +182,14 @@ Every arrow above emits an event (`run.start`, `llm.request`, `llm.delta`, `llm.
   (quality, cost, latency) > optional Jev choice among top-k > fallback chain on errors.
 * `BudgetService`: per user × model × period (daily/monthly) limits on tokens and cost,
   checked before (estimate) and after (actual) each call, admin override, usage ledger.
+* **Economics & routing** (`router.economics`, `core/src/budgets/task-budgets.ts`): each model
+  profile carries a `lane` (`local` | `frontier` | `default`); `inferDifficulty` scores a task
+  from cheap offline signals and `selectCheapestSufficient` picks the cheapest model whose quality
+  tier clears that bar (routine tasks stay on the near-zero-cost local lane, harder tasks exclude
+  local). `TaskBudgetService` enforces a cost/token ceiling scoped to one task/run, checked by the
+  `LLMService` before every call — exceeding it throws `TaskBudgetExceededError` and the task is
+  halted or escalated (`budgets.perTask.onExceed`). A running **cost-vs-value** estimate is exposed
+  via `GET /api/tasks`. The `RouteDecision` now also reports `lane` and `qualityNeed`.
 
 ### 5.4 Memory (`core/src/memory`)
 | Kind | Implementation |
@@ -208,9 +216,12 @@ installable from a folder or git URL, created autonomously by reflection and ref
 ### 5.6 Tools (`core/src/tools`, `packages/tools`, `packages/mcp`)
 * `Tool` = name, toolset, description, zod/JSON schema, `risk` (`safe|moderate|dangerous`),
   `untrustedOutput` flag, `execute(args, ctx)`.
-* `ToolExecutor` pipeline: policy (RBAC/ABAC) → trust check (untrusted-derived calls) →
-  Jev/LLM gate → approval → `before_tool_call` hooks → checkpoint → execute with timeout →
-  redaction → spotlighting → `after_tool_call` hooks → audit.
+* `ToolExecutor` pipeline: policy (RBAC/ABAC) → **policy-as-code** (`PolicyCodeEngine`:
+  `allow`/`deny`/`approve`, strictest wins) → **grant check** (`GrantBroker`: least-privilege,
+  time-limited, no standing keys) → trust check (untrusted-derived calls) → Jev/LLM gate →
+  approval → `before_tool_call` hooks → checkpoint → execute with timeout → redaction →
+  spotlighting → **taint tracking** of untrusted output (`TaintTracker`) → `after_tool_call`
+  hooks → audit (replayable via `buildTrace`). See 5.13 and [SECURITY.md](SECURITY.md).
 * Toolsets can be enabled/disabled globally and per platform (`cli`, `web`, `telegram`, …).
 * Polyglot tools: any executable with a `tool.json` manifest speaking JSON over stdio.
 * MCP client tools are namespaced `mcp__<server>__<tool>` and filtered per server.
@@ -261,6 +272,22 @@ min, allow-lists intersected) so a profile can only further-restrict, never esca
 `mercury addin list|scaffold`, `mercury perms list|show`. See [ADDINS.md](ADDINS.md) and
 [PERMISSIONS.md](PERMISSIONS.md).
 
+### 5.13 Governance & security (`core/src/auth/grants.ts`, `core/src/security/{policy-code,taint}.ts`, `core/src/events/replay.ts`)
+Four governance layers in front of sensitive actions, all config-driven and backward-compatible:
+* **`GrantBroker`** — least-privilege, time-limited credential grants bound to a task (no standing
+  keys). Ephemeral credentials are minted in memory against a grant and never persisted; capability
+  checks deny with `GrantDeniedError` when no live grant exists. Config `security.grants`.
+* **`PolicyCodeEngine`** — declarative policy-as-code (`allow`/`deny`/`approve`, strictest wins) with
+  a built-in payment-cap + external-email rule set, evaluated before sensitive tool actions. Config
+  `security.policies`.
+* **`TaintTracker`** — marks tool outputs crossing the trust boundary as tainted, propagates taint
+  monotonically across a run, and keeps a value-level provenance graph; policy rules gate on
+  `whenTainted`.
+* **`buildTrace`** — turns a run's event stream into an ordered, replayable audit trace (per-step
+  explanations + run totals). Exposed via `GET /api/runs/:id/trace` and the Governance panel.
+
+See [SECURITY.md](SECURITY.md).
+
 ---
 
 ## 6. Extension points
@@ -294,7 +321,10 @@ external content is spotlighted inside `<untrusted_content>` markers with an ins
 hierarchy in the system prompt; sensitive tools derived from untrusted content require approval;
 terminal commands pass dangerous-pattern detection and approval; file tools are jailed; web tools
 are SSRF-protected; secrets are redacted from logs/outputs; an append-only hash-chained audit
-log records security-relevant actions. Full threat model: [SECURITY.md](SECURITY.md).
+log records security-relevant actions. Governance adds least-privilege time-limited credential
+**grants** (no standing keys), **policy-as-code** (`allow`/`deny`/`approve`, strictest wins) before
+sensitive actions, **taint tracking** of untrusted tool output, and a **replayable audit trail**
+(§5.13). Full threat model: [SECURITY.md](SECURITY.md).
 
 ---
 

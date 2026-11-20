@@ -114,6 +114,7 @@ export function normalizeProfile(p: Partial<ModelProfile> & { id: string }): Mod
     vision: false,
     audio: false,
     json: true,
+    lane: 'default',
     enabled: true,
     ...p,
   };

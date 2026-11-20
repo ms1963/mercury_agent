@@ -9,7 +9,7 @@
   "nav": {
     "chat": "Chat", "sessions": "Sessions", "runs": "Runs", "workflows": "Workflows", "memory": "Memory",
     "skills": "Skills", "tools": "Tools & MCP", "scheduler": "Scheduler", "integrations": "Integrations",
-    "models": "Models & budgets", "users": "Users", "debug": "Observability", "reflections": "Reflections",
+    "models": "Models & budgets", "governance": "Governance", "users": "Users", "debug": "Observability", "reflections": "Reflections",
     "help": "Help", "account": "Account & tokens"
   },
   "chat": {
@@ -33,7 +33,11 @@
   "tools": { "title": "Tools", "toolsets": "Toolsets", "mcpServers": "MCP servers", "connect": "Connect", "command": "Command", "url": "URL", "args": "Arguments (JSON)", "risk": "Risk" },
   "scheduler": { "title": "Scheduled tasks", "when": "When (e.g. \"every weekday at 9am\" or cron)", "task": "Task", "history": "History", "runNow": "Run now", "next": "Next run" },
   "integrations": { "title": "Integrations", "adapters": "Platform adapters", "pairing": "Pending pairing codes", "pairCode": "Pair a code", "review": "Human review queue", "respond": "Respond", "dismiss": "Dismiss", "identities": "Linked chat identities" },
-  "models": { "title": "Models, router & budgets", "default": "Default model", "providers": "Providers", "route": "Test router", "budgets": "Budgets", "usage": "Usage (30 days)", "decisions": "Jev decisions", "calibration": "Calibration", "tryDecision": "Try a decision" },
+  "models": { "title": "Models, router & budgets", "default": "Default model", "providers": "Providers", "route": "Test router", "budgets": "Budgets", "usage": "Usage (30 days)", "decisions": "Jev decisions", "calibration": "Calibration", "tryDecision": "Try a decision",
+    "lane": "Lane", "lanes": "Lanes", "economics": "Economics — per-task budgets & cost-vs-value", "task": "Task/Run", "cost": "Cost $", "projected": "Projected $", "value": "Value $", "valueRatio": "Value/Cost", "budgetUsed": "Budget used", "overBudget": "Over budget" },
+  "governance": { "title": "Governance & security", "grants": "Capability grants", "grantsIntro": "Least-privilege, time-limited grants — no standing keys.", "capability": "Capability", "taskId": "Task/run id", "scope": "Scope", "issue": "Issue grant", "granted": "Grant issued", "needCapTask": "capability and task id are required",
+    "policies": "Policy-as-code", "policiesIntro": "Declarative rules evaluated before sensitive actions. Strictest effect wins (deny > approve > allow).", "tool": "Tool", "args": "Args (JSON)", "effect": "Effect", "whenTainted": "Tainted only", "testPolicy": "Test a policy decision", "decision": "Decision", "badJson": "args must be valid JSON",
+    "trace": "Replayable audit trail", "traceIntro": "Replay an ordered, human-readable trace of a run to answer \"why did you do that?\".", "runId": "Run id", "replay": "Replay", "category": "Category", "step": "Step" },
   "users": { "title": "Users", "role": "Role", "disabled": "Disabled", "add": "Add user" },
   "debug": { "title": "Observability & debugging", "paused": "Paused runs", "breakpoints": "Breakpoints", "audit": "Audit log", "metrics": "Prometheus metrics", "continue": "Continue", "abort": "Abort" },
   "reflections": { "title": "Reflections", "lessons": "Lessons", "score": "Score" },

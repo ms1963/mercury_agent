@@ -62,6 +62,29 @@ export class NotFoundError extends MercuryError {
   }
 }
 
+/**
+ * A per-task hard budget (cost and/or tokens) was exceeded. Unlike
+ * {@link BudgetExceededError} (per user/model/period), this halts/escalates the
+ * specific running task rather than a recurring quota. Carries the offending task id.
+ */
+export class TaskBudgetExceededError extends BudgetExceededError {
+  constructor(message: string, readonly taskId: string) {
+    super(message);
+    this.name = 'TaskBudgetExceededError';
+  }
+}
+
+/**
+ * A sensitive action needed a capability grant that was absent, expired or revoked,
+ * or was blocked by policy-as-code. Distinct from {@link PermissionDeniedError}
+ * (static RBAC/ABAC): this is a dynamic, time-limited/least-privilege denial.
+ */
+export class GrantDeniedError extends MercuryError {
+  constructor(message: string) {
+    super(message, 'grant_denied', 'security', 403);
+  }
+}
+
 export function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }

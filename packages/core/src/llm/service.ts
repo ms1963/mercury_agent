@@ -6,6 +6,7 @@
 import type { MercuryConfig } from '../config/schema.js';
 import type { BudgetService } from '../budgets/budgets.js';
 import { costOf } from '../budgets/budgets.js';
+import type { TaskBudgetService } from '../budgets/task-budgets.js';
 import type { PolicyEngine } from '../auth/policy.js';
 import type { EventBus } from '../events/bus.js';
 import type { ModelRouter, RouteDecision } from '../router/router.js';
@@ -56,6 +57,8 @@ export class LLMService {
     private policy: PolicyEngine,
     private bus: EventBus,
     private hooks?: HookManager,
+    /** Optional per-task hard budgets; when present, over-budget tasks are halted/escalated. */
+    private taskBudgets?: TaskBudgetService,
   ) {}
 
   /** One circuit breaker per model id (lazily created). */
@@ -120,6 +123,10 @@ export class LLMService {
     const caps = this.registry.capabilities(modelId);
     const estimate = call.messages.reduce((n, m) => n + estimateTokens(m.content), 0) + (call.maxTokens ?? 512);
     this.budgets.check(call.principal, modelId, estimate, call.budgetOverride);
+    // Per-task hard budget: stop a task before it spends past its cap (throws to halt/escalate).
+    const profile = this.registry.profile(modelId);
+    const estimatedCost = costOf(profile, { inputTokens: estimate, outputTokens: 0 });
+    this.taskBudgets?.check(call.runId, estimatedCost, estimate, call.budgetOverride);
 
     const textMode = !!call.tools?.length && !caps.tools && this.config.agent.textReactFallback;
     let messages = textMode ? toTextReact(call.messages, call.tools!) : call.messages;
@@ -184,6 +191,8 @@ export class LLMService {
     const durationMs = Date.now() - started;
     const cost = costOf(this.registry.profile(modelId), res.usage);
     this.budgets.record(call.principal.userId, modelId, res.usage, cost, call.kind ?? 'chat', call.runId);
+    // Per-task running cost ledger (single source of truth; the bus `llm.response` hook is not used).
+    this.taskBudgets?.record(call.runId, cost, res.usage.inputTokens, res.usage.outputTokens);
     this.bus.emit({
       type: 'llm.response',
       runId: call.runId,

@@ -62,6 +62,14 @@ export interface Tool<A = Record<string, unknown>> {
   untrustedOutput?: boolean;
   /** Acts on the outside world (writes, sends, executes). Gated when context is untrusted. */
   sensitive?: boolean;
+  /**
+   * Least-privilege capability this tool requires. When set (and the grant broker is enabled),
+   * the call is DENIED unless the running task holds a live, scoped grant for this capability —
+   * the agent never holds standing keys. Optional derivation of the scope value from the call's
+   * arguments (e.g. the target domain/account) to match a narrowly-scoped grant.
+   */
+  capability?: string;
+  capabilityScope?: (args: A, ctx: ToolContext) => string | undefined;
   /** Return a reason string (or true) when this specific call needs approval. */
   needsApproval?: (args: A, ctx: ToolContext) => string | boolean | undefined;
   timeoutMs?: number;

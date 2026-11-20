@@ -52,6 +52,34 @@ Implemented in `packages/core/src/agent/guardrails.ts` and `packages/core/src/se
 These layers reduce risk; they cannot guarantee it. No LLM-based system is immune to prompt
 injection. Keep approvals on `manual` when the agent reads untrusted content and can act on it.
 
+## Governance: least-privilege grants, policy-as-code and taint tracking
+
+Three governance layers sit in front of sensitive tool actions (all config-driven and
+backward-compatible — new keys default to safe values).
+
+- **Least-privilege per-task credential grants (no standing keys).** `GrantBroker`
+  (`core/src/auth/grants.ts`) issues scoped, time-limited `Grant`s bound to a single task/run.
+  A tool that declares a `capability` (and optional `capabilityScope`) is denied
+  (`GrantDeniedError`) unless a live grant exists. Grants have a TTL (clamped to
+  `security.grants.maxTtlMs`, default 1 h; default TTL `security.grants.defaultTtlMs`, 5 min) and
+  optional use caps, and can be revoked individually or per task. Ephemeral credentials are
+  **minted in memory against a grant and never persisted**, and vanish the instant the grant
+  expires or is revoked. API: `GET/POST /api/grants`, `DELETE /api/grants/:id` (writes require
+  `config.manage`; reads require `audit.read`).
+- **Policy-as-code enforced before sensitive actions.** `PolicyCodeEngine`
+  (`core/src/security/policy-code.ts`) evaluates declarative rules that yield `allow` / `deny` /
+  `approve`; the **strictest effect wins** (deny > approve > allow; an explicit allow
+  short-circuits). The tool executor blocks `deny` and forces an approval gate on `approve` —
+  even in `auto` mode — before the action runs. A built-in rule set (enabled by
+  `security.policies.builtins`) enforces a payment cap (`paymentApprovalThreshold`, `currency`,
+  default €100) and an external-email rule (`allowedEmailDomains`); add your own under
+  `security.policies.rules`. API: `GET /api/policies`, `POST /api/policies/test`.
+- **Prompt-injection taint tracking of tool outputs.** `TaintTracker`
+  (`core/src/security/taint.ts`) marks tool outputs that cross the trust boundary as *tainted*
+  (scanning them with the existing injection scanner), propagates taint monotonically across a run,
+  and maintains a value-level provenance graph. Policy rules can gate on taint (`whenTainted`) so a
+  sensitive action driven by untrusted content is routed to approval or blocked.
+
 ## Tool sandboxing
 
 - **Path jail** (`tools.jail.roots`): file tools are confined to the configured roots plus the
@@ -97,6 +125,11 @@ injection. Keep approvals on `manual` when the agent reads untrusted content and
   `GET /api/audit?...` route and the `mercury audit [list|verify]` CLI command.
 - Every run records an event trace (LLM calls, tool calls, decisions, guardrail verdicts),
   viewable in the debug panel or with `mercury replay <runId>`.
+- **Replayable audit trail ("why did you do that?").** `buildTrace` (`core/src/events/replay.ts`)
+  turns a run's recorded event stream into an ordered, human-readable trace — per-step explanations
+  plus run-level totals (cost, tokens, LLM/tool/decision counts, taint, duration). Exposed over
+  `GET /api/runs/:id/trace` and the **Governance** Web UI panel, which also manages grants and
+  tests policies.
 
 ## Deployment checklist
 

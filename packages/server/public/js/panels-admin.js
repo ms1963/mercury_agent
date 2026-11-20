@@ -81,16 +81,38 @@ export const renderIntegrations = (view) => panel(view, t('integrations.title'),
   ];
 });
 
+const laneBadge = (lane) => h(`span.badge.${lane === 'local' ? 'on' : lane === 'frontier' ? 'off' : ''}`, {}, lane || 'default');
+
 export const renderModels = (view) => panel(view, t('models.title'), async (reload) => {
-  const [m, b, d] = await Promise.all([api('/api/models'), api('/api/budgets'), api('/api/decisions')]);
+  const [m, b, d, tasks] = await Promise.all([api('/api/models'), api('/api/budgets'), api('/api/decisions'), api('/api/tasks').catch(() => null)]);
   const task = field(t('models.route'), { className: 'grow' });
   const routeOut = h('div');
   const budget = { user: field('user id or *', { value: '*' }), model: field('model or *', { value: '*' }), period: h('select', {}, h('option', {}, 'daily'), h('option', {}, 'monthly')), maxCost: field('max cost $', { type: 'number', step: '0.01' }), maxTokens: field('max tokens', { type: 'number' }) };
   const state = field('state (text)', { className: 'grow' });
   const tryOut = h('div');
+  // Economics: per-task hard budgets + running cost-vs-value estimate.
+  const econCard = () => {
+    if (!tasks) return null;
+    const cv = (t2) => t2.costVsValue || {};
+    const econ = tasks.economics || {};
+    const perTask = tasks.config || {};
+    return card(t('models.economics', 'Economics — per-task budgets & cost-vs-value'),
+      h('p.small.muted', {}, `${t('models.lanes', 'Lanes')}: ${econ.enabled ? 'enabled' : 'disabled'} · local ≤ difficulty ${econ.localLaneMaxDifficulty ?? ''} · quality margin ${econ.qualityMargin ?? 0} · per-task: ${perTask.enabled ? `on-exceed ${perTask.onExceed}` : 'off'}${perTask.maxCost ? ` · max $${perTask.maxCost}` : ''}`),
+      table(tasks.tasks, [
+        [t('models.task', 'Task/Run'), (x) => h('code', {}, x.taskId)],
+        [t('common.status'), (x) => badge(x.state === 'active' || x.state === 'completed', x.state, x.state)],
+        [t('models.cost', 'Cost $'), (x) => Number(cv(x).costSoFar ?? x.cost ?? 0).toFixed(4)],
+        [t('models.projected', 'Projected $'), (x) => (cv(x).projectedCost ?? '') !== '' ? Number(cv(x).projectedCost).toFixed(4) : ''],
+        [t('models.value', 'Value $'), (x) => cv(x).valueEstimate ?? ''],
+        [t('models.valueRatio', 'Value/Cost'), (x) => (cv(x).valueRatio ?? '') !== '' ? String(cv(x).valueRatio) : ''],
+        [t('models.budgetUsed', 'Budget used'), (x) => (cv(x).budgetUsedFraction ?? '') !== '' ? `${Math.round(cv(x).budgetUsedFraction * 100)}%` : ''],
+        [t('models.overBudget', 'Over budget'), (x) => badge(!cv(x).overBudget, 'ok', 'over')],
+      ]));
+  };
   return [
     card(t('models.default'), h('p', {}, h('code', {}, m.defaultModel), ` · ${t('models.providers')}: ${m.providers.join(', ')}`),
-      table(m.profiles, [['Model', (p) => h('code', {}, p.id)], ['Quality', (p) => p.quality], ['Tags', (p) => p.tags.join(', ')], ['Context', (p) => p.contextWindow], ['$ in/out per 1M', (p) => `${p.costPer1MInput} / ${p.costPer1MOutput}`], [t('common.status'), (p) => badge(p.enabled)]])),
+      table(m.profiles, [['Model', (p) => h('code', {}, p.id)], ['Quality', (p) => p.quality], [t('models.lane', 'Lane'), (p) => laneBadge(p.lane)], ['Tags', (p) => p.tags.join(', ')], ['Context', (p) => p.contextWindow], ['$ in/out per 1M', (p) => `${p.costPer1MInput} / ${p.costPer1MOutput}`], [t('common.status'), (p) => badge(p.enabled)]])),
+    econCard(),
     card(t('models.route'), h('div.row', {}, task, h('button.primary', { onclick: safe(async () => routeOut.replaceChildren(json(await api('/api/models/route', { body: { task: task.value } })))) }, t('common.run'))), routeOut),
     card(t('models.budgets'), table(b.rules, [['User', (r) => r.user], ['Model', (r) => r.model], ['Period', (r) => r.period], ['Max $', (r) => r.maxCost ?? ''], ['Max tokens', (r) => r.maxTokens ?? ''],
       ['', (r) => (String(r.id).startsWith('config_') ? h('span.small.muted', {}, 'config') : h('button.danger', { onclick: safe(async () => (await api(`/api/budgets/${r.id}`, { method: 'DELETE' }), reload())) }, '×'))]]),
@@ -177,4 +199,78 @@ export const renderAccount = (view) => panel(view, t('account.title'), async (re
         shown.replaceChildren(h('p', {}, t('account.tokenShown')), json(r.token));
       }) }, t('common.create'))), scopes, shown),
   ];
+});
+
+
+
+/**
+ * Governance & security: time-limited capability grants, policy-as-code, and the replayable
+ * audit trail ("why did you do that?"). Reads are available to audit.read holders; issuing and
+ * revoking grants require config.manage (admin).
+ */
+export const renderGovernance = (view) => panel(view, t('governance.title', 'Governance & security'), async (reload) => {
+  const [g, pol] = await Promise.all([api('/api/grants').catch(() => null), api('/api/policies').catch(() => null)]);
+  const decisionBadge = (dec) => h(`span.badge.${dec === 'allow' ? 'on' : 'off'}`, {}, dec);
+
+  // ---- capability grants ----
+  const gi = { capability: field(t('governance.capability', 'capability (e.g. payment.charge)')), taskId: field(t('governance.taskId', 'task/run id')), scope: field(t('governance.scope', 'scope (optional)')), ttlMs: field('ttl ms', { type: 'number' }), maxUses: field('max uses', { type: 'number' }) };
+  const grantsCard = g ? card(t('governance.grants', 'Capability grants'),
+    h('p.small.muted', {}, `${t('governance.grantsIntro', 'Least-privilege, time-limited grants — no standing keys.')} ${g.enabled ? '' : '(disabled)'} · default TTL ${g.config?.defaultTtlMs ?? ''}ms · max TTL ${g.config?.maxTtlMs ?? ''}ms`),
+    table(g.grants, [
+      [t('governance.capability', 'Capability'), (x) => h('code', {}, x.capability)],
+      [t('governance.taskId', 'Task'), (x) => h('span.small', {}, x.taskId)],
+      [t('governance.scope', 'Scope'), (x) => x.scope || '*'],
+      ['Uses', (x) => `${x.uses}${x.maxUses != null ? '/' + x.maxUses : ''}`],
+      ['Expires', (x) => when(new Date(x.expiresAt).toISOString())],
+      [t('common.status'), (x) => badge(x.active, 'active', x.revoked ? 'revoked' : 'expired')],
+      ['', (x) => isAdmin() && x.active ? h('button.danger', { onclick: safe(async () => (await api(`/api/grants/${x.id}`, { method: 'DELETE' }), toast(t('common.saved')), reload())) }, '×') : null],
+    ]),
+    isAdmin() ? h('div.row', {}, ...Object.values(gi), h('button.primary', { onclick: safe(async () => {
+      if (!gi.capability.value || !gi.taskId.value) return toast(t('governance.needCapTask', 'capability and task id are required'), true);
+      await api('/api/grants', { body: { capability: gi.capability.value, taskId: gi.taskId.value, scope: gi.scope.value || undefined, ttlMs: gi.ttlMs.value ? Number(gi.ttlMs.value) : undefined, maxUses: gi.maxUses.value ? Number(gi.maxUses.value) : undefined } });
+      toast(t('governance.granted', 'Grant issued'));
+      await reload();
+    }) }, t('governance.issue', 'Issue grant'))) : null) : null;
+
+  // ---- policy-as-code ----
+  const pt = { tool: field(t('governance.tool', 'tool name'), { className: 'grow' }), args: field(t('governance.args', 'args JSON e.g. {"amount":250}'), { className: 'grow' }), tainted: h('label.small', {}, h('input', { type: 'checkbox' }), ' tainted') };
+  const ptOut = h('div');
+  const policiesCard = pol ? card(t('governance.policies', 'Policy-as-code'),
+    h('p.small.muted', {}, t('governance.policiesIntro', 'Declarative rules evaluated before sensitive actions. Strictest effect wins (deny > approve > allow).') + ` ${pol.enabled ? '' : '(disabled)'}`),
+    table(pol.rules, [
+      ['Id', (r) => h('code', {}, r.id)],
+      [t('common.description'), (r) => h('span.small', {}, r.description)],
+      [t('governance.tool', 'Tool'), (r) => h('code', {}, r.tool)],
+      [t('governance.effect', 'Effect'), (r) => decisionBadge(r.effect)],
+      [t('governance.whenTainted', 'Tainted only'), (r) => r.whenTainted ? '✓' : ''],
+    ]),
+    h('h4', {}, t('governance.testPolicy', 'Test a policy decision')),
+    h('div.row', {}, pt.tool, pt.args, pt.tainted, h('button.primary', { onclick: safe(async () => {
+      let args = {};
+      try { args = pt.args.value ? JSON.parse(pt.args.value) : {}; } catch { return toast(t('governance.badJson', 'args must be valid JSON'), true); }
+      const r = await api('/api/policies/test', { body: { tool: pt.tool.value, args, tainted: pt.tainted.querySelector('input').checked } });
+      ptOut.replaceChildren(h('p', {}, t('governance.decision', 'Decision') + ': ', decisionBadge(r.decision), ` — ${r.reason}`), r.rule ? json(r.rule) : null);
+    }) }, t('common.run'))), ptOut) : null;
+
+  // ---- replayable audit trail ----
+  const runId = field(t('governance.runId', 'run id'), { className: 'grow' });
+  const traceOut = h('div');
+  const catBadge = (c) => h('span.badge', {}, c);
+  const showTrace = safe(async () => {
+    const tr = await api(`/api/runs/${encodeURIComponent(runId.value.trim())}/trace`);
+    traceOut.replaceChildren(
+      h('p.small.muted', {}, tr.summary),
+      h('p.small', {}, `${tr.llmCalls} LLM · ${tr.toolCalls} tools · ${tr.decisions} decisions · $${tr.totalCost} · ${tr.totalTokens} tokens${tr.tainted ? ' · ⚠ tainted' : ''}${tr.durationMs != null ? ` · ${tr.durationMs}ms` : ''}`),
+      table(tr.steps, [
+        ['#', (s) => s.seq],
+        ['Time', (s) => new Date(s.ts).toLocaleTimeString()],
+        [t('governance.category', 'Category'), (s) => catBadge(s.category)],
+        [t('governance.step', 'Step'), (s) => h('span.small', {}, s.summary)],
+      ]));
+  });
+  const traceCard = card(t('governance.trace', 'Replayable audit trail'),
+    h('p.small.muted', {}, t('governance.traceIntro', 'Replay an ordered, human-readable trace of a run to answer "why did you do that?".')),
+    h('div.row', {}, runId, h('button.primary', { onclick: showTrace }, t('governance.replay', 'Replay'))), traceOut);
+
+  return [grantsCard, policiesCard, traceCard];
 });

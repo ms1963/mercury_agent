@@ -12,6 +12,10 @@ import {
   AttachmentStore,
   AuditLog,
   BudgetService,
+  TaskBudgetService,
+  GrantBroker,
+  PolicyCodeEngine,
+  TaintTracker,
   CheckpointManager,
   CommandProcessor,
   Db,
@@ -147,6 +151,14 @@ export class Mercury {
   readonly audit: AuditLog;
   readonly providers: ProviderRegistry;
   readonly budgets: BudgetService;
+  /** Per-task hard budgets + running cost-vs-value estimate (Feature: Economics & routing). */
+  readonly taskBudgets: TaskBudgetService;
+  /** Least-privilege capability/credential grant broker (no standing keys). */
+  readonly grants: GrantBroker;
+  /** Policy-as-code engine (declarative rules enforced before sensitive actions). */
+  readonly codePolicies: PolicyCodeEngine;
+  /** Prompt-injection taint tracker (tool outputs marked/propagated per run). */
+  readonly taint: TaintTracker;
   readonly decisions: DecisionEngine;
   readonly judgment: Judgment;
   readonly router: ModelRouter;
@@ -223,16 +235,29 @@ export class Mercury {
     // and the LLM decision provider needs the LLM service: resolve with a late-bound array.
     this.providers = new ProviderRegistry(config);
     this.budgets = new BudgetService(this.db, config);
+    // Per-task hard budgets: real in-memory run accounting, self-wired to the event bus
+    // (open on run.start, close on run.end/run.error); cost is recorded by the LLMService.
+    this.taskBudgets = new TaskBudgetService(config, this.bus);
+    this.cleanups.push(this.taskBudgets.attach(this.bus));
+    // Governance & security subsystems (least-privilege grants, policy-as-code, taint tracking).
+    this.grants = new GrantBroker(config, this.bus, this.audit);
+    this.codePolicies = new PolicyCodeEngine(config);
+    this.taint = new TaintTracker();
+    // When a run ends, revoke its outstanding grants and forget its taint (no standing access).
+    this.cleanups.push(
+      this.bus.on('run.end', (e) => e.runId && (this.grants.revokeTask(e.runId), this.taint.clear(e.runId))),
+      this.bus.on('run.error', (e) => e.runId && (this.grants.revokeTask(e.runId), this.taint.clear(e.runId))),
+    );
     this.decisions = new DecisionEngine([], this.bus, this.db);
     this.judgment = new Judgment(this.decisions, config);
     this.router = new ModelRouter(config, this.providers, this.judgment);
-    this.llm = new LLMService(config, this.providers, this.router, this.budgets, this.policy, this.bus, this.hooks);
+    this.llm = new LLMService(config, this.providers, this.router, this.budgets, this.policy, this.bus, this.hooks, this.taskBudgets);
     this.decisionChain = decisionProviders(config, this.llm, this.providers.list().some((p) => p.id !== 'mock'));
     this.decisions.setProviders(this.decisionChain);
 
     this.tools = new ToolRegistry(config);
     registerBuiltinTools(this.tools);
-    this.executor = new ToolExecutor(config, this.tools, this.policy, this.bus, this.judgment, this.hooks, this.audit);
+    this.executor = new ToolExecutor(config, this.tools, this.policy, this.bus, this.judgment, this.hooks, this.audit, this.codePolicies, this.grants, this.taint);
     this.approvals = new ApprovalService(this.bus);
     this.memory = new MemoryManager(config, this.db, new HashEmbedding(config.memory.embeddings.dims), this.bus, this.hooks);
     this.memory.summarizer = async (userId, query, text) =>
