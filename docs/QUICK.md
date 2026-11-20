@@ -246,7 +246,10 @@ To have an agent do something regularly without you, give it a schedule:
 
 ```
 mercury schedule add --when "every day 9am"
+mercury schedule edit <id> --when "every 3 hours"   # change the time, name or task later
 ```
+
+You can also edit a schedule from the web Scheduler panel — each row has an **Edit** button.
 
 Or start the web server (`mercury serve`) and drive agents from the web page — that's also how you'd
 connect Mercury to chat apps like Telegram or Slack.

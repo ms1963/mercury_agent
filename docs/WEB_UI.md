@@ -92,7 +92,7 @@ See [docs/PROVIDERS.md](PROVIDERS.md) for the full list of providers.
 | **Memory**        | Read and edit agent notes and user notes; search memory                                                                                        | memory commands                    |
 | **Skills**        | List and manage installed skills                                                                                                               | `mercury skills`                   |
 | **Tools**         | Browse the built‑in tools and add / remove MCP servers                                                                                         | `mercury tools`, `mercury mcp`     |
-| **Scheduler**     | Create and inspect scheduled tasks                                                                                                             | `mercury schedule`                 |
+| **Scheduler**     | Create, edit (inline Name/When/Task editor), run now, inspect history, pause/resume/delete scheduled tasks                                       | `mercury schedule`                 |
 | **Integrations**  | Chat‑gateway pairing; admins get a review queue to respond to or dismiss messages                                                              | `mercury gateway`                  |
 | **Models**        | Route a task to a model; view model, router and budget configuration                                                                           | `mercury config` (`llm.*`)         |
 | **Users** (admin) | Add users, change roles, delete users — every action is audited                                                                                | `mercury user add \| role \| delete` |

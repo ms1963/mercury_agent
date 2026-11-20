@@ -722,6 +722,7 @@ Run agent tasks on a schedule (natural language, cron, intervals or one-shot):
 ```bash
 mercury schedule list
 mercury schedule add --when "every day at 9am" "Summarise overnight news and email me"
+mercury schedule edit <id> --when "every 3 hours" --name "News" --task "..."   # change time/name/task
 mercury schedule pause <id>
 mercury schedule resume <id>
 mercury schedule run <id>            # run now
@@ -730,7 +731,8 @@ mercury schedule delete <id>
 
 Schedules can run agents or workflows, carry attached skills, and deliver results to gateway targets.
 The scheduler ticks every `scheduler.tickMs` (30 s), retries up to `scheduler.maxRetries`, and keeps
-per-schedule history. Manage it in the web Scheduler panel or via `/api/schedules`.
+per-schedule history. Manage it in the web Scheduler panel (each row has **Edit** / Run now / History /
+pause / delete controls) or via `/api/schedules` (`PATCH /api/schedules/:id` edits one).
 
 ## 5.8 Workflows (multi-agent)
 

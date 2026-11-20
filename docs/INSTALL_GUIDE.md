@@ -377,6 +377,7 @@ Manage them easily:
 ```
 mercury schedule list            # see all your scheduled agents
 mercury schedule run <id>        # run one right now to test it
+mercury schedule edit <id> --when "every 3 hours"   # change the time, --name or --task
 mercury schedule pause <id>      # or resume / delete
 ```
 

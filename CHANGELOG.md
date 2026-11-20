@@ -7,6 +7,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Edit existing schedules — change the task, the time (`when`), the name, delivery or retry
+  limit of a schedule you already created**, from both front-ends (the backend `scheduler.update()`
+  and `PATCH /api/schedules/:id` already supported this; these changes expose it):
+  - **CLI:** new `mercury schedule edit <id>` (alias `update`) subcommand. Pass any subset of
+    `--when "..."`, `--name "..."`, `--task "..."` (task text can also be trailing words after the
+    id), `--deliver platform:target`, `--max-retries N`. At least one field is required. Changing
+    `--when` recomputes and prints the next run time.
+  - **Web UI:** each row in the Scheduler panel has an **Edit** button that opens an inline editor
+    with Name / When / Task prefilled; Save issues the `PATCH` and reloads the list.
+
+### Changed
+- **Scheduler "Run now" gives visible feedback in the web UI** — triggering a manual run now shows a
+  toast and opens the schedule's History (which lists the new "running" entry), instead of appearing
+  to do nothing.
+
+### Fixed
+- **Manual schedule runs are fire-and-forget on the server** — `POST /api/schedules/:id/run` returns
+  immediately and the run executes in the background, so the request no longer blocks (previously the
+  web "Run now" could appear frozen until the agent finished).
+- **`web_search` tool falls back to the DuckDuckGo lite endpoint** when the primary HTML endpoint is
+  rate-limited, and surfaces a clear rate-limit error instead of returning empty results.
+
 ## [0.6.0] - 2026-11-19
 
 ### Added
