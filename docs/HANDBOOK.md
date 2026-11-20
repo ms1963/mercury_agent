@@ -83,7 +83,7 @@ What you get, at a glance:
 |---|---|
 | A **CLI** | `mercury …` — chat, configure, schedule, manage, everything scriptable |
 | A **web UI** | A no-build single-page app with 15 panels (chat, runs, memory, scheduler, …) |
-| **16 chat gateways** | Telegram, Discord, Slack, WhatsApp, Signal, Matrix, Teams, Email, SMS, … |
+| **19 chat gateways** | Telegram, Discord, Slack, WhatsApp, Facebook, X, LinkedIn, Signal, Matrix, Teams, Email, SMS, ... |
 | **Multi-agent workflows** | Nine templates — pipeline, debate, map-reduce, coordinator-worker, … |
 | **Persistent memory** | Six kinds, from working scratch to curated long-term facts |
 | **79 built-in tools** | Files, shell, web, code, git, data, media, scheduling, memory, … |

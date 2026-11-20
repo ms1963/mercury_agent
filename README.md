@@ -3,7 +3,7 @@
 # Mercury Agent
 
 A self-hosted, extensible **agentic AI platform** in TypeScript.
-*CLI · Web UI · 16 chat gateways · multi-agent workflows · persistent memory · 75+ tools · MCP client & server*
+*CLI · Web UI · 19 chat gateways · multi-agent workflows · persistent memory · 75+ tools · MCP client & server*
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A522.5-5FA04E.svg)
