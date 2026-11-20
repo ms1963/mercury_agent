@@ -7,6 +7,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Three new native gateway adapters**, bringing the built-in total to 19:
+  - **facebook** — Facebook Messenger, bidirectional. Inbound via the Meta Messenger webhook
+    (GET verification handshake + HMAC-verified POSTs, `x-hub-signature-256`), outbound via the
+    Graph Send API. Config: `pageId`, `token`, `verifyToken`, `appSecret`
+    (`FACEBOOK_PAGE_ID` / `FACEBOOK_PAGE_TOKEN` / `FACEBOOK_VERIFY_TOKEN` / `FACEBOOK_APP_SECRET`).
+  - **x** — X (Twitter) Direct Messages, bidirectional. Inbound via the Account Activity API
+    (auto CRC challenge-response + `x-twitter-webhooks-signature` verification), outbound via
+    API v2 DMs. Config: `consumerSecret`, `token`, `botUserId`
+    (`X_CONSUMER_SECRET` / `X_BEARER_TOKEN` / `X_BOT_USER_ID`).
+  - **linkedin** — LinkedIn, **outbound only** (publishes `PUBLIC` UGC shares via `POST /ugcPosts`);
+    LinkedIn exposes no general inbound messaging webhook for standard apps. Config: `token`,
+    `authorUrn` (`LINKEDIN_TOKEN` / `LINKEDIN_AUTHOR_URN`).
+  - Added `hmacBase64()` and `verifyXSignature()` security helpers in `@mercury/core` to support
+    the X CRC and webhook signature checks.
+
 ## [0.7.0] - 2026-11-20
 
 ### Added

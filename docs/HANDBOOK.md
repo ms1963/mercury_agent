@@ -139,7 +139,7 @@ Read it as the red thread flowing left to right: **frontends** (how you reach th
 | `@mercury/core` | Config, DB, auth, LLM, decision engine, agent, memory, skills, workflows, scheduler, security |
 | `@mercury/tools` | Built-in tools, terminal/browser backends, the polyglot loader |
 | `@mercury/mcp` | MCP client manager and the Mercury MCP server |
-| `@mercury/gateway` | Gateway controller and the 16 platform adapters |
+| `@mercury/gateway` | Gateway controller and the 19 platform adapters |
 | `@mercury/runtime` | The composition root — `createMercury()` wires everything together |
 | `@mercury/server` | Fastify REST/SSE API, webhooks, `/mcp`, `/metrics`, static web UI |
 | `@mercury/cli` | The `mercury` binary |
@@ -837,7 +837,7 @@ Two safety ideas are built in and worth understanding before you expose Mercury 
 
 Slash commands (Part 3) work from chat platforms too, so a paired user can type `/model` or `/usage` from Telegram.
 
-## 7.2 The 16 built-in adapters and how to configure them
+## 7.2 The 19 built-in adapters and how to configure them
 
 Every adapter is configured under `gateway.adapters.<name>`. Most secrets can be given inline **or** via the environment variable shown. Here are the built-in adapters and their key settings (taken straight from the adapter source):
 
@@ -847,6 +847,9 @@ Every adapter is configured under `gateway.adapters.<name>`. Most secrets can be
 | **slack** | Events API webhook | `token` (`SLACK_BOT_TOKEN`), `signingSecret` (`SLACK_SIGNING_SECRET`) |
 | **discord** | HTTP interactions webhook (Ed25519-verified) | `token` (`DISCORD_BOT_TOKEN`), `publicKey` (`DISCORD_PUBLIC_KEY`) |
 | **whatsapp** | Meta Cloud API webhook | `token` (`WHATSAPP_TOKEN`), `phoneNumberId`, `verifyToken`, `appSecret` |
+| **facebook** | Messenger webhook (Meta, HMAC-verified) | `pageId` (`FACEBOOK_PAGE_ID`), `token` (`FACEBOOK_PAGE_TOKEN`), `verifyToken` (`FACEBOOK_VERIFY_TOKEN`), `appSecret` (`FACEBOOK_APP_SECRET`) |
+| **x** | Account Activity API webhook (CRC + HMAC-verified) | `consumerSecret` (`X_CONSUMER_SECRET`), `token` (`X_BEARER_TOKEN`), `botUserId` (`X_BOT_USER_ID`) |
+| **linkedin** | **outbound only** (posts UGC; no inbound webhook) | `token` (`LINKEDIN_TOKEN`), `authorUrn` (`LINKEDIN_AUTHOR_URN`) |
 | **signal** | polls a signal-cli REST server | `url` (`SIGNAL_API_URL`), `number` (`SIGNAL_NUMBER`) |
 | **sms** | Twilio messaging webhook | `accountSid` (`TWILIO_ACCOUNT_SID`), `authToken` (`TWILIO_AUTH_TOKEN`), `from`, `webhookUrl` |
 | **email** | IMAP polling, replies via SMTP | see [§7.3](#73-the-email-adapter-in-detail) |
@@ -857,7 +860,7 @@ Every adapter is configured under `gateway.adapters.<name>`. Most secrets can be
 | **cli** | the terminal REPL | — |
 | **webhook** | a **generic** inbound HTTP endpoint (`/webhooks/<name>`) | `gateway.adapters.webhook` |
 
-Webhook-based adapters (Slack, Discord, WhatsApp, SMS, the generic `webhook`) need their `/webhooks/<name>` endpoint reachable from the internet — set `server.publicUrl` so Mercury can build the correct public URLs. Telegram and the polling adapters (Signal, email, RSS) need **no** inbound route.
+Webhook-based adapters (Slack, Discord, WhatsApp, Facebook, X, SMS, the generic `webhook`) need their `/webhooks/<name>` endpoint reachable from the internet — set `server.publicUrl` so Mercury can build the correct public URLs. Telegram and the polling adapters (Signal, email, RSS) need **no** inbound route. LinkedIn is **outbound only** and also needs no inbound route.
 
 > **👤 For users — the easiest integration.** Telegram. Create a bot with BotFather, drop the token
 > into `gateway.adapters.telegram.token` (or `TELEGRAM_BOT_TOKEN`), enable the gateway, message your
@@ -882,16 +885,50 @@ The email adapter polls an IMAP inbox for unseen mail and replies over SMTP, kee
 
 If you omit `imapHost`, the adapter runs **send-only** (great for the scheduler delivering reports by email without accepting inbound commands).
 
-## 7.4 LinkedIn, X/Twitter and anything not in the list — the honest answer
+## 7.4 Facebook, X/Twitter and LinkedIn — the social adapters
 
-**There is no native LinkedIn adapter and no native X/Twitter adapter in Mercury.** The gateway ships the 16 adapters listed above and no others. (Note: *xAI / Grok* appears in [Part 2](#part-2--the-brain-llm-providers--models-the-second-movement-choosing-and-switching-intelligence) as an **LLM provider** — that is the language model, not the X social network. Don't confuse the two.)
+Mercury ships **native** adapters for Facebook Messenger, X (Twitter) and LinkedIn. Two of them are bidirectional and one is outbound-only — know which before you wire them up. (Note: *xAI / Grok* appears in [Part 2](#part-2--the-brain-llm-providers--models-the-second-movement-choosing-and-switching-intelligence) as an **LLM provider** — that is the language model, not the X social network. Don't confuse the two.)
 
-If you need Mercury to post to or read from LinkedIn, X, or any other service without a built-in adapter, you have two real, supported paths:
+**Facebook Messenger (`facebook`) — bidirectional.** Inbound via the Meta Messenger webhook, outbound via the Graph Send API. Create a Facebook App + Page, subscribe the Page to the `messages` webhook event, and configure:
 
-1. **The generic `webhook` adapter as a bridge.** Stand up a tiny relay in front of the third-party API (it handles that platform's OAuth and API calls) and have it POST inbound events to Mercury's `/webhooks/<name>` endpoint and receive Mercury's replies. This needs no changes to Mercury — just configuration of the `webhook` adapter.
-2. **A custom adapter via a plugin.** Implement the `Adapter` interface and register it with `registerAdapter()` in a plugin. This is first-class — the same interface the 16 built-ins use — and is covered step by step in [Part 10](#105-custom-gateway-adapters). This is the route to a proper, native-feeling LinkedIn or X integration.
+```jsonc
+"gateway": { "adapters": { "facebook": {
+  "enabled": true,
+  "pageId": "<PAGE_ID>",          // or FACEBOOK_PAGE_ID
+  "token": "<PAGE_ACCESS_TOKEN>", // or FACEBOOK_PAGE_TOKEN
+  "verifyToken": "<ANY_STRING>",  // or FACEBOOK_VERIFY_TOKEN — must match the value you enter in the Meta webhook setup
+  "appSecret": "<APP_SECRET>"     // or FACEBOOK_APP_SECRET — used to HMAC-verify every POST (x-hub-signature-256)
+}}}
+```
 
-Either way, you are writing the LinkedIn/X glue yourself; Mercury gives you the two sockets to plug it into. Anyone claiming Mercury has turnkey LinkedIn or X support is mistaken.
+Set your Meta webhook callback URL to `{server.publicUrl}/webhooks/facebook` and the Verify Token to the same `verifyToken`. Mercury answers Meta's GET verification handshake automatically.
+
+**X / Twitter (`x`) — bidirectional DMs.** Inbound via the Account Activity API, outbound via API v2 Direct Messages. Requires a project with Account Activity access. Configure:
+
+```jsonc
+"gateway": { "adapters": { "x": {
+  "enabled": true,
+  "consumerSecret": "<CONSUMER_SECRET>", // or X_CONSUMER_SECRET — verifies CRC challenges + signs the webhook
+  "token": "<BEARER_TOKEN>",             // or X_BEARER_TOKEN — used for outbound DM sends
+  "botUserId": "<YOUR_BOT_USER_ID>"      // or X_BOT_USER_ID — so the adapter ignores its own messages
+}}}
+```
+
+Register `{server.publicUrl}/webhooks/x` as the Account Activity webhook. Mercury answers the X CRC (challenge-response check) GET automatically and verifies every POST with `x-twitter-webhooks-signature`.
+
+**LinkedIn (`linkedin`) — outbound only.** LinkedIn offers **no general inbound messaging webhook** for standard apps, so this adapter can **post** (UGC shares) but cannot receive. Use it for the scheduler or workflows that publish to a LinkedIn profile/organization. Configure:
+
+```jsonc
+"gateway": { "adapters": { "linkedin": {
+  "enabled": true,
+  "token": "<ACCESS_TOKEN>",                      // or LINKEDIN_TOKEN — OAuth token with w_member_social
+  "authorUrn": "urn:li:person:XXXX"               // or LINKEDIN_AUTHOR_URN — or urn:li:organization:XXXX
+}}}
+```
+
+Posting a message to the `linkedin` adapter publishes it as a `PUBLIC` share via `POST /ugcPosts`. Because there is no inbound path, LinkedIn needs no public URL and will never pair a user or deliver a reply back into Mercury.
+
+If you need another service that isn't built in, the two general routes still apply: the generic `webhook` adapter as a bridge, or a custom adapter via a plugin (the same `Adapter` interface these built-ins use — see [Part 10](#105-custom-gateway-adapters)).
 
 ## 7.5 MCP client — borrowing tools from other servers
 

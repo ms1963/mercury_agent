@@ -72,7 +72,7 @@ ESM, an npm-workspaces monorepo). In one process it provides:
 
 - a **CLI** and interactive **REPL** (`mercury`),
 - a **web UI** (a no-build single-page app) and a **REST + SSE HTTP API**,
-- **chat-platform gateways** (16 adapters: Telegram, Discord, Slack, WhatsApp, Signal, Matrix,
+- **chat-platform gateways** (19 adapters: Telegram, Discord, Slack, WhatsApp, Facebook, X, LinkedIn, Signal, Matrix,
   Mattermost, Teams, IRC, Email, SMS, Home Assistant, RSS, webhook, webchat, CLI),
 - **multi-agent workflows**, **persistent memory**, **skills**, **79 built-in tools** plus
   polyglot (any-language) tools,
@@ -96,7 +96,7 @@ OpenAI-compatible endpoint (see Part III and [PROVIDERS.md](PROVIDERS.md)).
 | `@mercury/core` | Config, DB, auth, LLM, decision engine, agent, memory, skills, workflows, scheduler, security |
 | `@mercury/tools` | Built-in tools, terminal/browser backends, polyglot loader, `execute_code` sandbox |
 | `@mercury/mcp` | MCP client manager and Mercury-as-MCP-server |
-| `@mercury/gateway` | Gateway controller and the 16 platform adapters |
+| `@mercury/gateway` | Gateway controller and the 19 platform adapters |
 | `@mercury/runtime` | Composition root — `createMercury()` wires every service together |
 | `@mercury/server` | Fastify REST/SSE API, webhooks, `/mcp`, `/metrics`, static web UI |
 | `@mercury/cli` | The `mercury` binary (REPL, subcommands, scaffolding) |

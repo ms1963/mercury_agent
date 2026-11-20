@@ -83,7 +83,7 @@ to `~/.mercury/config.yaml` for a documented starting point.
 | **MCP** | Client (stdio/HTTP servers become tools) and server (`/mcp` streamable HTTP with scoped tokens, or `mercury mcp serve` over stdio) |
 | **Workflows** | YAML templates: single, pipeline, round-robin, coordinator-worker, tree, map-reduce, router, blackboard, debate |
 | **Scheduler** | Natural-language (“every day at 9am”) or cron schedules that run agent tasks |
-| **Gateway** | 16 adapters: Telegram, Discord, Slack, WhatsApp, Signal, Matrix, Mattermost, Teams, IRC, Email, SMS, Home Assistant, RSS, webhook, webchat, CLI; DM pairing codes, cross-platform continuity, voice-memo transcription, triage to human review |
+| **Gateway** | 19 adapters: Telegram, Discord, Slack, WhatsApp, Facebook, X (Twitter), LinkedIn (outbound), Signal, Matrix, Mattermost, Teams, IRC, Email, SMS, Home Assistant, RSS, webhook, webchat, CLI; DM pairing codes, cross-platform continuity, voice-memo transcription, triage to human review |
 | **Voice** | STT/TTS providers: OpenAI, local whisper / edge-tts / piper, or any command; mic recording and playback in the web UI |
 | **Security** | scrypt + JWT, scoped API tokens, RBAC, layered prompt-injection guardrails, approvals, path jail, SSRF guard, secret redaction, hash-chained audit log; see [docs/SECURITY.md](docs/SECURITY.md) |
 | **Observability** | Event traces for every run, live debug stream with breakpoints and pause/resume, `mercury replay`, Prometheus `/metrics` |

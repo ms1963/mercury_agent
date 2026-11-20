@@ -79,6 +79,20 @@ export function verifyTwilioSignature(authToken: string, url: string, params: Re
   return safeEqual(signature, createHmac('sha1', authToken).update(data).digest('base64'));
 }
 
+/** Base64 HMAC (X/Twitter Account Activity API signature style). */
+export function hmacBase64(secret: string, payload: string | Buffer, algo = 'sha256'): string {
+  return createHmac(algo, secret).update(payload).digest('base64');
+}
+
+/**
+ * X (Twitter) Account Activity API: `x-twitter-webhooks-signature: sha256=<base64(hmac-sha256(body))>`.
+ * The same base64 HMAC is used to answer the CRC GET challenge (see hmacBase64).
+ */
+export function verifyXSignature(consumerSecret: string, body: string | Buffer, header: string | undefined): boolean {
+  if (!header) return false;
+  return safeEqual(header, `sha256=${hmacBase64(consumerSecret, body)}`);
+}
+
 /** Microsoft Teams outgoing webhook: "HMAC <base64(hmac-sha256(body, base64key))>". */
 export function verifyTeamsSignature(base64Key: string, body: string, header: string | undefined): boolean {
   if (!header) return false;

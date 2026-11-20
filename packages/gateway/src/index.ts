@@ -21,4 +21,7 @@ export * from './adapters/telegram.js';
 export * from './adapters/webchat.js';
 export * from './adapters/webhook.js';
 export * from './adapters/whatsapp.js';
+export * from './adapters/facebook.js';
+export * from './adapters/x.js';
+export * from './adapters/linkedin.js';
 export * from './gateway.js';

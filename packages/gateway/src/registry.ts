@@ -16,6 +16,9 @@ import { SmsAdapter } from './adapters/sms.js';
 import { RssAdapter } from './adapters/rss.js';
 import { WebChatAdapter } from './adapters/webchat.js';
 import { CliAdapter } from './adapters/cli.js';
+import { FacebookAdapter } from './adapters/facebook.js';
+import { XAdapter } from './adapters/x.js';
+import { LinkedInAdapter } from './adapters/linkedin.js';
 
 const factories = new Map<string, AdapterFactory>([
   ['telegram', (n, c, d) => new TelegramAdapter(n, c, d)],
@@ -34,6 +37,9 @@ const factories = new Map<string, AdapterFactory>([
   ['rss', (n, c, d) => new RssAdapter(n, c, d)],
   ['webchat', (n, c, d) => new WebChatAdapter(n, c, d)],
   ['cli', (n, c, d) => new CliAdapter(n, c, d)],
+  ['facebook', (n, c, d) => new FacebookAdapter(n, c, d)],
+  ['x', (n, c, d) => new XAdapter(n, c, d)],
+  ['linkedin', (n, c, d) => new LinkedInAdapter(n, c, d)],
 ]);
 
 /** Register a custom adapter type (used by plugins and `mercury new adapter`). */

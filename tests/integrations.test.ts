@@ -2,8 +2,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { JevDecisionProvider, MockDecisionProvider, hmacHex, createLogger, type Principal } from '@mercury/core';
-import { TelegramAdapter, SlackAdapter, type InboundMessage } from '@mercury/gateway';
+import { JevDecisionProvider, MockDecisionProvider, hmacHex, hmacBase64, createLogger, type Principal } from '@mercury/core';
+import { TelegramAdapter, SlackAdapter, FacebookAdapter, XAdapter, LinkedInAdapter, type InboundMessage } from '@mercury/gateway';
 import { MockTransport } from './mock-transport.js';
 import { createMcpServer } from '@mercury/mcp';
 import { makeMercury } from './helpers.js';
@@ -130,5 +130,53 @@ describe('with a Mercury instance', () => {
     const slack = new SlackAdapter('slack', { token: 'xoxb-test', signingSecret: 'sig' }, { transport, logger: createLogger('error') });
     const res = await slack.handleWebhook({ method: 'POST', url: '/webhooks/slack', headers: { 'x-slack-request-timestamp': String(Math.floor(Date.now() / 1000)), 'x-slack-signature': 'v0=bad' }, query: {}, body: '{}' });
     expect(res.status).toBe(401);
+  });
+
+  it('facebook adapter: verify handshake, signed inbound message, chunked outbound', async () => {
+    const cfg = { pageId: 'PAGE', token: 'PAGE_TOKEN', verifyToken: 'vtok', appSecret: 'appsec', apiBase: 'http://fb.test' };
+    const fb = new FacebookAdapter('facebook', cfg, { transport, logger: createLogger('error') });
+    const inbound: InboundMessage[] = [];
+    await fb.start(async (m) => void inbound.push(m));
+    const verify = await fb.handleWebhook({ method: 'GET', url: '/webhooks/facebook', headers: {}, query: { 'hub.mode': 'subscribe', 'hub.verify_token': 'vtok', 'hub.challenge': '12345' }, body: '' });
+    expect(verify).toMatchObject({ status: 200, body: '12345' });
+    const bad = await fb.handleWebhook({ method: 'POST', url: '/', headers: { 'x-hub-signature-256': 'sha256=00' }, query: {}, body: '{}' });
+    expect(bad.status).toBe(401);
+    const body = JSON.stringify({ object: 'page', entry: [{ messaging: [{ sender: { id: 'u1' }, message: { mid: 'm1', text: 'hello page' } }] }] });
+    const ok = await fb.handleWebhook({ method: 'POST', url: '/', headers: { 'x-hub-signature-256': `sha256=${hmacHex('appsec', body)}` }, query: {}, body });
+    expect(ok.status).toBe(200);
+    expect(inbound[0]).toMatchObject({ platform: 'facebook', userId: 'u1', chatId: 'u1', text: 'hello page' });
+    await fb.send({ chatId: 'u1', text: 'hi there' });
+    expect(JSON.parse(transport.last('/messages')!.body!)).toMatchObject({ recipient: { id: 'u1' }, message: { text: 'hi there' } });
+  });
+
+  it('x adapter: CRC challenge, signed DM inbound, DM outbound', async () => {
+    const cfg = { consumerSecret: 'csec', token: 'bearer', botUserId: 'me', apiBase: 'http://x.test' };
+    const x = new XAdapter('x', cfg, { transport, logger: createLogger('error') });
+    const inbound: InboundMessage[] = [];
+    await x.start(async (m) => void inbound.push(m));
+    const crc = await x.handleWebhook({ method: 'GET', url: '/webhooks/x', headers: {}, query: { crc_token: 'tok123' }, body: '' });
+    expect(crc).toMatchObject({ status: 200, body: { response_token: `sha256=${hmacBase64('csec', 'tok123')}` } });
+    const bad = await x.handleWebhook({ method: 'POST', url: '/', headers: { 'x-twitter-webhooks-signature': 'sha256=00' }, query: {}, body: '{}' });
+    expect(bad.status).toBe(401);
+    const body = JSON.stringify({ direct_message_events: [{ type: 'message_create', id: 'd1', message_create: { sender_id: 'u2', message_data: { text: 'dm hi' } } }, { type: 'message_create', message_create: { sender_id: 'me', message_data: { text: 'echo' } } }], users: { u2: { screen_name: 'dana' } } });
+    const ok = await x.handleWebhook({ method: 'POST', url: '/', headers: { 'x-twitter-webhooks-signature': `sha256=${hmacBase64('csec', body)}` }, query: {}, body });
+    expect(ok.status).toBe(200);
+    expect(inbound).toHaveLength(1);
+    expect(inbound[0]).toMatchObject({ platform: 'x', userId: 'u2', chatId: 'u2', text: 'dm hi', displayName: 'dana' });
+    await x.send({ chatId: 'u2', text: 'reply dm' });
+    const dm = transport.last('/dm_conversations/with/u2/messages')!;
+    expect(JSON.parse(dm.body!)).toMatchObject({ text: 'reply dm' });
+    expect(dm.headers.authorization).toBe('Bearer bearer');
+  });
+
+  it('linkedin adapter: outbound UGC post, no inbound webhook', async () => {
+    const cfg = { token: 'litok', authorUrn: 'urn:li:person:abc', apiBase: 'http://li.test' };
+    const li = new LinkedInAdapter('linkedin', cfg, { transport, logger: createLogger('error') });
+    await li.start(async () => undefined);
+    expect(li.handleWebhook).toBeUndefined();
+    await li.send({ chatId: '', text: 'posted from mercury' });
+    const post = transport.last('/ugcPosts')!;
+    expect(JSON.parse(post.body!)).toMatchObject({ author: 'urn:li:person:abc', specificContent: { 'com.linkedin.ugc.ShareContent': { shareCommentary: { text: 'posted from mercury' } } } });
+    expect(post.headers['x-restli-protocol-version']).toBe('2.0.0');
   });
 });

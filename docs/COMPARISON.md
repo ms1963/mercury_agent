@@ -30,7 +30,7 @@ in this repo; the **Tested (offline)** column reflects Mercury's own suite.
 | Capability | Mercury | Hermes Agent (parity target) | Tested (offline, Mercury) |
 |---|---|---|---|
 | CLI + web UI | ✓ | ✓ | ✓ (CLI commands; web UI manual) |
-| Chat-platform gateways | ✓ 16 adapters | ✓ | Partial — Telegram/Slack/webhook via mock transports only |
+| Chat-platform gateways | ✓ 19 adapters | ✓ | Partial — Telegram/Slack/webhook via mock transports only |
 | Multi-agent workflows | ✓ YAML templates (pipeline, debate, map-reduce, coordinator-worker, tree, router, blackboard…) | ✓ | ✓ (pipeline + debate run offline) |
 | Persistent memory | ✓ working, episodic, semantic, procedural (skills), user model, blackboard | ✓ | ✓ (facts, curated MEMORY.md/USER.md) |
 | Skills (`SKILL.md`) | ✓ agentskills.io format | ✓ | ✓ (list/create; install from path/git untested) |

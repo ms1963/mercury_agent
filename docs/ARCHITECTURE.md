@@ -92,7 +92,7 @@ mercury/
 │  ├─ tools/       @mercury/tools    — 50+ built-in tools, toolsets, polyglot runner,
 │  │                                    execute_code sandbox, terminal & browser backends
 │  ├─ mcp/         @mercury/mcp      — MCP client manager + Mercury-as-MCP-server
-│  ├─ gateway/     @mercury/gateway  — adapter SDK, gateway runner, 16 adapters
+│  ├─ gateway/     @mercury/gateway  — adapter SDK, gateway runner, 19 adapters
 │  ├─ runtime/     @mercury/runtime  — createMercury(): composition root
 │  ├─ server/      @mercury/server   — Fastify REST/SSE API, webhooks, /mcp, web UI
 │  └─ cli/         @mercury/cli      — `mercury` binary, REPL, subcommands, scaffolding
