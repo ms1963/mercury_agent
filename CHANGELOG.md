@@ -7,6 +7,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **execute_code sandbox no longer crashes the server on a closed RPC pipe.** When a
+  sandboxed script made a tool call and then exited (or was killed on timeout) before the
+  parent wrote the reply back over the fd-3 socket, the write failed with `EPIPE`. The
+  readline Interface over that socket re-emits the error on itself, so the unhandled
+  `'error'` event took down the whole `mercury serve` process. Replies to the child are now
+  written through a guarded helper that treats a closed/destroyed pipe as a no-op, and the
+  readline Interface has its own error handler. Added `tests/sandbox.test.ts` with a
+  regression test that reproduces the race.
+
 ## [1.0.0] - 2026-11-20
 
 First stable major release, consolidating the five frontier-autonomy feature areas (economics & routing, governance & security, built-in verification, reliability engineering, proactive event triggers).

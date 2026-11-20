@@ -69,7 +69,21 @@ export async function executeCode(ctx: ToolContext, language: 'python' | 'javasc
   child.stdout!.on('data', (d: Buffer) => (stdout = (stdout + d).slice(-100_000)));
   child.stderr!.on('data', (d: Buffer) => (stderr = (stderr + d).slice(-50_000)));
 
-  createInterface({ input: rpc }).on('line', (line) => {
+  // Write a JSON-RPC response back to the sandboxed child. The child may have exited
+  // (or been killed on timeout) and closed its end of the pipe between making a call and
+  // our async reply, so a write here can fail with EPIPE/ERR_STREAM_DESTROYED. Treat a
+  // closed pipe as a no-op: there is no longer anyone to deliver the response to.
+  const replyToChild = (payload: unknown): void => {
+    if (rpc.destroyed || !rpc.writable) return;
+    try {
+      rpc.write(JSON.stringify(payload) + '\n', () => undefined);
+    } catch {
+      /* pipe already closed — nothing to deliver */
+    }
+  };
+
+  const rl = createInterface({ input: rpc });
+  rl.on('line', (line) => {
     void (async () => {
       let id: unknown;
       try {
@@ -84,12 +98,16 @@ export async function executeCode(ctx: ToolContext, language: 'python' | 'javasc
           ctx,
           { untrustedSeen: true, userRequest: '' },
         );
-        rpc.write(JSON.stringify(res.ok ? { id, result: res.result.content } : { id, error: res.result.content }) + '\n');
+        replyToChild(res.ok ? { id, result: res.result.content } : { id, error: res.result.content });
       } catch (err) {
-        rpc.write(JSON.stringify({ id, error: errorMessage(err) }) + '\n');
+        replyToChild({ id, error: errorMessage(err) });
       }
     })();
   });
+  // The readline Interface re-emits its input stream's 'error' on itself; without this
+  // handler an EPIPE on the fd-3 socket would escalate to a fatal unhandled 'error' event
+  // and crash the whole server process.
+  rl.on('error', () => undefined);
   rpc.on('error', () => undefined);
 
   const exitCode = await new Promise<number | null>((resolve) => {
