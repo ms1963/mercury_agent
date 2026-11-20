@@ -131,6 +131,24 @@ backward-compatible — new keys default to safe values).
   `GET /api/runs/:id/trace` and the **Governance** Web UI panel, which also manages grants and
   tests policies.
 
+## Verification and escalation (human-in-the-loop safety net)
+
+The verification subsystem (`core/src/verification`) checks that a task is actually done on
+**evidence** rather than the model's say-so: `test` (a real shell command), `schema` (JSON-schema),
+`assertion` (substring/regex/predicate) and `critic` (the decision engine as judge) each yield a 0..1
+confidence, aggregated into one score. When the score is below `verification.confidenceThreshold` the
+run is **escalated for human review** (persisted, reviewable at `GET /api/escalations` and resolvable
+via `POST /api/escalations/:id/resolve`) instead of silently passing — a safety backstop against
+over-confident completion of sensitive work. Checks are opt-in per step, so nothing runs implicitly.
+
+## Chaos fault injection (operator-gated)
+
+Reliability-engineering chaos (`core/src/reliability/chaos.ts`) can inject failures, timeouts and
+latency into the **real** tool-execution path to prove graceful degradation. It is **off by default**
+(`reliability.chaos.enabled = false`), deterministic (seedable) and gated by a tool-glob allowlist, so
+it only ever perturbs tools you deliberately name — never enable it against production credentials or a
+live gateway. Treat it as a staging/CI tool.
+
 ## Deployment checklist
 
 - Put Mercury behind TLS (reverse proxy) when it is reachable from a network.

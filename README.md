@@ -88,8 +88,11 @@ to `~/.mercury/config.yaml` for a documented starting point.
 | **Voice** | STT/TTS providers: OpenAI, local whisper / edge-tts / piper, or any command; mic recording and playback in the web UI |
 | **Security** | scrypt + JWT, scoped API tokens, RBAC, layered prompt-injection guardrails, approvals, path jail, SSRF guard, secret redaction, hash-chained audit log; see [docs/SECURITY.md](docs/SECURITY.md) |
 | **Governance & security** | Least-privilege **per-task credential grants** (scoped, time-limited, no standing keys; ephemeral credentials minted in-memory and never persisted); **policy-as-code** (declarative `allow`/`deny`/`approve` rules — e.g. "no payments over €100 without approval", "never email external domains") enforced before sensitive tool actions; prompt-injection **taint tracking** that marks and propagates untrusted tool output and can gate actions on it; a **replayable audit trail** (`GET /api/runs/:id/trace`) and a dedicated **Governance** panel; see [docs/SECURITY.md](docs/SECURITY.md) and [docs/PERMISSIONS.md](docs/PERMISSIONS.md) |
+| **Verification** | Evidence-based completion checks — `test` (real shell command), `schema` (JSON-schema), `assertion` (substring/regex/predicate) and `critic` (decision engine as LLM judge) — combined into a 0..1 **confidence** score; runs below `verification.confidenceThreshold` are **escalated for human review** instead of silently passing; `GET/POST /api/verif…`, `/api/escalations`, dedicated **Verification** panel |
+| **Reliability engineering** | **Record/replay** real runs as regression tests (diff status/tools/output), **chaos** fault injection into the real tool path (failures/timeouts/latency, seedable, tool-glob gated, **off by default**), and per-agent **SLOs** (success rate, intervention/escalation rate, cost-per-task vs targets); `mercury reliability …`, `GET /api/slo\|chaos\|recordings`, **Reliability** panel; configure under `reliability` |
+| **Proactive (not annoying)** | Event-trigger framework — sources (**email** via the gateway, generic **webhook/CI**) → declarative rules → actions; an **interrupt-vs-defer priority model** so urgent events notify immediately and low-priority ones are **batched into a periodic digest** (via the scheduler); `mercury proactive …`, `GET /api/proactive`, `POST /api/proactive/events\|digest/flush\|poll`, **Proactive** panel; **disabled by default**, configure under `proactive` |
 | **Observability** | Event traces for every run, a **replayable run trace** (`GET /api/runs/:id/trace`) with per-step explanations and run totals, live debug stream with breakpoints and pause/resume, `mercury replay`, Prometheus `/metrics` |
-| **Web UI** | No-build SPA: chat with streaming, tool chips and approvals, attachments, sessions, runs, workflows, memory, skills, tools/MCP, scheduler, integrations, models/budgets (with cost-vs-value), governance (grants/policies/replay trace), users, debug, reflections, help; dark/light; English/German |
+| **Web UI** | No-build SPA: chat with streaming, tool chips and approvals, attachments, sessions, runs, workflows, memory, skills, tools/MCP, scheduler, integrations, models/budgets (with cost-vs-value), governance (grants/policies/replay trace), verification (confidence/escalations), reliability (SLOs/recordings/chaos), proactive (events/digest/rules), users, debug, reflections, help; dark/light; English/German |
 | **Add-Ins** | Drop-in tools, personalities and permission profiles under `<dataDir>/addins/` — no source edits; `mercury addin list\|scaffold`; see [docs/ADDINS.md](docs/ADDINS.md) |
 | **Permission profiles** | Per-agent/personality policies that can only further-restrict (strict intersection), `mercury perms list\|show`; see [docs/PERMISSIONS.md](docs/PERMISSIONS.md) |
 | **LLM Wiki** | Ingestion-time knowledge synthesis (Karpathy's pattern): immutable `raw/` sources + LLM-authored cross-linked pages, with ingest / query / lint via `wiki_*` tools and `mercury wiki …`; see [docs/WIKI.md](docs/WIKI.md) |
@@ -134,13 +137,17 @@ flowchart LR
   SRV --> RT[Runtime: Mercury]
   GW --> RT
   SCH[Scheduler] --> RT
+  EVT[Event sources<br/>email · webhook/CI] --> PRO[Proactive<br/>priority · interrupt-vs-defer · digest]
+  PRO --> RT
   RT --> AG[Agent loop + patterns]
   RT --> WF[Workflow engine] --> AG
   AG --> RTR[Model router + budgets<br/>economics lanes · per-task budgets] --> LLM[LLM providers]
-  AG --> TX[Tool executor + guardrails<br/>policy-as-code · grants · taint] --> TOOLS[Built-in / polyglot / MCP tools]
+  AG --> TX[Tool executor + guardrails<br/>policy-as-code · grants · taint · chaos] --> TOOLS[Built-in / polyglot / MCP tools]
+  AG --> VER[Verification<br/>evidence checks · confidence · escalation]
   AG --> MEM[Memory + skills]
   AG --> REF[Reflection]
-  RTR & TX & REF & GW --> DEC[Decision engine: Jev / LLM / heuristic]
+  RT --> REL[Reliability eng.<br/>record/replay · SLOs]
+  RTR & TX & REF & GW & VER & PRO --> DEC[Decision engine: Jev / LLM / heuristic]
   RT --> DB[(node:sqlite)]
 ```
 

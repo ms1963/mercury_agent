@@ -1301,7 +1301,7 @@ For tools, personalities and permission profiles you don't even need a plugin �
 
 ```bash
 npm run build      # tsc project references
-npm test           # vitest (offline; 185 tests)
+npm test           # vitest (offline; 302 tests)
 npx eslint .       # lint (exits 0)
 ```
 
@@ -1310,6 +1310,36 @@ Two architecture rules keep the codebase clean: keep **`core`** free of HTTP/ser
 > **The red thread, closed.** You began (Part 0) with an agent that was just a brain in a box. Ten
 > movements later it has hands, memory, autonomy, reach, a leash, an X-ray, and now the ability to
 > grow new organs. That is the whole of Mercury — and the whole of this handbook.
+
+---
+
+# Part 11 — The trust stack: economics, governance, verification, reliability & proactivity (the eleventh movement: an autonomous colleague you can actually trust)
+
+The first ten movements gave Mercury capability. This one gives it *trustworthiness*: it spends the least money likely to succeed, works under least-privilege with a replayable audit trail, proves on evidence that it is actually done, is tested against regressions and chaos, and reaches out about events that matter without pestering you about the ones that don't. Every subsystem here is config-driven and backward-compatible — new keys default to safe values, and the two newest (chaos and proactivity) are off until you turn them on.
+
+## 11.1 Economics & routing — spend the least money likely to succeed
+
+Mercury picks the cheapest model that is *good enough* for the task at hand rather than always reaching for the biggest one. Each model profile carries a `lane` (`local` | `frontier` | `default`); the router infers a task's likely difficulty from cheap offline signals and selects the cheapest model whose quality tier clears that bar, so routine work stays on the near-zero-cost local lane while genuinely hard work goes to frontier/default models. Configure this under `router.economics` (`enabled`, `localLaneMaxDifficulty`, `qualityMargin`); each route decision reports the chosen `lane` and `qualityNeed`.
+
+On top of the recurring per-user/per-model quotas (Part 8.4) there are **hard per-task budgets**: a `TaskBudgetService` enforces a cost/token ceiling scoped to a single run, the LLM layer checks it before every model call, and exceeding it halts or escalates the task per `budgets.perTask.onExceed` (`enabled`, `maxCost`, `maxTokens`, `onExceed`, `projectedSteps`). The **Models & budgets** panel shows a live cost-vs-value card per active task — cost so far, projected final cost, configured task value, value/cost ratio, budget-used fraction and an over-budget flag — also available at `GET /api/tasks` and `GET /api/tasks/:id`.
+
+## 11.2 Governance & security — least-privilege, policy-as-code, taint & a replayable trail
+
+Four layers sit in front of every sensitive action. **Credential grants** (`GrantBroker`) are scoped, time-limited and bound to a single task — there are no standing keys, and a sensitive capability is denied unless a live grant exists; ephemeral credentials are minted in memory against a grant and never persisted, vanishing the instant the grant expires or is revoked (`GET/POST /api/grants`, `DELETE /api/grants/:id`, config `security.grants`). **Policy-as-code** (`PolicyCodeEngine`) evaluates declarative `allow`/`deny`/`approve` rules (strictest wins) before sensitive tool actions — for example "no payments over €100 without approval" or "never email external domains" (`GET /api/policies`, `POST /api/policies/test`, config `security.policies`). **Taint tracking** marks tool outputs that cross the trust boundary as tainted, propagates taint across a run and keeps a value-level provenance graph, so policy rules can gate on `whenTainted`. And the **replayable audit trail** (`buildTrace`, `GET /api/runs/:id/trace`) turns a run's event stream into an ordered "why did you do that?" explanation with run-level totals. All four are managed from the **Governance** panel; see [`SECURITY.md`](SECURITY.md) and [`PERMISSIONS.md`](PERMISSIONS.md).
+
+## 11.3 Verification — evidence-based completion with confidence & escalation
+
+Mercury decides whether a task is *actually* done on evidence rather than optimism. The verifier runs pluggable checks — `test` runs a real shell command and treats a zero exit as passing, `schema` validates output against a JSON schema, `assertion` checks substring/regex/predicate expectations, and `critic` reuses the Jev decision engine as an LLM judge (no mock) — each yielding a 0..1 confidence with a human-readable reason. The `Verifier` aggregates those into a single confidence score, and when it falls below `verification.confidenceThreshold` the run is escalated for human review (persisted, never silently passed). Use the **Verification** panel or the API (`GET /api/verifications[/:id]`, `POST /api/verify`, `GET /api/escalations`, `POST /api/escalations/:id/resolve`); every check is opt-in per step, so existing flows are unchanged. Configure under `verification`.
+
+## 11.4 Reliability engineering — record/replay, chaos & per-agent SLOs
+
+This turns real runs into a safety harness. **Record/replay**: `RunRecorder` snapshots a real run (input, tool calls, output, model) and `ReplayService` re-runs it through the live agent, diffing status, tool sequence and output similarity so a regression shows up immediately (`mercury reliability record <runId>|recordings|replay <recId>`, `GET/POST /api/recordings`, `POST /api/recordings/:id/replay`). **Chaos** fault injection (`ChaosController`) deterministically and seedably injects failures, timeouts and latency into the *real* tool-execution path, gated by a tool-glob allowlist, to prove retries, circuit-breakers and sagas degrade gracefully — it is **off by default** (`reliability.chaos.enabled = false`; `mercury reliability chaos`, `GET /api/chaos`). **Per-agent SLOs** (`SloService`) compute success rate, intervention/escalation rate and cost-per-task over a window from the real run history and flag breaches against your targets (`mercury reliability slo`, `GET /api/slo`). Everything is visible in the **Reliability** panel; configure under `reliability`. These build on the low-level resilience primitives (circuit breaker, saga, cache, single-flight, retry) documented in [`RELIABILITY.md`](RELIABILITY.md).
+
+## 11.5 Proactive (but not annoying) — event triggers, interrupt-vs-defer & digests
+
+Mercury can react to the outside world without becoming a nuisance. **Event sources** produce events: `GatewayEmailSource` reacts to real inbound email by subscribing to the gateway's `gateway.inbound` event, and `WebhookSource` ingests generic webhook/CI events (e.g. a failing build) via `POST /api/proactive/events`. Declarative **rules** (source/kind glob plus an optional substring) map an event to an optional agent action and a base priority. The **interrupt-timing model** (`scorePriority`) scores each event 0..1 — urgent, security and CI-failure signals raise it, newsletters and FYIs lower it — and events at or above `proactive.interruptThreshold` interrupt you immediately (deliver + run the matched action) while the rest are deferred. Deferred low-priority updates accumulate in a **digest queue** that is bundled into a single notification and delivered on a cron (`proactive.digestCron`), reusing the scheduler rather than interrupting. Drive it from the **Proactive** panel or the CLI/API (`mercury proactive rules|events|digest|emit|flush|poll`, `GET /api/proactive`, `POST /api/proactive/events|digest/flush|poll`). The whole subsystem is **disabled by default**; configure under `proactive`.
+
+> **The red thread, extended.** Capability without trust is a liability. Part 11 is what lets you hand Mercury real work and real credentials: it spends carefully, acts under least privilege with a full audit trail, checks its own work, is hardened against regressions and faults, and speaks up only when it should.
 
 ---
 

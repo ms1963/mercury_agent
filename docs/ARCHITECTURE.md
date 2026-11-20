@@ -288,6 +288,44 @@ Four governance layers in front of sensitive actions, all config-driven and back
 
 See [SECURITY.md](SECURITY.md).
 
+### 5.14 Verification (`core/src/verification`)
+Evidence-based completion checking so "done" rests on evidence, not optimism. `runCheck` executes
+pluggable checks — `test` (a real shell command; exit 0 = pass), `schema` (JSON-schema validation of
+output), `assertion` (substring/regex/predicate), `critic` (reuses the Jev decision engine
+`decisions.noul` as an LLM judge — no mock) — each returning a 0..1 confidence and a reason. The
+`Verifier` aggregates per-check confidences into one score; when it is below
+`verification.confidenceThreshold` the run is **escalated for human review** (persisted) rather than
+silently passing. Wired into the runtime as `m.verifier`; API `GET /api/verifications[/:id]`,
+`POST /api/verify`, `GET /api/escalations`, `POST /api/escalations/:id/resolve`; **Verification**
+panel. Present by default but every check is opt-in per step, so existing flows are unchanged. Config
+`verification`.
+
+### 5.15 Reliability engineering (`core/src/reliability/{regression,chaos,slo}.ts`)
+Turns real runs into regression tests, injects controlled faults, and tracks per-agent SLOs — distinct
+from the low-level primitives of §5.10, which it builds on. `RunRecorder` snapshots a real run
+(input, tool calls, output, model) and `ReplayService` re-runs it through the live agent, diffing
+status, tool sequence and output similarity to flag regressions. `ChaosController` deterministically
+(seedable) injects failures/timeouts/latency into the **real** tool-execution path
+(`core/src/tools/executor.ts`), gated by a tool-glob allowlist, to prove retries/circuit-breakers/sagas
+degrade gracefully — **off by default** (`reliability.chaos.enabled = false`). `SloService` computes
+success rate, intervention/escalation rate and cost-per-task per agent over a window from the real run
+history, flagging target breaches. Wired as `m.runRecorder`, `m.replay`, `m.chaos`, `m.slo`; API
+`GET /api/slo|chaos|recordings`, `POST /api/recordings[/:id/replay]`, `DELETE /api/recordings/:id`;
+CLI `mercury reliability`; **Reliability** panel. Config `reliability`.
+
+### 5.16 Proactive (`core/src/proactive`)
+An event-trigger framework so the agent reacts to the world without being annoying. `EventSource`s
+produce events — `GatewayEmailSource` subscribes to the existing gateway's `gateway.inbound` event
+(real inbound email), `WebhookSource` ingests generic webhook/CI events via
+`POST /api/proactive/events`. Declarative rules (source/kind glob + substring) map an event to an
+optional agent action and a base priority. The interrupt-timing model `scorePriority` scores each
+event 0..1 (urgent/security/CI-fail signals raise it, newsletters/FYIs lower it); events at/above
+`proactive.interruptThreshold` **interrupt** immediately (deliver + run action), the rest are
+**deferred** into a digest queue. `ProactiveService.flushDigest` bundles the deferred queue into one
+digest, delivered on a cron (`proactive.digestCron`) by **reusing the Scheduler** (a sentinel job).
+Wired as `m.proactive`; API `GET /api/proactive`, `POST /api/proactive/events|digest/flush|poll`;
+CLI `mercury proactive`; **Proactive** panel. **Disabled by default.** Config `proactive`.
+
 ---
 
 ## 6. Extension points
@@ -324,7 +362,10 @@ are SSRF-protected; secrets are redacted from logs/outputs; an append-only hash-
 log records security-relevant actions. Governance adds least-privilege time-limited credential
 **grants** (no standing keys), **policy-as-code** (`allow`/`deny`/`approve`, strictest wins) before
 sensitive actions, **taint tracking** of untrusted tool output, and a **replayable audit trail**
-(§5.13). Full threat model: [SECURITY.md](SECURITY.md).
+(§5.13). **Verification** (§5.14) adds a human-in-the-loop safety net — low-confidence completions are
+escalated for review instead of passing silently; **chaos** fault injection (§5.15) is **off by
+default** and gated by a tool-glob allowlist so it can only run deliberately. Full threat model:
+[SECURITY.md](SECURITY.md).
 
 ---
 

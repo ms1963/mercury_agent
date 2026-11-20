@@ -1224,6 +1224,72 @@ debug breakpoints and run replay, the web UI, i18n, and the polyglot tool protoc
 
 ---
 
+# Part XII — The trust stack: economics, governance, verification, reliability & proactivity
+
+These five subsystems turn a capable agent into one you can hand real work and real credentials. All
+are config-driven and backward-compatible — new keys default to safe values, and chaos and proactivity
+are off until enabled.
+
+## 12.1 Economics & routing
+
+Mercury selects the cheapest model *likely to succeed* rather than always the biggest. Model profiles
+carry a `lane` (`local` | `frontier` | `default`); the router infers task difficulty from cheap offline
+signals and picks the cheapest model whose quality tier clears that bar, keeping routine work on the
+near-zero-cost local lane and routing hard work to frontier/default models (`router.economics`:
+`enabled`, `localLaneMaxDifficulty`, `qualityMargin`; each route reports `lane` and `qualityNeed`). On
+top of recurring quotas, **hard per-task budgets** (`TaskBudgetService`) enforce a cost/token ceiling
+per run — checked before every model call — and halt or escalate on exceed (`budgets.perTask`:
+`enabled`, `maxCost`, `maxTokens`, `onExceed`, `projectedSteps`). The **Models & budgets** panel and
+`GET /api/tasks[/:id]` show a live cost-vs-value card (cost so far, projected cost, value/cost ratio,
+budget-used, over-budget flag).
+
+## 12.2 Governance & security
+
+Four layers guard sensitive actions. **Credential grants** (`GrantBroker`) are scoped, time-limited and
+task-bound — no standing keys; ephemeral credentials are minted in memory and never persisted
+(`GET/POST /api/grants`, `DELETE /api/grants/:id`, `security.grants`). **Policy-as-code**
+(`PolicyCodeEngine`) evaluates `allow`/`deny`/`approve` rules (strictest wins) before sensitive tool
+actions, e.g. "no payments over €100 without approval" (`GET /api/policies`, `POST /api/policies/test`,
+`security.policies`). **Taint tracking** marks and propagates untrusted tool output and lets policy
+rules gate on `whenTainted`. The **replayable audit trail** (`buildTrace`, `GET /api/runs/:id/trace`)
+turns a run into an ordered "why did you do that?" explanation. Managed from the **Governance** panel;
+see [SECURITY.md](SECURITY.md) and [PERMISSIONS.md](PERMISSIONS.md).
+
+## 12.3 Verification
+
+Completion is decided on evidence. The verifier runs pluggable checks — `test` (real shell command,
+exit 0 = pass), `schema` (JSON-schema), `assertion` (substring/regex/predicate) and `critic` (the Jev
+decision engine as judge, no mock) — each returning a 0..1 confidence and a reason. The `Verifier`
+aggregates them; below `verification.confidenceThreshold` the run is escalated for human review rather
+than silently passing. Use the **Verification** panel or `GET /api/verifications[/:id]`,
+`POST /api/verify`, `GET /api/escalations`, `POST /api/escalations/:id/resolve`. Checks are opt-in per
+step; configure under `verification`.
+
+## 12.4 Reliability engineering
+
+`RunRecorder` snapshots a real run and `ReplayService` re-runs it through the live agent, diffing
+status, tool sequence and output similarity to catch regressions (`mercury reliability
+record|recordings|replay`, `GET/POST /api/recordings`, `POST /api/recordings/:id/replay`).
+`ChaosController` injects failures/timeouts/latency into the real tool path — deterministic, seedable,
+tool-glob gated, and **off by default** (`reliability.chaos.enabled = false`; `mercury reliability
+chaos`, `GET /api/chaos`). `SloService` computes per-agent success rate, intervention/escalation rate
+and cost-per-task vs targets (`mercury reliability slo`, `GET /api/slo`). See the **Reliability** panel
+and `reliability` config; built on the primitives in [RELIABILITY.md](RELIABILITY.md).
+
+## 12.5 Proactive (but not annoying)
+
+Event sources produce events — `GatewayEmailSource` reacts to real inbound email via the gateway's
+`gateway.inbound` event, `WebhookSource` ingests webhook/CI events via `POST /api/proactive/events`.
+Declarative rules (source/kind glob + substring) map events to an optional agent action and base
+priority. `scorePriority` scores each event 0..1 (urgent/security/CI-fail raise it, newsletters/FYIs
+lower it); events ≥ `proactive.interruptThreshold` interrupt immediately, the rest defer into a digest
+queue that is bundled and delivered on a cron (`proactive.digestCron`) via the scheduler. Drive it from
+the **Proactive** panel or `mercury proactive rules|events|digest|emit|flush|poll` /
+`GET /api/proactive`, `POST /api/proactive/events|digest/flush|poll`. Disabled by default; configure
+under `proactive`.
+
+---
+
 ## Appendix A — Full CLI reference
 
 The CLI is invoked as `mercury <command>` once installed (`npm link` or the published bin), or as

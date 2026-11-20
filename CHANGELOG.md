@@ -52,6 +52,53 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     event stream into an ordered, human-readable trace (per-step explanations plus run-level totals:
     cost, tokens, LLM/tool/decision counts, taint, duration). Exposed via `GET /api/runs/:id/trace`
     and a new **Governance** Web UI panel that also manages grants and tests policies.
+- **Built-in verification — evidence-based completion checks with a confidence score and
+  human-review escalation.** A new verification subsystem (`packages/core/src/verification/`) runs
+  pluggable evidence checks after a task and decides, on evidence rather than optimism, whether the
+  work is actually done. Backward-compatible: the subsystem is present by default but every check is
+  opt-in per step, so existing flows are unchanged.
+  - **Pluggable evidence checks** (`test`, `schema`, `assertion`, `critic`). `test` runs a real shell
+    command and treats a zero exit as passing; `schema` validates output against a JSON schema;
+    `assertion` checks substring/regex/predicate expectations; `critic` reuses the existing decision
+    engine (`decisions.noul`) as an LLM judge — no mock. Each check yields a 0..1 confidence with a
+    human-readable reason.
+  - **Aggregate confidence + escalation.** The `Verifier` combines per-check confidences into a single
+    0..1 score; when it falls below `verification.confidenceThreshold` the run is escalated for human
+    review (persisted, not silently passed). API: `GET /api/verifications`, `GET /api/verifications/:id`,
+    `POST /api/verify`, `GET /api/escalations`, `POST /api/escalations/:id/resolve`, and a new
+    **Verification** Web UI panel. Config under `verification`.
+- **Reliability engineering — record/replay regression, chaos fault injection and per-agent SLOs.**
+  A new subsystem (`packages/core/src/reliability/{regression,chaos,slo}.ts`) that turns real runs
+  into regression tests, injects controlled faults to prove graceful degradation, and tracks
+  per-agent service-level objectives. All opt-in; chaos is **off by default**.
+  - **Record / replay as regression tests.** `RunRecorder` snapshots a real run (input, tool calls,
+    output, model) and `ReplayService` re-runs it through the live agent, diffing status, tool
+    sequence and output similarity to flag regressions. API: `GET/POST /api/recordings`,
+    `POST /api/recordings/:id/replay`, `DELETE /api/recordings/:id`; CLI `mercury reliability record|recordings|replay`.
+  - **Chaos fault injection (off by default).** `ChaosController` deterministically (seedable) injects
+    failures, timeouts and latency into the real tool-execution path, gated by a tool glob allowlist,
+    to verify retries/circuit-breakers/sagas hold. Config under `reliability.chaos` (`enabled` defaults
+    to `false`). API: `GET /api/chaos`; CLI `mercury reliability chaos`.
+  - **Per-agent SLOs.** `SloService` computes success rate, intervention/escalation rate and
+    cost-per-task per agent over a window from the real run history, flagging breaches against
+    configured targets. API: `GET /api/slo`; CLI `mercury reliability slo`; new **Reliability** Web UI
+    panel.
+- **Proactive (but not annoying) — event triggers, interrupt-vs-defer timing and digest batching.**
+  A new subsystem (`packages/core/src/proactive/`) that lets the agent react to real-world events
+  (new email, failing CI build, …) through declarative rules, deciding when to interrupt the user
+  immediately versus batch low-priority updates into a periodic digest. Disabled by default.
+  - **Event-trigger framework with concrete, non-mocked sources.** Event sources produce events that
+    declarative rules (source/kind glob + substring) map to an optional agent action and a base
+    priority. `GatewayEmailSource` reacts to real inbound email via the existing gateway's
+    `gateway.inbound` event; `WebhookSource` ingests generic webhook/CI events via
+    `POST /api/proactive/events`.
+  - **Interrupt-timing priority model.** `scorePriority` scores each event 0..1 (urgent/security/CI-fail
+    signals raise it, newsletters/FYIs lower it); events at/above `proactive.interruptThreshold` notify
+    immediately, the rest are deferred. A rule may force `interrupt` or `digest`.
+  - **Digest batching via the scheduler.** Deferred low-priority events accumulate and are bundled into
+    one digest delivered on a cron (`proactive.digestCron`), reusing the existing Scheduler rather than
+    interrupting. API: `GET /api/proactive`, `POST /api/proactive/events|digest/flush|poll`; CLI
+    `mercury proactive`; new **Proactive** Web UI panel. Config under `proactive`.
 - **Three new native gateway adapters**, bringing the built-in total to 19:
   - **facebook** — Facebook Messenger, bidirectional. Inbound via the Meta Messenger webhook
     (GET verification handshake + HMAC-verified POSTs, `x-hub-signature-256`), outbound via the
