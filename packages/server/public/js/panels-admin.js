@@ -19,14 +19,24 @@ export const renderScheduler = (view) => panel(view, t('scheduler.title'), async
   const task = field(t('scheduler.task'), { className: 'grow' });
   const history = h('div');
   const act = (s, a) => safe(async () => (await api(`/api/schedules/${s.id}/${a}`, { body: {} }), reload()));
+  const showHistory = async (s) =>
+    history.replaceChildren(card(`${t('scheduler.history')}: ${s.name}`, json((await api(`/api/schedules/${s.id}/history`)).runs)));
+  // Run now returns immediately (the run executes in the background), so give the user
+  // explicit feedback: a toast plus the schedule's history, which shows the "running" entry.
+  const runNow = (s) => safe(async () => {
+    await api(`/api/schedules/${s.id}/run`, { body: {} });
+    toast(t('scheduler.runStarted', 'Run started — see History'));
+    await showHistory(s);
+    await reload();
+  });
   return [
     card(null, table(r.schedules, [
       [t('common.name'), (s) => s.name], ['When', (s) => s.nl || s.spec], [t('scheduler.task'), (s) => h('span.small', {}, s.task)],
       [t('common.status'), (s) => badge(s.status === 'active', s.status, s.status)], [t('scheduler.next'), (s) => when(s.nextRun)],
       [t('common.actions'), (s) => h('span', {},
         s.status === 'active' ? h('button', { onclick: act(s, 'pause') }, t('common.pause')) : h('button', { onclick: act(s, 'resume') }, t('common.resume')),
-        h('button', { onclick: act(s, 'run') }, t('scheduler.runNow')),
-        h('button', { onclick: safe(async () => history.replaceChildren(card(`${t('scheduler.history')}: ${s.name}`, json((await api(`/api/schedules/${s.id}/history`)).runs)))) }, t('scheduler.history')),
+        h('button', { onclick: runNow(s) }, t('scheduler.runNow')),
+        h('button', { onclick: safe(() => showHistory(s)) }, t('scheduler.history')),
         h('button.danger', { onclick: safe(async () => confirm(t('common.confirmDelete')) && (await api(`/api/schedules/${s.id}`, { method: 'DELETE' }), reload())) }, '×'))],
     ])),
     card(t('common.create'), h('div.row', {}, whenIn, task, h('button.primary', { onclick: safe(async () => (await api('/api/schedules', { body: { when: whenIn.value, task: task.value, delivery: { platform: 'web' } } }), reload())) }, t('common.create')))),
