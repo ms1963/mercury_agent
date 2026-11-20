@@ -8,7 +8,9 @@ const isAdmin = () => state.user?.role === 'admin';
 /** Re-render helper: build(container) is re-run by reload(). */
 async function panel(view, title, build) {
   const body = h('div');
-  const reload = safe(async () => body.replaceChildren(...[await build(reload)].flat()));
+  // Filter out null/undefined/false: panels use `cond ? node : null` for conditional sections,
+  // and replaceChildren() would otherwise stringify those into literal "null" text (the "nullnull" bug).
+  const reload = safe(async () => body.replaceChildren(...[await build(reload)].flat().filter((c) => c != null && c !== false)));
   view.append(h('div.row', {}, h('h2.grow', {}, title), h('button', { onclick: reload }, t('common.refresh'))), body);
   await reload();
 }
