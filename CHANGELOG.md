@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-20
+
 ### Added
 - **Edit existing schedules — change the task, the time (`when`), the name, delivery or retry
   limit of a schedule you already created**, from both front-ends (the backend `scheduler.update()`
