@@ -63,6 +63,9 @@ import {
   RunRecorder,
   ReplayService,
   SloService,
+  ProactiveService,
+  GatewayEmailSource,
+  WebhookSource,
   VoiceService,
   WorkflowEngine,
   assetsDir,
@@ -140,6 +143,9 @@ function decisionProviders(config: MercuryConfig, llm: LLMService, hasRealLlm: b
   }
 }
 
+/** Sentinel scheduler task name/body: the proactive subsystem reuses the scheduler to flush digests. */
+const PROACTIVE_DIGEST_TASK = '__proactive_digest__';
+
 export class Mercury {
   readonly startedAt = new Date();
   readonly assets = assetsDir();
@@ -206,6 +212,8 @@ export class Mercury {
   readonly replay: ReplayService;
   /** Reliability: per-agent SLOs (success / intervention / cost) from run history. */
   readonly slo: SloService;
+  /** Proactive: event-triggered reactions with interrupt-vs-defer timing and digest batching. */
+  readonly proactive: ProactiveService;
   readonly services: ToolServices;
   readonly plugins: LoadedPlugin[] = [];
   private loadedPlugins: Plugin[] = [];
@@ -357,6 +365,21 @@ export class Mercury {
     const deliver = (platform: string, target: string, text: string) => this.gateway.deliver(platform, target, text);
     this.scheduler.deliver = (d, text) => deliver(d.platform, d.target, text);
     Object.assign(this.services, { scheduler: this.scheduler, spawner: this.spawner, workflows: this.workflows, deliver });
+
+    // Proactive (but not annoying): event sources → rules → interrupt-or-defer → digest. Delivery
+    // reuses the real gateway; actions run through the real agent. Disabled by default.
+    this.proactive = new ProactiveService(config, this.db, this.bus, {
+      deliver: async (text) => {
+        const d = config.proactive.delivery;
+        if (d.platform && d.target) await deliver(d.platform, d.target, text);
+      },
+      runAction: async (task) => {
+        const principal = this.principalFor();
+        await this.agent.run({ principal, input: task, platform: 'proactive', kind: 'subagent', ephemeral: true, reflect: false });
+      },
+    });
+    this.proactive.register(new GatewayEmailSource(this.bus));
+    this.proactive.register(new WebhookSource());
     this.services.extra.platforms = () => this.gateway.platforms();
     installConfiguredHooks(config, this.hooks, this.logger);
   }
@@ -426,6 +449,8 @@ export class Mercury {
 
   /** Scheduled jobs run as their owner, on the "scheduler" platform, without a persistent session. */
   private async runSchedule(userId: string, task: string, signal: AbortSignal): Promise<string> {
+    // Sentinel job: the proactive subsystem reuses the scheduler to flush its deferred digest.
+    if (task === PROACTIVE_DIGEST_TASK) return (await this.proactive.flushDigest()).summary;
     const principal = this.users.principalFor(this.users.get(userId));
     const r = await this.agent.run({ principal, input: task, platform: 'scheduler', signal, kind: 'schedule', ephemeral: true, reflect: false });
     if (r.status === 'error') throw new Error(r.error ?? 'run failed');
@@ -440,6 +465,20 @@ export class Mercury {
     await this.loadPlugins();
     if (opts.services === false) return;
     if (config.scheduler.enabled) this.scheduler.start();
+    if (config.proactive.enabled) {
+      this.proactive.start();
+      this.cleanups.push(() => this.proactive.stop());
+      // Reuse the scheduler for digest delivery: create one durable cron job (idempotent by name).
+      try {
+        const owner = this.users.list().find((u) => u.role === 'admin');
+        if (owner && !this.scheduler.list().some((s) => s.name === PROACTIVE_DIGEST_TASK)) {
+          this.scheduler.create(owner.id, { name: PROACTIVE_DIGEST_TASK, when: config.proactive.digestCron, task: PROACTIVE_DIGEST_TASK });
+        }
+      } catch (e) {
+        this.logger.warn('proactive digest schedule', { error: String(e) });
+      }
+      this.scheduler.start(); // ensure the digest cron fires even if the generic scheduler is off
+    }
     await this.mcp.connectAll(config.mcp.servers).catch((e: unknown) => this.logger.warn('mcp connect failed', { error: String(e) }));
     if (config.gateway.enabled) await this.gateway.start();
   }

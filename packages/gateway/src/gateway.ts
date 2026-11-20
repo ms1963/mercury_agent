@@ -160,7 +160,7 @@ export class Gateway {
   private async process(msg: InboundMessage, skipTriage: boolean): Promise<void> {
     const { users, pairing, config, bus } = this.deps;
     if (msg.isGroup && !msg.mentioned) return;
-    bus.emit({ type: 'gateway.inbound', data: { platform: msg.platform, chatId: msg.chatId, from: msg.userId } });
+    bus.emit({ type: 'gateway.inbound', data: { platform: msg.platform, chatId: msg.chatId, from: msg.userId, displayName: msg.displayName, subject: msg.subject, preview: (msg.text ?? '').slice(0, 280) } });
 
     const user = users.findIdentity(msg.platform, msg.userId);
     if (!user) {

@@ -350,6 +350,34 @@ export function registerManageRoutes(app: FastifyInstance, { m, auth, sse }: Ctx
     return { removed: m.runRecorder.remove(param(req)) };
   });
 
+  // ---- proactive: event triggers, interrupt-vs-defer priority, digest queue ---------------------
+  app.get('/api/proactive', async (req) => {
+    auth(req, 'audit.read');
+    const pc = m.config.proactive;
+    return {
+      enabled: pc.enabled,
+      config: { interruptThreshold: pc.interruptThreshold, digestCron: pc.digestCron },
+      sources: m.proactive.sourceNames(),
+      rules: m.proactive.rules(),
+      events: m.proactive.events(),
+      digest: m.proactive.deferred(),
+    };
+  });
+  app.post('/api/proactive/events', async (req) => {
+    auth(req, 'config.manage');
+    const b = req.body as Body;
+    if (!b.source || !b.kind) throw new HttpError(400, 'source and kind are required');
+    return m.proactive.ingest({ source: String(b.source), kind: String(b.kind), title: b.title ? String(b.title) : undefined, body: b.body ? String(b.body) : undefined });
+  });
+  app.post('/api/proactive/digest/flush', async (req) => {
+    auth(req, 'config.manage');
+    return m.proactive.flushDigest();
+  });
+  app.post('/api/proactive/poll', async (req) => {
+    auth(req, 'config.manage');
+    return m.proactive.poll();
+  });
+
   // ---- help, i18n, settings ---------------------------------------------------------
   app.get('/api/help', async (req) => {
     const q = req.query as Body;

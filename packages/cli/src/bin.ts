@@ -41,6 +41,8 @@ Usage: mercury <command> [options]
   replay <runId>            Print the recorded event trace of a run
   reliability [slo|record <runId>|recordings|replay <recId>|chaos]
                             Per-agent SLOs, record/replay regression, chaos status
+  proactive [rules|events|digest|emit <source> <kind>|flush|poll]
+                            Event triggers, interrupt-vs-defer priority, digest queue
   eval [--tag <tag>] [--json]   Run the built-in self-evaluation suite (offline) with token/cost accounting
   doctor                    Check the environment
   update                    git pull + npm install + build
@@ -182,6 +184,19 @@ async function main(argv: string[]): Promise<void> {
         }
         if (sub === 'chaos') return console.log(JSON.stringify(m.chaos.status(), null, 2));
         return console.log('usage: mercury reliability <slo [--days N] | record <runId> [--name N] | recordings | replay <recordingId> | chaos>');
+      }
+      case 'proactive': {
+        const sub = a._[1];
+        if (sub === 'rules') return console.log(m.proactive.rules().map((r) => `${r.id.padEnd(18)} ${r.source}/${r.kind} → ${r.route || 'auto'} p=${r.priority}  ${r.description}`).join('\n') || 'no rules');
+        if (sub === 'events') return console.log(m.proactive.events().map((e) => `${e.createdAt} ${e.decision.padEnd(9)} ${e.priority.toFixed(2)} ${e.source}/${e.kind}  ${e.title ?? ''}`).join('\n') || 'no events');
+        if (sub === 'digest') return console.log(m.proactive.deferred().map((e) => `${e.createdAt} ${e.priority.toFixed(2)} ${e.source}/${e.kind}  ${e.title ?? ''}`).join('\n') || 'digest queue empty');
+        if (sub === 'emit') {
+          const ev = await m.proactive.ingest({ source: a._[2] ?? 'cli', kind: a._[3] ?? 'event', title: flag(a, 'title'), body: flag(a, 'body') });
+          return console.log(`${ev.decision} (p=${ev.priority.toFixed(2)}) → ${ev.id}`);
+        }
+        if (sub === 'flush') return console.log((await m.proactive.flushDigest()).summary);
+        if (sub === 'poll') return console.log(`polled ${(await m.proactive.poll()).polled} event(s)`);
+        return console.log('usage: mercury proactive <rules | events | digest | emit <source> <kind> [--title T] [--body B] | flush | poll>');
       }
       case 'eval':
         return await cmd.evalCmd(m, a);
