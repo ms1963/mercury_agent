@@ -59,6 +59,10 @@ import {
   Tracer,
   UserService,
   Verifier,
+  ChaosController,
+  RunRecorder,
+  ReplayService,
+  SloService,
   VoiceService,
   WorkflowEngine,
   assetsDir,
@@ -194,6 +198,14 @@ export class Mercury {
   readonly wiki: WikiService;
   /** Built-in verification: evidence-based completion checks + confidence + escalation. */
   readonly verifier: Verifier;
+  /** Reliability: opt-in chaos fault injection into the tool path (off by default). */
+  readonly chaos: ChaosController;
+  /** Reliability: record completed runs for replay as regression tests. */
+  readonly runRecorder: RunRecorder;
+  /** Reliability: replay a recorded run through the real agent and diff the outcome. */
+  readonly replay: ReplayService;
+  /** Reliability: per-agent SLOs (success / intervention / cost) from run history. */
+  readonly slo: SloService;
   readonly services: ToolServices;
   readonly plugins: LoadedPlugin[] = [];
   private loadedPlugins: Plugin[] = [];
@@ -260,7 +272,9 @@ export class Mercury {
 
     this.tools = new ToolRegistry(config);
     registerBuiltinTools(this.tools);
-    this.executor = new ToolExecutor(config, this.tools, this.policy, this.bus, this.judgment, this.hooks, this.audit, this.codePolicies, this.grants, this.taint);
+    // Reliability: chaos fault injector (off by default) is passed into the real tool path.
+    this.chaos = new ChaosController(config, this.bus);
+    this.executor = new ToolExecutor(config, this.tools, this.policy, this.bus, this.judgment, this.hooks, this.audit, this.codePolicies, this.grants, this.taint, this.chaos);
     this.approvals = new ApprovalService(this.bus);
     this.memory = new MemoryManager(config, this.db, new HashEmbedding(config.memory.embeddings.dims), this.bus, this.hooks);
     this.memory.summarizer = async (userId, query, text) =>
@@ -304,6 +318,18 @@ export class Mercury {
       );
       return { passed: r.noul >= 0.5, confidence: r.noul, detail: `critic p(satisfies)=${r.noul.toFixed(2)} via ${r.provider}` };
     });
+
+    // Reliability engineering: record completed runs (opt-in) for replay regression, a replay
+    // service that re-runs recorded inputs through the real agent, and per-agent SLOs.
+    this.runRecorder = new RunRecorder(config, this.db, this.bus);
+    this.runRecorder.start();
+    this.cleanups.push(() => this.runRecorder.stop());
+    this.replay = new ReplayService(this.runRecorder, async (input, userId) => {
+      const principal = userId ? this.users.principalFor(this.users.get(userId)) : this.principalFor();
+      const r = await this.agent.run({ principal, input, platform: 'replay', kind: 'subagent', ephemeral: true, reflect: false });
+      return { status: r.status, output: r.output, toolNames: r.toolNames };
+    });
+    this.slo = new SloService(config, this.db);
 
     this.services = {
       config, logger: this.logger, llm: this.llm, memory: this.memory, skills: this.skills, decisions: this.decisions,

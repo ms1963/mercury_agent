@@ -39,6 +39,8 @@ Usage: mercury <command> [options]
   import-agent [~/.hermes]  Import memories, profile and skills from Hermes Agent
   new <tool|skill|workflow|adapter|plugin> <name> [--lang python|js|go|cpp|java]
   replay <runId>            Print the recorded event trace of a run
+  reliability [slo|record <runId>|recordings|replay <recId>|chaos]
+                            Per-agent SLOs, record/replay regression, chaos status
   eval [--tag <tag>] [--json]   Run the built-in self-evaluation suite (offline) with token/cost accounting
   doctor                    Check the environment
   update                    git pull + npm install + build
@@ -166,6 +168,21 @@ async function main(argv: string[]): Promise<void> {
       case 'replay':
         for (const e of m.recorder.replay(a._[1] ?? '')) console.log(`${e.ts} ${e.type.padEnd(16)} ${JSON.stringify(e.data).slice(0, 160)}`);
         return;
+      case 'reliability': {
+        const sub = a._[1];
+        if (sub === 'slo') return console.log(JSON.stringify(m.slo.compute(flag(a, 'days') ? Number(flag(a, 'days')) : undefined), null, 2));
+        if (sub === 'record') {
+          const rec = m.runRecorder.record(a._[2] ?? '', flag(a, 'name'));
+          return console.log(rec ? `recorded ${rec.id} (${rec.toolCalls.length} tool calls)` : 'run not found');
+        }
+        if (sub === 'recordings') return console.log(m.runRecorder.list().map((r) => `${r.id.padEnd(20)} ${(r.name ?? '').padEnd(26)} tools=${r.toolCalls.length}  ${r.createdAt}`).join('\n') || 'no recordings');
+        if (sub === 'replay') {
+          const d = await m.replay.replay(a._[2] ?? '');
+          return console.log(`${d.match ? 'MATCH' : 'REGRESSION'} — ${d.summary}`);
+        }
+        if (sub === 'chaos') return console.log(JSON.stringify(m.chaos.status(), null, 2));
+        return console.log('usage: mercury reliability <slo [--days N] | record <runId> [--name N] | recordings | replay <recordingId> | chaos>');
+      }
       case 'eval':
         return await cmd.evalCmd(m, a);
       case 'help':

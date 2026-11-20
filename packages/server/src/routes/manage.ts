@@ -319,6 +319,37 @@ export function registerManageRoutes(app: FastifyInstance, { m, auth, sse }: Ctx
     return { resolved: m.verifier.resolveEscalation(param(req)) };
   });
 
+  // ---- reliability engineering: SLOs, record/replay regression, chaos status -------------------
+  app.get('/api/slo', async (req) => {
+    auth(req, 'audit.read');
+    const days = (req.query as Body).days;
+    return m.slo.compute(days === undefined ? undefined : Number(days));
+  });
+  app.get('/api/chaos', async (req) => {
+    auth(req, 'audit.read');
+    return m.chaos.status();
+  });
+  app.get('/api/recordings', async (req) => {
+    auth(req, 'audit.read');
+    return { recordings: m.runRecorder.list() };
+  });
+  app.post('/api/recordings', async (req) => {
+    auth(req, 'config.manage');
+    const b = req.body as Body;
+    if (!b.runId) throw new HttpError(400, 'runId is required');
+    const rec = m.runRecorder.record(String(b.runId), b.name ? String(b.name) : undefined);
+    if (!rec) throw new HttpError(404, 'run not found');
+    return rec;
+  });
+  app.post('/api/recordings/:id/replay', async (req) => {
+    auth(req, 'config.manage');
+    return m.replay.replay(param(req));
+  });
+  app.delete('/api/recordings/:id', async (req) => {
+    auth(req, 'config.manage');
+    return { removed: m.runRecorder.remove(param(req)) };
+  });
+
   // ---- help, i18n, settings ---------------------------------------------------------
   app.get('/api/help', async (req) => {
     const q = req.query as Body;

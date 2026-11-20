@@ -15,6 +15,7 @@ import type { AuditLog } from '../security/audit.js';
 import type { PolicyCodeEngine } from '../security/policy-code.js';
 import type { TaintTracker } from '../security/taint.js';
 import type { GrantBroker } from '../auth/grants.js';
+import type { ChaosController } from '../reliability/chaos.js';
 import { redactSecrets } from '../security/redact.js';
 import { scanForInjection, spotlight } from '../security/injection.js';
 import { errorMessage, truncate } from '../types/common.js';
@@ -56,6 +57,8 @@ export class ToolExecutor {
     private grants?: GrantBroker,
     /** Prompt-injection taint tracker (tool outputs marked/propagated per run). */
     private taint?: TaintTracker,
+    /** Chaos fault injector (off by default); exercises recovery paths when enabled. */
+    private chaos?: ChaosController,
   ) {}
 
   async execute(call: ToolCall, ctx: ToolContext, state: RunSecurityState): Promise<ExecutedTool> {
@@ -93,12 +96,21 @@ export class ToolExecutor {
     if (before?.block) return fail(`Blocked by hook: ${String(before.block)}`, 'denied');
     if (before?.args) args = before.args as Record<string, unknown>;
 
+    // Chaos fault injection (opt-in): deliberately fail/slow eligible tools to exercise recovery.
+    const injection = this.chaos?.decide(tool.name) ?? null;
     let result: ToolResult;
-    try {
-      const raw = await withTimeout(tool.execute(args, ctx), tool.timeoutMs ?? this.config.agent.toolTimeoutMs, ctx.signal, tool.name);
-      result = typeof raw === 'string' ? { content: raw } : raw;
-    } catch (err) {
-      result = { content: errorMessage(err), isError: true };
+    if (injection === 'fail') {
+      result = { content: `Chaos fault injection: simulated failure of tool "${tool.name}".`, isError: true };
+    } else if (injection === 'timeout') {
+      await new Promise((r) => setTimeout(r, this.chaos?.latencyMs ?? 1000));
+      result = { content: `Chaos fault injection: simulated timeout of tool "${tool.name}".`, isError: true };
+    } else {
+      try {
+        const raw = await withTimeout(tool.execute(args, ctx), tool.timeoutMs ?? this.config.agent.toolTimeoutMs, ctx.signal, tool.name);
+        result = typeof raw === 'string' ? { content: raw } : raw;
+      } catch (err) {
+        result = { content: errorMessage(err), isError: true };
+      }
     }
 
     const afterHook = await this.hooks?.run('after_tool_call', { tool: tool.name, args, result, runId: ctx.runId });
