@@ -6,12 +6,7 @@
 
 ---
 
-This handbook is the single book that takes you from *"I just heard of Mercury"* to *"I run,
-govern and extend a fleet of autonomous agents."* It is deliberately long and detailed: it
-explains the small things (which key to paste where) and the big things (how the agent decides,
-remembers and improves). If you only read one document about Mercury, read this one — it links out
-to the specialised references (`GUIDE.md`, `PROVIDERS.md`, `SECURITY.md`, `EXTENDING.md`, …) when
-you want to go deeper on a single subject.
+This handbook is the single book that takes you from *"I just heard of Mercury"* to *"I run, govern and extend a fleet of autonomous agents."* It is deliberately long and detailed: it explains the small things (which key to paste where) and the big things (how the agent decides, remembers and improves). If you only read one document about Mercury, read this one — it links out to the specialised references (`GUIDE.md`, `PROVIDERS.md`, `SECURITY.md`, `EXTENDING.md`, …) when you want to go deeper on a single subject.
 
 > **A note on honesty.** Mercury is developed offline-first and tested with a deterministic suite
 > (185 offline tests). Many subsystems that talk to *live external services* — real LLM providers,
@@ -24,9 +19,7 @@ you want to go deeper on a single subject.
 
 ## How to read this handbook — the three on-ramps
 
-There is **one spine** (the red thread below) and **three on-ramps** onto it. Everybody walks the
-same road; you just join it at the point that matches your goal and read the depth boxes that match
-your role.
+There is **one spine** (the red thread below) and **three on-ramps** onto it. Everybody walks the same road; you just join it at the point that matches your goal and read the depth boxes that match your role.
 
 | You are… | Your goal | Start at | Read deeply | Skim |
 |---|---|---|---|---|
@@ -34,36 +27,26 @@ your role.
 | **An administrator** | Run Mercury for a team safely and keep it healthy | Part 1 → Part 8 → Part 9 | Parts 1, 7, 8, 9 (install, integrations, govern, observe) | Part 10 |
 | **A developer** | Add tools, adapters, providers, patterns; embed Mercury | Part 0 → Part 4 → Part 10 | Parts 4, 5, 10 + the appendices | Parts 3, 6 |
 
-Throughout, boxes marked **👤 For users**, **🛠 For admins** and **🧑‍💻 For developers** call out the
-role-specific detail, so you can read the whole book or follow just your lane.
+Throughout, boxes marked **👤 For users**, **🛠 For admins** and **🧑‍💻 For developers** call out the role-specific detail, so you can read the whole book or follow just your lane.
 
 ---
 
 ## The red thread — *"From zero to a trustworthy autonomous colleague"*
 
-Everything in this handbook hangs off one story. Mercury is not a chatbot you type at; it is a
-**colleague you hire, equip, teach, trust and supervise.** You bring that colleague to life in a
-fixed sequence of movements, and each movement adds exactly one capability. Keep this sequence in
-your head and nothing in Mercury will feel random — every feature is "the tool for one movement."
+Everything in this handbook hangs off one story. Mercury is not a chatbot you type at; it is a **colleague you hire, equip, teach, trust and supervise.** You bring that colleague to life in a fixed sequence of movements, and each movement adds exactly one capability. Keep this sequence in your head and nothing in Mercury will feel random — every feature is "the tool for one movement."
 
 1. **Give it a home** *(Install)* — one Node process and one SQLite file on your machine.
 2. **Give it a brain** *(LLM providers)* — Mercury ships with no model; you point it at one.
 3. **Give it a voice** *(Chats, Sessions, Runs)* — you talk; it answers; every exchange is recorded.
 4. **Give it hands** *(Tools)* — 79 built-in tools let it read files, run code, search the web, act.
-5. **Give it a memory and teach it** *(Memory, Skills, Reflection, Lessons)* — it remembers you,
-   distils reusable skills, and learns a lesson from every run.
+5. **Give it a memory and teach it** *(Memory, Skills, Reflection, Lessons)* — it remembers you, distils reusable skills, and learns a lesson from every run.
 6. **Let it work on its own** *(Scheduler, Workflows)* — scheduled agents and multi-agent teams.
-7. **Connect it to the world** *(Integrations & MCP)* — chat platforms, email, and the Model
-   Context Protocol as both client and server.
-8. **Put it on a leash** *(Personalities, Permissions, Budgets, Security)* — govern what each agent
-   may do, as whom, with what spend, under what guardrails.
-9. **Give yourself x-ray vision** *(Observability & Debugging)* — every run is a traceable event
-   stream you can watch, pause, replay and diagnose.
+7. **Connect it to the world** *(Integrations & MCP)* — chat platforms, email, and the Model Context Protocol as both client and server.
+8. **Put it on a leash** *(Personalities, Permissions, Budgets, Security)* — govern what each agent may do, as whom, with what spend, under what guardrails.
+9. **Give yourself x-ray vision** *(Observability & Debugging)* — every run is a traceable event stream you can watch, pause, replay and diagnose.
 10. **Let it evolve** *(Extending Mercury)* — add your own tools, adapters, providers and patterns.
 
-The trust in "trustworthy" is earned in movements 8 and 9; the autonomy in "autonomous" is granted
-in movements 4, 6 and 7; the "colleague" is built in movements 3 and 5. The whole book is just
-these ten movements, told in order and in depth.
+The trust in "trustworthy" is earned in movements 8 and 9; the autonomy in "autonomous" is granted in movements 4, 6 and 7; the "colleague" is built in movements 3 and 5. The whole book is just these ten movements, told in order and in depth.
 
 ---
 
@@ -90,17 +73,9 @@ these ten movements, told in order and in depth.
 
 ## 0.1 What Mercury is (and is not)
 
-Mercury Agent is a **self-hosted, extensible agentic AI platform written in TypeScript.** "Agentic"
-means it does not just answer — it *reasons in a loop, calls tools, remembers, reflects and acts*
-until a task is done. "Self-hosted" means it runs entirely on **your** machine or server: one Node
-process, one SQLite database file, your keys, your data. "Extensible" means almost everything —
-tools, providers, personalities, adapters, reasoning patterns — is a drop-in you can add without
-editing the core.
+Mercury Agent is a **self-hosted, extensible agentic AI platform written in TypeScript.** "Agentic" means it does not just answer — it *reasons in a loop, calls tools, remembers, reflects and acts* until a task is done. "Self-hosted" means it runs entirely on **your** machine or server: one Node process, one SQLite database file, your keys, your data. "Extensible" means almost everything — tools, providers, personalities, adapters, reasoning patterns — is a drop-in you can add without editing the core.
 
-It is **not** a hosted SaaS, and it **ships with no language model of its own.** Before Mercury can
-say a single useful word you must point it at a real LLM — cloud or local (Part 2). This is a
-feature, not a limitation: you choose the brain, you own the bill, and you can run fully offline
-against a local model.
+It is **not** a hosted SaaS, and it **ships with no language model of its own.** Before Mercury can say a single useful word you must point it at a real LLM — cloud or local (Part 2). This is a feature, not a limitation: you choose the brain, you own the bill, and you can run fully offline against a local model.
 
 What you get, at a glance:
 
@@ -117,8 +92,7 @@ What you get, at a glance:
 
 ## 0.2 The vocabulary — Chats, Sessions, Runs (and why the difference matters)
 
-These three words are used precisely throughout Mercury. Confusing them is the single most common
-source of confusion, so pin them down now.
+These three words are used precisely throughout Mercury. Confusing them is the single most common source of confusion, so pin them down now.
 
 | Term | What it is | Lifetime | Where you see it |
 |---|---|---|---|
@@ -126,9 +100,7 @@ source of confusion, so pin them down now.
 | **Session** | The **persisted thread** that a chat belongs to: its full message history, stored in SQLite with full-text search. You can leave and return to a session, search it, rename it, branch from it. | Durable (until you delete it) | `--session <id>`, `/sessions`, web **Sessions** panel |
 | **Run** | **One execution of the agent loop** — a single turn of "think → call tools → answer," recorded as a traceable stream of events (every LLM call, tool call, decision, guardrail verdict). A session contains many runs. | Durable (as an event trace) | `/api/runs`, `mercury replay`, web **Runs**/**Debug** panels |
 
-The mental model: **you have a Chat, inside a Session, and every time you press enter you trigger a
-Run.** A Session is the *memory of the conversation*; a Run is the *recording of one thought*. Part
-3 covers Chats and Sessions; Part 9 covers Runs (because a Run is really an observability object).
+The mental model: **you have a Chat, inside a Session, and every time you press enter you trigger a Run.** A Session is the *memory of the conversation*; a Run is the *recording of one thought*. Part 3 covers Chats and Sessions; Part 9 covers Runs (because a Run is really an observability object).
 
 ## 0.3 The architecture in one picture
 
@@ -154,11 +126,7 @@ flowchart LR
   RT --> DB[(node:sqlite)]
 ```
 
-Read it as the red thread flowing left to right: **frontends** (how you reach the agent) feed the
-**runtime** (the one composition root that wires everything), which drives the **agent loop**, which
-in turn uses the **brain** (LLMs + router), the **hands** (tools + guardrails), the **memory**, and
-**reflection** — with the optional **decision engine** advising the risky calls, and everything
-persisted to **one SQLite file.**
+Read it as the red thread flowing left to right: **frontends** (how you reach the agent) feed the **runtime** (the one composition root that wires everything), which drives the **agent loop**, which in turn uses the **brain** (LLMs + router), the **hands** (tools + guardrails), the **memory**, and **reflection** — with the optional **decision engine** advising the risky calls, and everything persisted to **one SQLite file.**
 
 ## 0.4 The seven packages (orientation for developers)
 
@@ -176,11 +144,7 @@ persisted to **one SQLite file.**
 | `@mercury/server` | Fastify REST/SSE API, webhooks, `/mcp`, `/metrics`, static web UI |
 | `@mercury/cli` | The `mercury` binary |
 
-The CLI, server, gateway, scheduler and MCP server are all **thin front-ends over the same
-runtime** — which is why a slash command behaves identically whether you type it in the CLI, the web
-UI or Telegram.
-
-
+The CLI, server, gateway, scheduler and MCP server are all **thin front-ends over the same runtime** — which is why a slash command behaves identically whether you type it in the CLI, the web UI or Telegram.
 
 ---
 
@@ -200,9 +164,7 @@ UI or Telegram.
 | ~500 MB disk | For `node_modules` + build output. The runtime footprint itself is small. | — |
 | **One LLM provider** | *Optional at install, required to answer.* A cloud key or a local Ollama/LM Studio. | Part 2 |
 
-You will see an **"ExperimentalWarning: SQLite is an experimental feature"** on startup. That is
-expected with Node 22's `node:sqlite` — it is harmless. Silence it with `NODE_NO_WARNINGS=1` if you
-wish.
+You will see an **"ExperimentalWarning: SQLite is an experimental feature"** on startup. That is expected with Node 22's `node:sqlite` — it is harmless. Silence it with `NODE_NO_WARNINGS=1` if you wish.
 
 ## 1.2 Install from source (recommended)
 
@@ -212,8 +174,7 @@ npm install          # installs workspace deps for all 7 packages
 npm run build        # tsc project references → each package's dist/
 ```
 
-`npm run build` runs `tsc -b packages/cli packages/server`, which transitively builds every package
-through TypeScript project references. When it finishes you can run the binary directly:
+`npm run build` runs `tsc -b packages/cli packages/server`, which transitively builds every package through TypeScript project references. When it finishes you can run the binary directly:
 
 ```bash
 node packages/cli/dist/bin.js version      # → "mercury 0.7.0"
@@ -227,8 +188,7 @@ node packages/cli/dist/bin.js doctor       # environment health check (see Appen
 
 ## 1.3 Install the global `mercury` binary
 
-`install.sh` builds the project and `npm link`s a global `mercury` command, so you can type
-`mercury …` from anywhere instead of `node packages/cli/dist/bin.js …`:
+`install.sh` builds the project and `npm link`s a global `mercury` command, so you can type `mercury …` from anywhere instead of `node packages/cli/dist/bin.js …`:
 
 ```bash
 ./install.sh
@@ -248,18 +208,14 @@ docker compose logs -f
 docker compose down         # stop — the named volume (your data) survives
 ```
 
-The repo ships a `Dockerfile` and a `docker-compose.yml` declaring a named volume `mercury-data`
-mounted at the data directory, so your DB, config and secrets survive container restarts. Pass
-provider keys via the compose `environment:` block or an `env_file:` — **never bake keys into the
-image.**
+The repo ships a `Dockerfile` and a `docker-compose.yml` declaring a named volume `mercury-data` mounted at the data directory, so your DB, config and secrets survive container restarts. Pass provider keys via the compose `environment:` block or an `env_file:` — **never bake keys into the image.**
 
 > **Status.** The Docker image build has **not been run** (the test environment has the docker CLI
 > but no daemon). The Dockerfile and compose file are provided as-is.
 
 ## 1.5 Platform notes (macOS / Linux / Windows)
 
-Mercury is pure Node, so it runs anywhere Node ≥ 22.5 runs. The only per-platform wrinkle is how you
-get a recent Node and where the data directory lands.
+Mercury is pure Node, so it runs anywhere Node ≥ 22.5 runs. The only per-platform wrinkle is how you get a recent Node and where the data directory lands.
 
 | Platform | Getting Node ≥ 22.5 | Data directory default |
 |---|---|---|
@@ -267,8 +223,7 @@ get a recent Node and where the data directory lands.
 | **Linux** | Distro package may be old — prefer `nvm` or NodeSource. The hardened `deploy/mercury.service` systemd unit is for Linux hosts. | `~/.mercury` |
 | **Windows** | Use the Node MSI or `nvm-windows`. WSL2 is the smoothest path if you want the POSIX `install.sh`. | `%USERPROFILE%\.mercury` |
 
-Override the data directory anywhere with the `MERCURY_HOME` environment variable or the `dataDir`
-config key.
+Override the data directory anywhere with the `MERCURY_HOME` environment variable or the `dataDir` config key.
 
 ## 1.6 First-run setup — admin account + one provider
 
@@ -288,8 +243,7 @@ It prompts for an admin username and password and walks you through selecting an
 mercury setup --username admin --password '<pw>' --provider ollama --model ollama/llama3.1
 ```
 
-**Or register through the web UI** — start the server and sign up; **the first account that
-registers automatically becomes the admin.**
+**Or register through the web UI** — start the server and sign up; **the first account that registers automatically becomes the admin.**
 
 The fastest provider paths (full matrix in Part 2):
 
@@ -313,16 +267,14 @@ MERCURY_ENABLE_MOCK=1 mercury chat "hello"   # offline smoke test (no provider) 
 npm test                                     # the vitest suite (185 tests, offline)
 ```
 
-`mercury serve` starts **everything in one process**: the REST/SSE API, the static web UI, the
-**scheduler**, the **gateway** (if enabled), and the **MCP endpoint** at `/mcp`.
+`mercury serve` starts **everything in one process**: the REST/SSE API, the static web UI, the **scheduler**, the **gateway** (if enabled), and the **MCP endpoint** at `/mcp`.
 
 > **The mock provider is for testing only.** It is disabled in normal operation and enabled *only*
 > when `MERCURY_ENABLE_MOCK=1` is set. Use it for an offline smoke test; never for real work.
 
 ## 1.8 Where everything lives (the data directory)
 
-Everything Mercury knows is under `~/.mercury` (override with `MERCURY_HOME`). Knowing this layout
-makes backups and troubleshooting trivial.
+Everything Mercury knows is under `~/.mercury` (override with `MERCURY_HOME`). Knowing this layout makes backups and troubleshooting trivial.
 
 ```
 ~/.mercury/
@@ -364,9 +316,7 @@ git pull && npm install && npm run build       # then restart the service
 
 ## 2.1 The one rule: model ids are `provider/model`
 
-Every model in Mercury is addressed as **`"<provider>/<model>"`** — e.g. `openai/gpt-4o-mini`,
-`anthropic/claude-sonnet-4-5`, `ollama/llama3.1`, `chatllm/route-llm`. You set the active one three
-equivalent ways:
+Every model in Mercury is addressed as **`"<provider>/<model>"`** — e.g. `openai/gpt-4o-mini`, `anthropic/claude-sonnet-4-5`, `ollama/llama3.1`, `chatllm/route-llm`. You set the active one three equivalent ways:
 
 ```bash
 mercury model openai/gpt-4o-mini          # the CLI
@@ -380,13 +330,11 @@ llm:
 /model openai/gpt-4o-mini                  # inside any chat (CLI, web, gateway)
 ```
 
-Leave `llm.defaultModel: auto` and the **router** picks among every configured provider for each
-request (§2.6).
+Leave `llm.defaultModel: auto` and the **router** picks among every configured provider for each request (§2.6).
 
 ## 2.2 Where keys go — and where they must never go
 
-API keys belong in **`~/.mercury/.env`** (or the process environment). **Never put a key in
-`config.yaml`**, which may be shared or committed.
+API keys belong in **`~/.mercury/.env`** (or the process environment). **Never put a key in `config.yaml`**, which may be shared or committed.
 
 ```bash
 # ~/.mercury/.env
@@ -407,8 +355,7 @@ Four providers **auto-enable the moment their key is present** — no config ent
 
 ## 2.3 The fastest route — copy a ready-made `.env`
 
-The repository ships **15 ready-to-use provider env files** in [`examples/env/`](../examples/env/).
-Pick one, copy it, paste your key, run:
+The repository ships **15 ready-to-use provider env files** in [`examples/env/`](../examples/env/). Pick one, copy it, paste your key, run:
 
 ```bash
 cp examples/env/openai.env ~/.mercury/.env
@@ -416,11 +363,7 @@ $EDITOR ~/.mercury/.env          # put your real key in
 mercury chat "hello"             # Mercury auto-loads ~/.mercury/.env
 ```
 
-Each file sets three things: `MERCURY_MODEL` (the default, as `provider/model`),
-`<PROVIDER>_API_KEY` (your secret), and — for non-built-in providers — one
-`MERCURY__llm__providers__<id>={...}` line that registers the provider inline (the same block you'd
-otherwise put in `config.yaml`, expressed as one environment variable). You can combine several
-blocks in one `.env`; keep only one `MERCURY_MODEL` line.
+Each file sets three things: `MERCURY_MODEL` (the default, as `provider/model`), `<PROVIDER>_API_KEY` (your secret), and — for non-built-in providers — one `MERCURY__llm__providers__<id>={...}` line that registers the provider inline (the same block you'd otherwise put in `config.yaml`, expressed as one environment variable). You can combine several blocks in one `.env`; keep only one `MERCURY_MODEL` line.
 
 ## 2.4 Every provider, with its exact recipe
 
@@ -479,8 +422,7 @@ mercury model lmstudio/<model-name-shown-in-lmstudio>
 
 ### Any OpenAI-compatible endpoint (Groq, Mistral, DeepSeek, Gemini, xAI/Grok, Together, Fireworks, Perplexity, Azure, vLLM, LocalAI…)
 
-One generic recipe covers them all — register the provider with `type: openai-compatible`, a
-`baseUrl`, and an `apiKeyEnv` naming the env var that holds the key:
+One generic recipe covers them all — register the provider with `type: openai-compatible`, a `baseUrl`, and an `apiKeyEnv` naming the env var that holds the key:
 
 ```bash
 mercury config set llm.providers.myapi '{"type":"openai-compatible","baseUrl":"https://host/v1","apiKeyEnv":"MYAPI_KEY","enabled":true}'
@@ -488,8 +430,7 @@ echo 'MYAPI_KEY=...' >> ~/.mercury/.env        # omit if the endpoint needs no k
 mercury model myapi/<model>
 ```
 
-The exact base URLs for the popular hosts (from the shipped [`examples/env/`](../examples/env/)
-templates):
+The exact base URLs for the popular hosts (from the shipped [`examples/env/`](../examples/env/) templates):
 
 | Provider | `baseUrl` | Example default model |
 |---|---|---|
@@ -503,9 +444,7 @@ templates):
 | **Perplexity** | `https://api.perplexity.ai` | `perplexity/sonar` |
 | **Azure OpenAI** | `https://<RESOURCE>.openai.azure.com/openai/deployments/<DEPLOYMENT>?api-version=<VER>` | `azure/<DEPLOYMENT>` |
 
-Azure is the one special case: it authenticates with an **`api-key` header** rather than a bearer
-token, so use the `headers` field instead of `apiKeyEnv` — see [`examples/env/azure-openai.env`](../examples/env/azure-openai.env).
-For any endpoint, `headers` can add any extra header the host needs.
+Azure is the one special case: it authenticates with an **`api-key` header** rather than a bearer token, so use the `headers` field instead of `apiKeyEnv` — see [`examples/env/azure-openai.env`](../examples/env/azure-openai.env). For any endpoint, `headers` can add any extra header the host needs.
 
 > **Note on "X".** `xai/grok-*` above is **xAI's Grok language model** (the brain), reached at
 > `api.x.ai`. It is *not* the same as posting to the social network **X/Twitter** (an integration) —
@@ -525,9 +464,7 @@ You can change the model at three scopes, from most permanent to most transient:
 
 ## 2.6 The model router (let Mercury choose)
 
-With `llm.defaultModel: auto` and `router.enabled: true` (the default), Mercury **routes each
-request to the best model** among those you've configured. Optionally declare model *profiles* so it
-can score candidates:
+With `llm.defaultModel: auto` and `router.enabled: true` (the default), Mercury **routes each request to the best model** among those you've configured. Optionally declare model *profiles* so it can score candidates:
 
 ```yaml
 llm:
@@ -542,10 +479,7 @@ router:
   topK: 3
 ```
 
-The router resolves a model in this order: **explicit model > `router.rules` (regex/tags) >
-capability filter (does it support the tools/vision/json you need?) > weighted score
-(`router.weights`) > optional Jev choice among the top-k > `router.fallback` chain on error.** Turn
-routing off with `router.enabled: false` to always use `llm.defaultModel`.
+The router resolves a model in this order: **explicit model > `router.rules` (regex/tags) > capability filter (does it support the tools/vision/json you need?) > weighted score (`router.weights`) > optional Jev choice among the top-k > `router.fallback` chain on error.** Turn routing off with `router.enabled: false` to always use `llm.defaultModel`.
 
 > **🛠 For admins — resilient provider calls.** Retryable errors retry with exponential backoff +
 > bounded jitter (`llm.retryBackoffMs`, `llm.retryJitter`); non-retryable 4xx fail fast; a per-model
@@ -555,10 +489,7 @@ routing off with `router.enabled: false` to always use `llm.defaultModel`.
 
 ## 2.7 The optional Jev decision engine (a second, smaller brain)
 
-Jev (`typesafe/jev-1.13`, via the OpenRouter Decisions API) is a **typed decision/judgment model**
-Mercury uses for small structured choices: model routing, prompt-injection classification, smart
-tool-approval, gateway triage, retry/escalation and reflection scoring. It is **entirely optional** —
-Mercury runs fully without it.
+Jev (`typesafe/jev-1.13`, via the OpenRouter Decisions API) is a **typed decision/judgment model** Mercury uses for small structured choices: model routing, prompt-injection classification, smart tool-approval, gateway triage, retry/escalation and reflection scoring. It is **entirely optional** — Mercury runs fully without it.
 
 | `decision.provider` | Behaviour |
 |---|---|
@@ -566,25 +497,16 @@ Mercury runs fully without it.
 | `jev` | Force Jev (requires the OpenRouter key) |
 | `llm` | Use your normal LLM for decisions, never Jev |
 
-So the simplest way to "turn on" Jev is just to set `OPENROUTER_API_KEY`. The confidence thresholds
-that gate each decision (injection 0.7, tool-approval 0.8, triage 0.8, retry 0.6, answer-quality
-0.5) and per-decision on/off switches live under `decision.*` (Appendix B). Part 8 and Part 9 show
-where Jev actually shows up.
+So the simplest way to "turn on" Jev is just to set `OPENROUTER_API_KEY`. The confidence thresholds that gate each decision (injection 0.7, tool-approval 0.8, triage 0.8, retry 0.6, answer-quality 0.5) and per-decision on/off switches live under `decision.*` (Appendix B). Part 8 and Part 9 show where Jev actually shows up.
 
 > **Status.** The Jev provider was tested only with **mocked HTTP** (parsing, retry, fail-fast,
 > fallback). It has **not** been run against the real OpenRouter Decisions API.
-
-
-
 
 ---
 
 # Part 3 — Talking to Mercury: chats, sessions & runs (the third movement: giving it a voice)
 
-Now that Mercury has a home (Part 1) and a brain (Part 2), you can talk to it. This part is the one
-every **👤 user** needs, and it also defines three words that the rest of the handbook leans on
-constantly — **chat**, **session**, and **run**. If you only remember one table from this guide,
-make it the one in [Part 0](#02-the-vocabulary-you-must-not-confuse). Here is the practical version.
+Now that Mercury has a home (Part 1) and a brain (Part 2), you can talk to it. This part is the one every **👤 user** needs, and it also defines three words that the rest of the handbook leans on constantly — **chat**, **session**, and **run**. If you only remember one table from this guide, make it the one in [Part 0](#02-the-vocabulary-you-must-not-confuse). Here is the practical version.
 
 ## 3.1 Three ways to start a conversation
 
@@ -594,11 +516,7 @@ make it the one in [Part 0](#02-the-vocabulary-you-must-not-confuse). Here is th
 | **CLI REPL** | `mercury chat` (no message) | an interactive back-and-forth in the terminal |
 | **Web UI** | `mercury serve`, open `http://<host>:3000`, use the **Chat** panel | the richest experience: streaming, markdown, tool chips, inline approvals, attachments |
 
-Useful `chat` flags: `--model <id>` (override the model for this one turn), `--session <id>`
-(continue a specific past conversation), `--pattern <name>` (force a reasoning pattern from
-[Part 2](#24-reasoning-patterns-how-the-brain-thinks)), and `--user <id>` (act as a particular
-user). In the REPL, anything you type is a message; anything beginning with `/` is a **slash
-command** (next section), and `/exit` or `/quit` leaves.
+Useful `chat` flags: `--model <id>` (override the model for this one turn), `--session <id>` (continue a specific past conversation), `--pattern <name>` (force a reasoning pattern from [Part 2](#24-reasoning-patterns-how-the-brain-thinks)), and `--user <id>` (act as a particular user). In the REPL, anything you type is a message; anything beginning with `/` is a **slash command** (next section), and `/exit` or `/quit` leaves.
 
 > **👤 For users — the fastest start.** Run `mercury serve`, open the page, register the first
 > account (that makes you the admin), pick a provider in **Settings**, and type into the Chat box.
@@ -606,8 +524,7 @@ command** (next section), and `/exit` or `/quit` leaves.
 
 ## 3.2 The web UI at a glance (15 panels)
 
-The web UI is a single no-build page served by `mercury serve`. It has **dark/light themes** and
-**English/German** locales, and fifteen panels — each panel is explored in the part shown:
+The web UI is a single no-build page served by `mercury serve`. It has **dark/light themes** and **English/German** locales, and fifteen panels — each panel is explored in the part shown:
 
 | Panel | What it does | Covered in |
 |---|---|---|
@@ -629,8 +546,7 @@ The web UI is a single no-build page served by `mercury serve`. It has **dark/li
 
 ## 3.3 Slash commands (the same everywhere)
 
-Slash commands are implemented once (`core/src/agent/commands.ts`) and behave identically in the
-CLI REPL, the web Chat panel, and inbound gateway messages (Part 7). This is the full set:
+Slash commands are implemented once (`core/src/agent/commands.ts`) and behave identically in the CLI REPL, the web Chat panel, and inbound gateway messages (Part 7). This is the full set:
 
 | Command | Effect |
 |---|---|
@@ -658,11 +574,9 @@ CLI REPL, the web Chat panel, and inbound gateway messages (Part 7). This is the
 
 ## 3.4 Sessions: Mercury's long-term conversation memory
 
-A **session** is a stored conversation. Every chat you have is saved to SQLite with full-text
-search (FTS5), so you can always come back to it.
+A **session** is a stored conversation. Every chat you have is saved to SQLite with full-text search (FTS5), so you can always come back to it.
 
-- **Continue** a session with `mercury chat --session <id>`, or pick one in the web **Sessions**
-  panel, or type `/sessions` in chat.
+- **Continue** a session with `mercury chat --session <id>`, or pick one in the web **Sessions** panel, or type `/sessions` in chat.
 - **Search** across all your sessions with `/sessions <query>` (or the search box in the panel).
 - Sessions are **per user** — each user sees only their own.
 
@@ -670,42 +584,25 @@ search (FTS5), so you can always come back to it.
 
 You can hand Mercury files and pointers mid-conversation:
 
-- **Attachments** — upload images, audio, video and documents in the web UI (or
-  `POST /api/attachments`). They are capped at `attachments.maxBytes` (**25 MB**). Providers degrade
-  gracefully when the model lacks a capability: audio becomes a transcript, video becomes
-  frames/transcript, an image becomes a description.
-- **Inline references** are expanded *before* the turn runs: `@file <path>`, `@folder <path>`,
-  `@diff` (your current git diff), and `@url <url>`. References obey the path jail and the SSRF
-  guard (Part 8), and whatever they pull in is tagged **untrusted** so it can never silently
-  trigger a sensitive action.
-- **Project context files** — Mercury auto-loads `AGENTS.md`, `CLAUDE.md`, `SOUL.md`,
-  `.cursorrules` and similar files from your working directory and folds them into the system
-  prompt, so the agent understands the project you're standing in.
+- **Attachments** — upload images, audio, video and documents in the web UI (or `POST /api/attachments`). They are capped at `attachments.maxBytes` (**25 MB**). Providers degrade gracefully when the model lacks a capability: audio becomes a transcript, video becomes frames/transcript, an image becomes a description.
+- **Inline references** are expanded *before* the turn runs: `@file <path>`, `@folder <path>`, `@diff` (your current git diff), and `@url <url>`. References obey the path jail and the SSRF guard (Part 8), and whatever they pull in is tagged **untrusted** so it can never silently trigger a sensitive action.
+- **Project context files** — Mercury auto-loads `AGENTS.md`, `CLAUDE.md`, `SOUL.md`, `.cursorrules` and similar files from your working directory and folds them into the system prompt, so the agent understands the project you're standing in.
 
 ## 3.6 Runs: the unit of work behind every answer
 
-When you send a message, Mercury executes a **run** — one trip through the reasoning loop that may
-call several tools and the LLM multiple times before it replies. A chat has many sessions over its
-life; a session has many runs; a run has many steps and events.
+When you send a message, Mercury executes a **run** — one trip through the reasoning loop that may call several tools and the LLM multiple times before it replies. A chat has many sessions over its life; a session has many runs; a run has many steps and events.
 
-Runs are **first-class and fully recorded**. You don't need to think about them as a user, but they
-are the backbone of everything in [Part 9](#part-9--x-ray-vision-observability-debugging--troubleshooting-the-ninth-movement-seeing-everything):
-every run has an id, a timeline of events (LLM calls, tool calls, approvals, errors), and can be
-**replayed** (`mercury replay <runId>`) or inspected in the **Runs** panel. That is the thread we
-pick up once the agent starts doing things — which is the next movement.
+Runs are **first-class and fully recorded**. You don't need to think about them as a user, but they are the backbone of everything in [Part 9](#part-9--x-ray-vision-observability-debugging--troubleshooting-the-ninth-movement-seeing-everything): every run has an id, a timeline of events (LLM calls, tool calls, approvals, errors), and can be **replayed** (`mercury replay <runId>`) or inspected in the **Runs** panel. That is the thread we pick up once the agent starts doing things — which is the next movement.
 
 ---
 
 # Part 4 — The hands: tools (the fourth movement: doing, not just talking)
 
-A chatbot talks. An **agent** acts. Tools are the hands that turn Mercury from a text generator
-into something that reads your files, runs commands, searches the web, generates images and edits
-code. Mercury ships **79 built-in tools** organised into **19 toolsets**.
+A chatbot talks. An **agent** acts. Tools are the hands that turn Mercury from a text generator into something that reads your files, runs commands, searches the web, generates images and edits code. Mercury ships **79 built-in tools** organised into **19 toolsets**.
 
 ## 4.1 The safety idea you need first: risk levels & "untrusted"
 
-Every tool carries a **risk level**, and this single concept drives the whole approval system in
-[Part 8](#82-permissions--approvals-the-leash):
+Every tool carries a **risk level**, and this single concept drives the whole approval system in [Part 8](#82-permissions--approvals-the-leash):
 
 | Risk | Meaning |
 |---|---|
@@ -713,10 +610,7 @@ Every tool carries a **risk level**, and this single concept drives the whole ap
 | `moderate` | Gated by the approval policy **when it was triggered by untrusted content**. |
 | `dangerous` | **Always** needs approval (e.g. deleting files, installing skills). |
 
-Separately, any tool whose output comes from **outside** (the web, files, an MCP server) is tagged
-**untrusted** — its content is treated as data, never as instructions, so a malicious web page can
-never quietly make the agent delete your files. Keep these two ideas in mind; Part 8 shows exactly
-how they combine.
+Separately, any tool whose output comes from **outside** (the web, files, an MCP server) is tagged **untrusted** — its content is treated as data, never as instructions, so a malicious web page can never quietly make the agent delete your files. Keep these two ideas in mind; Part 8 shows exactly how they combine.
 
 ## 4.2 Managing which tools exist
 
@@ -727,11 +621,7 @@ mercury tools enable  <name>       # enable a tool or a whole toolset
 mercury tools disable <name>       # disable a tool or a whole toolset
 ```
 
-You can also disable tools globally with `tools.disabled[]`, toggle whole toolsets with
-`tools.toolsets{}`, and disable toolsets **per platform** (e.g. forbid the `terminal` toolset on
-`telegram` only) with `tools.platforms.<name>.disabledToolsets`. In chat, `/tools` shows what's
-available right now. Over HTTP: `GET /api/tools`, `POST /api/tools/:name/run`,
-`POST /api/tools/toggle`.
+You can also disable tools globally with `tools.disabled[]`, toggle whole toolsets with `tools.toolsets{}`, and disable toolsets **per platform** (e.g. forbid the `terminal` toolset on `telegram` only) with `tools.platforms.<name>.disabledToolsets`. In chat, `/tools` shows what's available right now. Over HTTP: `GET /api/tools`, `POST /api/tools/:name/run`, `POST /api/tools/toggle`.
 
 ## 4.3 The complete catalogue (79 tools in 19 toolsets)
 
@@ -760,22 +650,12 @@ available right now. Over HTTP: `GET /api/tools`, `POST /api/tools/:name/run`,
 
 Some tools are thin front-ends over a backend you choose:
 
-- **`terminal`** runs through `tools.terminal.backend`: `local` (default), `docker`
-  (`tools.terminal.dockerImage`, default `node:22-slim`), or `ssh`
-  (`tools.terminal.ssh.{host,user,keyPath}`). Dangerous command patterns — `rm -rf /`, disk
-  formatting, fork bombs, `curl | sh`, `sudo`, credential access — **always** require approval,
-  regardless of mode.
-- **`execute_code`** runs a script in a child process that can call tools back over JSON-RPC, under
-  `tools.executeCode.timeoutMs` (30 s) and `maxToolCalls` (50) limits, with a scrubbed environment.
-- **`browser_*`** uses Playwright when installed, otherwise a fetch-based fallback
-  (`tools.browser.backend` = `auto`|…; `cdpUrl` attaches to a remote Chrome).
-- **`web_*`** go through `safeFetch` (SSRF guard + size cap). Search provider is
-  `tools.web.searchProvider`: `duckduckgo` (default, **no key needed**), `searxng` (needs
-  `searxngUrl`), or `brave` (needs `BRAVE_API_KEY`).
-- **`image_generate`** uses `tools.image.provider` (`openai` default, or any OpenAI-compatible image
-  provider/model).
-- **`file_*`** are confined by the **path jail** (`tools.jail`) — the agent cannot read or write
-  outside the allowed roots.
+- **`terminal`** runs through `tools.terminal.backend`: `local` (default), `docker` (`tools.terminal.dockerImage`, default `node:22-slim`), or `ssh` (`tools.terminal.ssh.{host,user,keyPath}`). Dangerous command patterns — `rm -rf /`, disk formatting, fork bombs, `curl | sh`, `sudo`, credential access — **always** require approval, regardless of mode.
+- **`execute_code`** runs a script in a child process that can call tools back over JSON-RPC, under `tools.executeCode.timeoutMs` (30 s) and `maxToolCalls` (50) limits, with a scrubbed environment.
+- **`browser_*`** uses Playwright when installed, otherwise a fetch-based fallback (`tools.browser.backend` = `auto`|…; `cdpUrl` attaches to a remote Chrome).
+- **`web_*`** go through `safeFetch` (SSRF guard + size cap). Search provider is `tools.web.searchProvider`: `duckduckgo` (default, **no key needed**), `searxng` (needs `searxngUrl`), or `brave` (needs `BRAVE_API_KEY`).
+- **`image_generate`** uses `tools.image.provider` (`openai` default, or any OpenAI-compatible image provider/model).
+- **`file_*`** are confined by the **path jail** (`tools.jail`) — the agent cannot read or write outside the allowed roots.
 
 > **🛠 For admins — the mock branches are gone.** Per the "do not use mocks except for testing"
 > rule this product follows, the former mock search/weather/image providers and mock STT/TTS
@@ -789,23 +669,13 @@ Some tools are thin front-ends over a backend you choose:
 
 ## 4.5 Polyglot tools: a tool can be written in any language
 
-You are not limited to the built-ins or to TypeScript. **Any executable with a `tool.json` manifest
-becomes a tool**: Mercury writes the JSON arguments to the program's stdin and reads the result
-from its stdout (a non-zero exit is reported as an error). Mercury discovers them from `tools/`,
-`$MERCURY_HOME/tools/<name>/`, and any directory in `tools.polyglotDirs`. Bundled examples cover
-Python (`word_count_py`), JavaScript (`slugify_js`) and Go (`hash_go`). Writing your own is a
-five-minute job covered in [Part 10](#102-a-tool-in-any-language-the-polyglot-contract).
-
-
+You are not limited to the built-ins or to TypeScript. **Any executable with a `tool.json` manifest becomes a tool**: Mercury writes the JSON arguments to the program's stdin and reads the result from its stdout (a non-zero exit is reported as an error). Mercury discovers them from `tools/`, `$MERCURY_HOME/tools/<name>/`, and any directory in `tools.polyglotDirs`. Bundled examples cover Python (`word_count_py`), JavaScript (`slugify_js`) and Go (`hash_go`). Writing your own is a five-minute job covered in [Part 10](#102-a-tool-in-any-language-the-polyglot-contract).
 
 ---
 
 # Part 5 — Memory & learning (the fifth movement: an agent that remembers and improves)
 
-A tool-wielding agent that forgets everything between runs is a goldfish with a chainsaw. This part
-is where Mercury stops being stateless. Two threads run through it: **memory** (what Mercury knows)
-and **learning** (how it gets better) — and the two meet in *reflection* and *memory lessons*, the
-features users most often ask about.
+A tool-wielding agent that forgets everything between runs is a goldfish with a chainsaw. This part is where Mercury stops being stateless. Two threads run through it: **memory** (what Mercury knows) and **learning** (how it gets better) — and the two meet in *reflection* and *memory lessons*, the features users most often ask about.
 
 ## 5.1 The six kinds of memory
 
@@ -824,14 +694,10 @@ Mercury does not have "a memory" — it has six, each with a different job, all 
 
 The two most important memory files are plain Markdown you can read and edit:
 
-- **`MEMORY.md`** — facts the agent should *always* know (your timezone, your stack, your
-  preferences). Bounded by `memory.memoryCharLimit` (**2200** chars).
-- **`USER.md`** — what Mercury has inferred about *you*. Bounded by `memory.userCharLimit` (**1375**
-  chars).
+- **`MEMORY.md`** — facts the agent should *always* know (your timezone, your stack, your preferences). Bounded by `memory.memoryCharLimit` (**2200** chars).
+- **`USER.md`** — what Mercury has inferred about *you*. Bounded by `memory.userCharLimit` (**1375** chars).
 
-Edit them three ways: the `/memory` command in chat, the web **Memory** panel, or
-`PUT /api/memory/curated/:which`. The character limits are deliberate — curated memory is injected
-into every prompt, so it is kept small and high-signal.
+Edit them three ways: the `/memory` command in chat, the web **Memory** panel, or `PUT /api/memory/curated/:which`. The character limits are deliberate — curated memory is injected into every prompt, so it is kept small and high-signal.
 
 ## 5.3 Semantic facts: remember, recall, forget
 
@@ -843,17 +709,11 @@ Beyond the curated files, Mercury stores discrete **facts** and retrieves them b
 "Forget the staging database detail"                        → removed
 ```
 
-Under the hood these use the `memory_store` / `memory_recall` / `memory_forget` tools, backed by
-FTS5 plus a vector index. The embeddings provider is `memory.embeddings.provider`: **`hash`**
-(default — deterministic, zero-config, no API key), or **`openai`** / **`ollama`** for real semantic
-embeddings. Browse and search everything with `/memory [query]` or the Memory panel.
+Under the hood these use the `memory_store` / `memory_recall` / `memory_forget` tools, backed by FTS5 plus a vector index. The embeddings provider is `memory.embeddings.provider`: **`hash`** (default — deterministic, zero-config, no API key), or **`openai`** / **`ollama`** for real semantic embeddings. Browse and search everything with `/memory [query]` or the Memory panel.
 
 ## 5.4 Skills: reusable know-how
 
-A **skill** is a reusable procedure in the open **agentskills.io `SKILL.md`** format — a Markdown
-file with frontmatter (`name`, `description`, and optional `license`, `compatibility`,
-`allowed-tools`, `metadata`). Only the *index* (name + description) sits in the prompt; the agent
-loads the full body on demand (`skill_view`), so you can have many skills without bloating context.
+A **skill** is a reusable procedure in the open **agentskills.io `SKILL.md`** format — a Markdown file with frontmatter (`name`, `description`, and optional `license`, `compatibility`, `allowed-tools`, `metadata`). Only the *index* (name + description) sits in the prompt; the agent loads the full body on demand (`skill_view`), so you can have many skills without bloating context.
 
 ```bash
 mercury skills list                       # installed skills
@@ -861,16 +721,13 @@ mercury skills view <name>                # read one
 mercury skills install <path|git-url>     # install from a folder or a git repo
 ```
 
-Invoke a skill in chat with `/<skill-name>`. Authoring your own skill is covered in
-[Part 10](#106-authoring-skills--workflows).
+Invoke a skill in chat with `/<skill-name>`. Authoring your own skill is covered in [Part 10](#106-authoring-skills--workflows).
 
 ## 5.5 Reflection & memory lessons: how Mercury gets better
 
-This is the feature behind the questions *"what are reflections?"* and *"what are memory lessons?"* —
-they are the same system seen from two angles.
+This is the feature behind the questions *"what are reflections?"* and *"what are memory lessons?"* — they are the same system seen from two angles.
 
-**After a run completes, Mercury can reflect on it.** The decision engine (Jev, or your LLM, or a
-heuristic) scores the outcome and does up to three things:
+**After a run completes, Mercury can reflect on it.** The decision engine (Jev, or your LLM, or a heuristic) scores the outcome and does up to three things:
 
 | Reflection output | What it is | Config |
 |---|---|---|
@@ -878,15 +735,9 @@ heuristic) scores the outcome and does up to three things:
 | **Lessons** ("memory lessons") | short, durable takeaways distilled from what went right or wrong — stored and surfaced in later runs so the same mistake isn't repeated | `reflection.lessons` (default `true`) |
 | **User-model update** | refinements to the inferred traits in your user model | `reflection.userModel` (default `true`) |
 
-On top of that, when a run used at least `skills.minToolCallsForSkill` (**4**) tool calls and
-`skills.autoCreate` is on, reflection can **turn the successful sequence into a new skill** —
-Mercury literally writes its own procedural memory — and refine existing skills with success
-statistics.
+On top of that, when a run used at least `skills.minToolCallsForSkill` (**4**) tool calls and `skills.autoCreate` is on, reflection can **turn the successful sequence into a new skill** — Mercury literally writes its own procedural memory — and refine existing skills with success statistics.
 
-**So "memory lessons" = the lessons produced by reflection.** You influence them directly with
-`/feedback good|bad` after a run (an explicit signal that feeds reflection), and you review them in
-the web **Reflections** panel or via `GET /api/reflections`. Turn the whole subsystem off with
-`reflection.enabled: false`, or any individual part with the keys above.
+**So "memory lessons" = the lessons produced by reflection.** You influence them directly with `/feedback good|bad` after a run (an explicit signal that feeds reflection), and you review them in the web **Reflections** panel or via `GET /api/reflections`. Turn the whole subsystem off with `reflection.enabled: false`, or any individual part with the keys above.
 
 > **The payoff of the red thread.** Reflection is why Parts 3–5 are ordered the way they are: a run
 > (Part 3) uses tools (Part 4), and its outcome becomes memory and lessons (Part 5) that make the
@@ -896,9 +747,7 @@ the web **Reflections** panel or via `GET /api/reflections`. Turn the whole subs
 
 # Part 6 — Autonomy: scheduler & workflows (the sixth movement: work that runs itself)
 
-Everything so far happens because *you* sent a message. This movement cuts that cord in two ways:
-the **scheduler** makes Mercury act on its own clock, and **workflows** make several agents
-collaborate on one job.
+Everything so far happens because *you* sent a message. This movement cuts that cord in two ways: the **scheduler** makes Mercury act on its own clock, and **workflows** make several agents collaborate on one job.
 
 ## 6.1 The scheduler: tasks that run on their own
 
@@ -914,12 +763,7 @@ mercury schedule run    <id>          # run it now, once
 mercury schedule delete <id>
 ```
 
-Scheduled tasks can run a single agent or a whole workflow, carry attached skills, and **deliver
-their results to a gateway target** (Part 7) — e.g. post the morning summary to your Telegram. The
-scheduler ticks every `scheduler.tickMs` (**30 s**), retries a failed run up to
-`scheduler.maxRetries` (**2**), and keeps per-schedule history. Manage everything in the web
-**Scheduler** panel (each row has **Edit**, **Run now**, **History**, pause and delete), or over
-HTTP with `/api/schedules` (`PATCH /api/schedules/:id` edits one).
+Scheduled tasks can run a single agent or a whole workflow, carry attached skills, and **deliver their results to a gateway target** (Part 7) — e.g. post the morning summary to your Telegram. The scheduler ticks every `scheduler.tickMs` (**30 s**), retries a failed run up to `scheduler.maxRetries` (**2**), and keeps per-schedule history. Manage everything in the web **Scheduler** panel (each row has **Edit**, **Run now**, **History**, pause and delete), or over HTTP with `/api/schedules` (`PATCH /api/schedules/:id` edits one).
 
 > **👤 For users — a "scheduled agent" is just this.** When the request mentions "scheduled agents",
 > it means a saved task here: a prompt + a time + optional delivery target. No code required.
@@ -941,8 +785,7 @@ A **workflow** coordinates multiple agents. You choose a **template** that descr
 | `debate` | agents argue opposing sides toward a conclusion |
 | `auto` | let the decision engine pick the template for you |
 
-A workflow **spec** (YAML or JSON) names the template and lists its agents — each with a role,
-model, toolsets and reasoning pattern — plus optional budgets:
+A workflow **spec** (YAML or JSON) names the template and lists its agents — each with a role, model, toolsets and reasoning pattern — plus optional budgets:
 
 ```yaml
 name: research-debate
@@ -967,25 +810,17 @@ mercury workflow run debate "Remote work is better than office work"
 mercury workflow run research-debate "Should we migrate to Rust?"
 ```
 
-Workflows are also launchable from the web **Workflows** panel, or by the agent itself through the
-`run_workflow` tool (and the same tool over MCP). Authoring workflow specs in depth is in
-[Part 10](#106-authoring-skills--workflows).
-
-
+Workflows are also launchable from the web **Workflows** panel, or by the agent itself through the `run_workflow` tool (and the same tool over MCP). Authoring workflow specs in depth is in [Part 10](#106-authoring-skills--workflows).
 
 ---
 
 # Part 7 — Connecting to the world: integrations & MCP (the seventh movement: reaching beyond the box)
 
-So far Mercury lives behind a terminal and a web page. This movement gives it reach: the **gateway**
-lets people talk to it from the chat apps they already use (Telegram, Slack, WhatsApp, email, …),
-and **MCP** lets it borrow tools from — and lend tools to — other AI systems.
+So far Mercury lives behind a terminal and a web page. This movement gives it reach: the **gateway** lets people talk to it from the chat apps they already use (Telegram, Slack, WhatsApp, email, …), and **MCP** lets it borrow tools from — and lend tools to — other AI systems.
 
 ## 7.1 The gateway: Mercury on your chat platforms
 
-The gateway is a single controller that runs **adapters**, one per platform. It is **off by
-default** — turn it on with `gateway.enabled: true`, configure the adapters you want under
-`gateway.adapters.<name>`, then manage who's allowed in:
+The gateway is a single controller that runs **adapters**, one per platform. It is **off by default** — turn it on with `gateway.enabled: true`, configure the adapters you want under `gateway.adapters.<name>`, then manage who's allowed in:
 
 ```bash
 mercury gateway status           # adapters + pending pairings
@@ -996,23 +831,15 @@ mercury gateway pair <CODE>      # approve a pairing code → links that chat id
 
 Two safety ideas are built in and worth understanding before you expose Mercury to the public:
 
-- **Pairing.** An unknown chat user gets a **pairing code** and *nothing reaches the agent* until an
-  admin approves it (`gateway.pairing`, default `true`). Once paired, their messages run with that
-  Mercury user's permissions ([Part 8](#82-permissions--approvals-the-leash)) — so a Telegram
-  stranger can't act as your admin.
-- **Triage.** With `gateway.triage: true`, low-confidence inbound messages are routed to a
-  human-review queue instead of straight to the agent.
-- **Continuity.** `gateway.continuity` is `per-user` (default — one memory across all a person's
-  platforms) or `per-chat` (each chat is its own thread).
+- **Pairing.** An unknown chat user gets a **pairing code** and *nothing reaches the agent* until an admin approves it (`gateway.pairing`, default `true`). Once paired, their messages run with that Mercury user's permissions ([Part 8](#82-permissions--approvals-the-leash)) — so a Telegram stranger can't act as your admin.
+- **Triage.** With `gateway.triage: true`, low-confidence inbound messages are routed to a human-review queue instead of straight to the agent.
+- **Continuity.** `gateway.continuity` is `per-user` (default — one memory across all a person's platforms) or `per-chat` (each chat is its own thread).
 
-Slash commands (Part 3) work from chat platforms too, so a paired user can type `/model` or
-`/usage` from Telegram.
+Slash commands (Part 3) work from chat platforms too, so a paired user can type `/model` or `/usage` from Telegram.
 
 ## 7.2 The 16 built-in adapters and how to configure them
 
-Every adapter is configured under `gateway.adapters.<name>`. Most secrets can be given inline **or**
-via the environment variable shown. Here are the built-in adapters and their key settings (taken
-straight from the adapter source):
+Every adapter is configured under `gateway.adapters.<name>`. Most secrets can be given inline **or** via the environment variable shown. Here are the built-in adapters and their key settings (taken straight from the adapter source):
 
 | Adapter | Inbound mechanism | Key config (env var) |
 |---|---|---|
@@ -1030,10 +857,7 @@ straight from the adapter source):
 | **cli** | the terminal REPL | — |
 | **webhook** | a **generic** inbound HTTP endpoint (`/webhooks/<name>`) | `gateway.adapters.webhook` |
 
-Webhook-based adapters (Slack, Discord, WhatsApp, SMS, the generic `webhook`) need their
-`/webhooks/<name>` endpoint reachable from the internet — set `server.publicUrl` so Mercury can build
-the correct public URLs. Telegram and the polling adapters (Signal, email, RSS) need **no** inbound
-route.
+Webhook-based adapters (Slack, Discord, WhatsApp, SMS, the generic `webhook`) need their `/webhooks/<name>` endpoint reachable from the internet — set `server.publicUrl` so Mercury can build the correct public URLs. Telegram and the polling adapters (Signal, email, RSS) need **no** inbound route.
 
 > **👤 For users — the easiest integration.** Telegram. Create a bot with BotFather, drop the token
 > into `gateway.adapters.telegram.token` (or `TELEGRAM_BOT_TOKEN`), enable the gateway, message your
@@ -1041,8 +865,7 @@ route.
 
 ## 7.3 The email adapter in detail
 
-The email adapter polls an IMAP inbox for unseen mail and replies over SMTP, keeping the subject
-thread. The sender's address becomes the user/chat id. Config under `gateway.adapters.email`:
+The email adapter polls an IMAP inbox for unseen mail and replies over SMTP, keeping the subject thread. The sender's address becomes the user/chat id. Config under `gateway.adapters.email`:
 
 | Field | Default / env | Meaning |
 |---|---|---|
@@ -1057,36 +880,22 @@ thread. The sender's address becomes the user/chat id. Config under `gateway.ada
 | `from` | — | the From address on replies |
 | `intervalMs` | — | poll interval |
 
-If you omit `imapHost`, the adapter runs **send-only** (great for the scheduler delivering reports by
-email without accepting inbound commands).
+If you omit `imapHost`, the adapter runs **send-only** (great for the scheduler delivering reports by email without accepting inbound commands).
 
 ## 7.4 LinkedIn, X/Twitter and anything not in the list — the honest answer
 
-**There is no native LinkedIn adapter and no native X/Twitter adapter in Mercury.** The gateway ships
-the 16 adapters listed above and no others. (Note: *xAI / Grok* appears in [Part 2](#part-2--the-brain-llm-providers--models-the-second-movement-choosing-and-switching-intelligence)
-as an **LLM provider** — that is the language model, not the X social network. Don't confuse the two.)
+**There is no native LinkedIn adapter and no native X/Twitter adapter in Mercury.** The gateway ships the 16 adapters listed above and no others. (Note: *xAI / Grok* appears in [Part 2](#part-2--the-brain-llm-providers--models-the-second-movement-choosing-and-switching-intelligence) as an **LLM provider** — that is the language model, not the X social network. Don't confuse the two.)
 
-If you need Mercury to post to or read from LinkedIn, X, or any other service without a built-in
-adapter, you have two real, supported paths:
+If you need Mercury to post to or read from LinkedIn, X, or any other service without a built-in adapter, you have two real, supported paths:
 
-1. **The generic `webhook` adapter as a bridge.** Stand up a tiny relay in front of the third-party
-   API (it handles that platform's OAuth and API calls) and have it POST inbound events to Mercury's
-   `/webhooks/<name>` endpoint and receive Mercury's replies. This needs no changes to Mercury —
-   just configuration of the `webhook` adapter.
-2. **A custom adapter via a plugin.** Implement the `Adapter` interface and register it with
-   `registerAdapter()` in a plugin. This is first-class — the same interface the 16 built-ins use —
-   and is covered step by step in [Part 10](#105-custom-gateway-adapters). This is the route to a
-   proper, native-feeling LinkedIn or X integration.
+1. **The generic `webhook` adapter as a bridge.** Stand up a tiny relay in front of the third-party API (it handles that platform's OAuth and API calls) and have it POST inbound events to Mercury's `/webhooks/<name>` endpoint and receive Mercury's replies. This needs no changes to Mercury — just configuration of the `webhook` adapter.
+2. **A custom adapter via a plugin.** Implement the `Adapter` interface and register it with `registerAdapter()` in a plugin. This is first-class — the same interface the 16 built-ins use — and is covered step by step in [Part 10](#105-custom-gateway-adapters). This is the route to a proper, native-feeling LinkedIn or X integration.
 
-Either way, you are writing the LinkedIn/X glue yourself; Mercury gives you the two sockets to plug
-it into. Anyone claiming Mercury has turnkey LinkedIn or X support is mistaken.
+Either way, you are writing the LinkedIn/X glue yourself; Mercury gives you the two sockets to plug it into. Anyone claiming Mercury has turnkey LinkedIn or X support is mistaken.
 
 ## 7.5 MCP client — borrowing tools from other servers
 
-Mercury is **both** an MCP client and an MCP server. As a **client**, you connect it to external MCP
-tool servers (a filesystem server, a GitHub server, a database server, hundreds of community ones),
-and **every tool that server offers becomes a tool your agent can call**, named
-`mcp_<server>_<tool>` and grouped into the toolset `mcp:<server>`.
+Mercury is **both** an MCP client and an MCP server. As a **client**, you connect it to external MCP tool servers (a filesystem server, a GitHub server, a database server, hundreds of community ones), and **every tool that server offers becomes a tool your agent can call**, named `mcp_<server>_<tool>` and grouped into the toolset `mcp:<server>`.
 
 Three transports are supported — use whichever the server documents:
 
@@ -1096,8 +905,7 @@ Three transports are supported — use whichever the server documents:
 | `http` | is a remote Streamable-HTTP endpoint | `url`, optional `headers` |
 | `sse` | is a remote Server-Sent-Events endpoint | `url`, optional `headers` |
 
-**The simplest way to add servers — edit `~/.mercury/mcp.json`.** This file **hot-reloads**, so
-changes take effect with no restart. It maps server name → config:
+**The simplest way to add servers — edit `~/.mercury/mcp.json`.** This file **hot-reloads**, so changes take effect with no restart. It maps server name → config:
 
 ```jsonc
 {
@@ -1140,8 +948,7 @@ Per-server options:
 | `allowSampling` | `false` by default; if `true` the server may ask **your** LLM for completions |
 | `enabled` | set `false` to keep a definition but turn it off |
 
-Equivalent alternatives: `mercury config set mcp.servers.<name> '{…}'`, the web **Tools/MCP** panel,
-or `POST /api/mcp` (admin). Then confirm and use:
+Equivalent alternatives: `mercury config set mcp.servers.<name> '{…}'`, the web **Tools/MCP** panel, or `POST /api/mcp` (admin). Then confirm and use:
 
 ```bash
 mercury mcp list          # each server: transport, connected?, discovered tools (and any error)
@@ -1151,12 +958,9 @@ mercury chat "Use the filesystem tools to list my projects folder"
 
 ## 7.6 MCP server — lending Mercury's tools to others
 
-Other MCP-aware apps (another Mercury, Claude Desktop, an IDE) can consume **Mercury's** tools, which
-appear to them as `mercury_<name>`. Two ways:
+Other MCP-aware apps (another Mercury, Claude Desktop, an IDE) can consume **Mercury's** tools, which appear to them as `mercury_<name>`. Two ways:
 
-- **HTTP:** the streamable endpoint at **`/mcp`**. It requires a bearer token with the **`mcp`**
-  scope (see [Part 8](#83-security-authentication-tokens--rbac)), and each tool additionally needs
-  its own scope (e.g. `tools`). Configure with `mcp.server.enabled` and `mcp.server.path`.
+- **HTTP:** the streamable endpoint at **`/mcp`**. It requires a bearer token with the **`mcp`** scope (see [Part 8](#83-security-authentication-tokens--rbac)), and each tool additionally needs its own scope (e.g. `tools`). Configure with `mcp.server.enabled` and `mcp.server.path`.
 - **stdio:** `mercury mcp serve` — ideal for desktop apps that launch a local command.
 
 > **Status.** MCP was verified only with an in-memory client↔server roundtrip and an HTTP `/mcp`
@@ -1164,38 +968,26 @@ appear to them as `mercury_<name>`. Two ways:
 > live services. The chat-platform adapters have likewise not been run against the live platforms.
 > See [`../STATUS.md`](../STATUS.md).
 
-
-
 ---
 
 # Part 8 — The leash: personalities, permissions, budgets & security (the eighth movement: trust, bounded)
 
-Movements 1–7 gave Mercury a brain, hands, memory, autonomy and reach. That is exactly the point at
-which an honest handbook slows down and talks about **control**. This movement is how you make an
-autonomous agent *safe to let loose* — by shaping its character, bounding what it may do, capping
-what it may spend, and locking down who may command it. These four layers stack: a personality sets
-tone, a permission profile sets limits, a budget sets cost, and the security model sets identity.
+Movements 1–7 gave Mercury a brain, hands, memory, autonomy and reach. That is exactly the point at which an honest handbook slows down and talks about **control**. This movement is how you make an autonomous agent *safe to let loose* — by shaping its character, bounding what it may do, capping what it may spend, and locking down who may command it. These four layers stack: a personality sets tone, a permission profile sets limits, a budget sets cost, and the security model sets identity.
 
 ## 8.1 Personalities: giving an agent a character
 
-A **personality** is a Markdown file that overlays the system prompt — it changes how Mercury writes
-and behaves without touching code. Personalities live in `personalities/*.md` and
-`$MERCURY_HOME/personalities/` (one built-in: `default`).
+A **personality** is a Markdown file that overlays the system prompt — it changes how Mercury writes and behaves without touching code. Personalities live in `personalities/*.md` and `$MERCURY_HOME/personalities/` (one built-in: `default`).
 
 - Switch at runtime with `/personality [name]`, or set a default with `agent.personality`.
-- A personality is more than tone: it can carry its **own permission profile** (next section), so a
-  "pirate" or "intern" personality can be denied shell access even for a user who normally has it.
+- A personality is more than tone: it can carry its **own permission profile** (next section), so a "pirate" or "intern" personality can be denied shell access even for a user who normally has it.
 
 ## 8.2 Permissions & approvals (the leash)
 
-There are two complementary controls here: **what tools an identity may use at all** (permission
-profiles) and **what still needs a human's nod in the moment** (approvals).
+There are two complementary controls here: **what tools an identity may use at all** (permission profiles) and **what still needs a human's nod in the moment** (approvals).
 
 ### Permission profiles — and the one rule that matters
 
-Mercury has always had **per-user** policies (`UserPolicy`: `allowedTools`, `deniedTools`,
-`deniedToolsets`, `allowedModels`, `deniedModels`, `allowedWorkflows`, `maxToolRisk`). On top of
-that sit **per-agent / per-personality permission profiles**. The rule you must internalise:
+Mercury has always had **per-user** policies (`UserPolicy`: `allowedTools`, `deniedTools`, `deniedToolsets`, `allowedModels`, `deniedModels`, `allowedWorkflows`, `maxToolRisk`). On top of that sit **per-agent / per-personality permission profiles**. The rule you must internalise:
 
 > **A profile can only *further restrict*, never escalate.** The effective policy is the
 > **most-restrictive combination** of the user's base policy and the personality's profile. A
@@ -1210,16 +1002,9 @@ The merge is mechanical:
 | `maxToolRisk` | **minimum** | the safer cap wins |
 | `allowedTools`, `allowedModels`, `allowedWorkflows` | **intersection** | effective allow-list ⊆ both |
 
-**Worked example.** User `alice` may use `[web_search, read_file, bash]` at `maxToolRisk: dangerous`.
-Personality `researcher` allows `[web_search, read_file, write_file]`, denies the `shell` toolset,
-and caps risk at `moderate`. When alice runs as `researcher` she gets: `allowedTools:
-[web_search, read_file]` (intersection — `write_file` was never hers, `bash` isn't the profile's),
-`shell` denied, and `maxToolRisk: moderate`. She **cannot** run `bash` even though she normally
-could. **Admins bypass these ABAC restrictions entirely.**
+**Worked example.** User `alice` may use `[web_search, read_file, bash]` at `maxToolRisk: dangerous`. Personality `researcher` allows `[web_search, read_file, write_file]`, denies the `shell` toolset, and caps risk at `moderate`. When alice runs as `researcher` she gets: `allowedTools: [web_search, read_file]` (intersection — `write_file` was never hers, `bash` isn't the profile's), `shell` denied, and `maxToolRisk: moderate`. She **cannot** run `bash` even though she normally could. **Admins bypass these ABAC restrictions entirely.**
 
-Profiles are **declarative — no source edits**. Drop them in `<dataDir>/permissions/*.yaml` (file
-name = profile name, or a `{name: policy}` map), or ship them in an add-in manifest. Relocate with
-`permissions.dir`. Inspect with:
+Profiles are **declarative — no source edits**. Drop them in `<dataDir>/permissions/*.yaml` (file name = profile name, or a `{name: policy}` map), or ship them in an add-in manifest. Relocate with `permissions.dir`. Inspect with:
 
 ```bash
 mercury perms list                 # configured profile names
@@ -1237,28 +1022,20 @@ Even an allowed tool can be made to wait. `tools.approvals.mode` decides:
 | `auto` | approve everything (only for fully trusted environments) |
 | `deny` | block all sensitive calls |
 
-Approve or deny from chat (`/approve <id>`, `/deny <id>`, `/approvals`), the web UI, or
-`/api/approvals`. **Keep approvals on `manual` whenever the agent can read untrusted content and act
-on it** — that is the single most important operational setting in this handbook.
+Approve or deny from chat (`/approve <id>`, `/deny <id>`, `/approvals`), the web UI, or `/api/approvals`. **Keep approvals on `manual` whenever the agent can read untrusted content and act on it** — that is the single most important operational setting in this handbook.
 
 ### Two more operational knobs
 
-- **Path jail** (`tools.jail.roots`) confines file tools to listed roots plus the workspace;
-  `tools.jail.allowOutside: true` disables it (not recommended).
-- **SSRF guard** blocks private/loopback/link-local addresses for web tools unless
-  `tools.web.allowPrivateNetworks: true`, and caps response size at `tools.web.maxBytes`.
+- **Path jail** (`tools.jail.roots`) confines file tools to listed roots plus the workspace; `tools.jail.allowOutside: true` disables it (not recommended).
+- **SSRF guard** blocks private/loopback/link-local addresses for web tools unless `tools.web.allowPrivateNetworks: true`, and caps response size at `tools.web.maxBytes`.
 
 ## 8.3 Security: authentication, tokens & RBAC
 
-Treat Mercury like a remote shell for anyone who can log in — because that is what it is. The full
-threat model is [`SECURITY.md`](SECURITY.md); the essentials:
+Treat Mercury like a remote shell for anyone who can log in — because that is what it is. The full threat model is [`SECURITY.md`](SECURITY.md); the essentials:
 
-- **Accounts.** Passwords hashed with **scrypt**; the **first registered user is admin**, the rest
-  are `user`. Close sign-ups once set up: `mercury config set auth.allowRegistration false`.
-- **Sessions.** HS256 **JWTs** signed with `$MERCURY_HOME/secret.key`, lifetime `auth.tokenTtlHours`
-  (default **168 h = 7 days**).
-- **API tokens.** Prefer scoped, expiring tokens over admin JWTs for integrations. They are `mrc_…`
-  strings stored only as SHA-256 hashes:
+- **Accounts.** Passwords hashed with **scrypt**; the **first registered user is admin**, the rest are `user`. Close sign-ups once set up: `mercury config set auth.allowRegistration false`.
+- **Sessions.** HS256 **JWTs** signed with `$MERCURY_HOME/secret.key`, lifetime `auth.tokenTtlHours` (default **168 h = 7 days**).
+- **API tokens.** Prefer scoped, expiring tokens over admin JWTs for integrations. They are `mrc_…` strings stored only as SHA-256 hashes:
 
   ```bash
   mercury token list
@@ -1266,72 +1043,49 @@ threat model is [`SECURITY.md`](SECURITY.md); the essentials:
   mercury token revoke <id>
   ```
 
-  Scopes: `chat, agent, workflow, memory, skills, tools, schedule, mcp, admin, read, *`. The `/mcp`
-  endpoint needs the `mcp` scope **and** each tool's own scope.
-- **RBAC & rate limiting.** Admin-only routes are enforced; each user's data is scoped to them;
-  per-client rate limiting via `server.rateLimit`; adapter webhooks verify platform signatures (401
-  on failure).
-- **Users & audit from the CLI.** `mercury user list/add/passwd/role/delete`;
-  `mercury audit list` / `mercury audit verify`.
+  Scopes: `chat, agent, workflow, memory, skills, tools, schedule, mcp, admin, read, *`. The `/mcp` endpoint needs the `mcp` scope **and** each tool's own scope.
+- **RBAC & rate limiting.** Admin-only routes are enforced; each user's data is scoped to them; per-client rate limiting via `server.rateLimit`; adapter webhooks verify platform signatures (401 on failure).
+- **Users & audit from the CLI.** `mercury user list/add/passwd/role/delete`; `mercury audit list` / `mercury audit verify`.
 
 ### Prompt-injection defence (four layers)
 
 Because the agent reads untrusted content (web pages, files, MCP output), Mercury layers defences:
 
-1. **Input** — a heuristic scanner scores every message; untrusted/suspicious text is also
-   classified by the decision engine, and scores above `decision.thresholds.injection` (0.7) are
-   blocked.
-2. **Context** — untrusted content is **spotlighted** inside `<untrusted_content>` markers as "data,
-   not instructions", and the system prompt fixes the hierarchy `system > user > trusted_tool >
-   untrusted`.
-3. **Action** — when untrusted content is in context, sensitive (write/send/execute) tools need
-   approval per `tools.approvals.mode`.
+1. **Input** — a heuristic scanner scores every message; untrusted/suspicious text is also classified by the decision engine, and scores above `decision.thresholds.injection` (0.7) are blocked.
+2. **Context** — untrusted content is **spotlighted** inside `<untrusted_content>` markers as "data, not instructions", and the system prompt fixes the hierarchy `system > user > trusted_tool > untrusted`.
+3. **Action** — when untrusted content is in context, sensitive (write/send/execute) tools need approval per `tools.approvals.mode`.
 4. **Output** — secrets redacted, PII optionally redacted, a random **canary** detects prompt leaks.
 
 These reduce, but cannot eliminate, injection risk — hence the `manual`-approvals advice above.
 
 ### Audit log
 
-An append-only, **hash-chained** audit log (SQL triggers forbid UPDATE/DELETE; `verify()` detects
-tampering) records registrations, user/role updates, config changes, successful and failed logins,
-token issuance/revocation and gateway pairing decisions. Query it admin-only via `GET /api/audit` or
-`mercury audit`.
+An append-only, **hash-chained** audit log (SQL triggers forbid UPDATE/DELETE; `verify()` detects tampering) records registrations, user/role updates, config changes, successful and failed logins, token issuance/revocation and gateway pairing decisions. Query it admin-only via `GET /api/audit` or `mercury audit`.
 
 ### Deployment checklist
 
-Put TLS in front of the server; register the admin then disable registration; keep `$MERCURY_HOME`
-private; prefer scoped, expiring tokens over admin JWTs; run under Docker/systemd, not as root;
-leave approvals on `manual` unless input is fully trusted.
+Put TLS in front of the server; register the admin then disable registration; keep `$MERCURY_HOME` private; prefer scoped, expiring tokens over admin JWTs; run under Docker/systemd, not as root; leave approvals on `manual` unless input is fully trusted.
 
 ## 8.4 Budgets: spending caps that actually stop spending
 
-Budgets cap **tokens and/or cost per `user × model × period`**, checked both before (estimate) and
-after (actual) every LLM call — so a runaway loop is stopped, not just reported.
+Budgets cap **tokens and/or cost per `user × model × period`**, checked both before (estimate) and after (actual) every LLM call — so a runaway loop is stopped, not just reported.
 
 ```bash
 # everyone, all models, 500k tokens/day:
 mercury config set budgets.rules '[{"user":"*","model":"*","period":"daily","maxTokens":500000}]'
 ```
 
-Each rule: `user` (id or `*`), `model` (id or `*`), `period` (`daily`|`monthly`), optional
-`maxTokens`, optional `maxCost`. `budgets.enabled` toggles the whole system; `budgets.adminBypass`
-(default **true**) lets admins past the caps. Manage them in the web **Models/Budgets** panel or via
-`/api/budgets`.
+Each rule: `user` (id or `*`), `model` (id or `*`), `period` (`daily`|`monthly`), optional `maxTokens`, optional `maxCost`. `budgets.enabled` toggles the whole system; `budgets.adminBypass` (default **true**) lets admins past the caps. Manage them in the web **Models/Budgets** panel or via `/api/budgets`.
 
 ---
 
 # Part 9 — X-ray vision: observability, debugging & troubleshooting (the ninth movement: seeing everything)
 
-You cannot trust what you cannot see. Having bounded the agent in Part 8, this movement gives you the
-instruments to watch it work, step into it when it misbehaves, and fix it when it breaks. It rests on
-one design decision from [Part 0](#part-0--understand-mercury-before-you-install-it): **everything is
-an event.**
+You cannot trust what you cannot see. Having bounded the agent in Part 8, this movement gives you the instruments to watch it work, step into it when it misbehaves, and fix it when it breaks. It rests on one design decision from [Part 0](#part-0--understand-mercury-before-you-install-it): **everything is an event.**
 
 ## 9.1 Everything is an event
 
-Every LLM call, tool call, memory operation, decision, guardrail verdict and "thought" is published
-on the `EventBus`, persisted to the `events` table, and streamed to the UI. Each event carries a
-`runId`, `spanId` and `parentSpanId`, so a run reconstructs into a full parent/child trace.
+Every LLM call, tool call, memory operation, decision, guardrail verdict and "thought" is published on the `EventBus`, persisted to the `events` table, and streamed to the UI. Each event carries a `runId`, `spanId` and `parentSpanId`, so a run reconstructs into a full parent/child trace.
 
 | What you want | How to get it |
 |---|---|
@@ -1345,8 +1099,7 @@ on the `EventBus`, persisted to the `events` table, and streamed to the UI. Each
 
 - `/usage` — token and cost usage for the current session.
 - `/insights [days]` — usage trends over time (an admin may append `all` to see everyone).
-- **Metrics** — Prometheus at `GET /metrics` (`observability.metrics`); optional OTLP export via
-  `observability.otlpEndpoint`; event recording toggles with `observability.recordEvents`.
+- **Metrics** — Prometheus at `GET /metrics` (`observability.metrics`); optional OTLP export via `observability.otlpEndpoint`; event recording toggles with `observability.recordEvents`.
 
 ## 9.3 Live debugging: breakpoints for an agent
 
@@ -1362,50 +1115,32 @@ Mercury has a genuine step debugger for agent runs, driven from chat or the web 
 /debug off           # disable
 ```
 
-Over HTTP: `GET /api/debug`, `POST /api/debug/breakpoints`, `POST /api/debug/resume/:id`. Set a
-breakpoint on LLM or tool steps, inspect the state, then resume or skip — exactly like a code
-debugger, but for the agent's reasoning loop.
+Over HTTP: `GET /api/debug`, `POST /api/debug/breakpoints`, `POST /api/debug/resume/:id`. Set a breakpoint on LLM or tool steps, inspect the state, then resume or skip — exactly like a code debugger, but for the agent's reasoning loop.
 
 ## 9.4 Finding & eliminating issues (a practical playbook)
 
 A structured way to chase down a problem, from the outside in:
 
-1. **Is the service healthy?** `mercury doctor` runs a health check (config, data dir, providers,
-   ports).
-2. **Did the provider answer?** A blank or erroring reply usually means a missing/invalid key or a
-   bad `provider/model` id — re-read [Part 2](#part-2--the-brain-llm-providers--models-the-second-movement-choosing-and-switching-intelligence);
-   check `mercury config get llm.defaultModel` and that the key env var is set.
-3. **Did a tool fail or stall?** Open the **Runs** panel (or `GET /api/runs/:id/events`) and read the
-   tool event — the error text is recorded. For MCP tools, `mercury mcp list` shows connection
-   errors.
-4. **Is something waiting on you?** Check the approval queue (`/approvals`) — a run can look "stuck"
-   simply because a sensitive tool is waiting for `/approve`.
+1. **Is the service healthy?** `mercury doctor` runs a health check (config, data dir, providers, ports).
+2. **Did the provider answer?** A blank or erroring reply usually means a missing/invalid key or a bad `provider/model` id — re-read [Part 2](#part-2--the-brain-llm-providers--models-the-second-movement-choosing-and-switching-intelligence); check `mercury config get llm.defaultModel` and that the key env var is set.
+3. **Did a tool fail or stall?** Open the **Runs** panel (or `GET /api/runs/:id/events`) and read the tool event — the error text is recorded. For MCP tools, `mercury mcp list` shows connection errors.
+4. **Is something waiting on you?** Check the approval queue (`/approvals`) — a run can look "stuck" simply because a sensitive tool is waiting for `/approve`.
 5. **Step into it.** Turn on `/debug tool` (or `/debug llm`), re-run, and inspect each step.
-6. **Replay it.** `mercury replay <runId>` re-plays the exact recorded run so you can study it
-   without re-incurring cost.
-7. **Check limits.** A silently truncated run may have hit a **budget** (Part 8) — look at
-   `/api/budgets` and `/usage`.
-8. **Read the audit log.** For auth/permission surprises, `mercury audit list` shows logins, role
-   changes and pairing decisions.
+6. **Replay it.** `mercury replay <runId>` re-plays the exact recorded run so you can study it without re-incurring cost.
+7. **Check limits.** A silently truncated run may have hit a **budget** (Part 8) — look at `/api/budgets` and `/usage`.
+8. **Read the audit log.** For auth/permission surprises, `mercury audit list` shows logins, role changes and pairing decisions.
 
-See [Appendix C](#appendix-c--troubleshooting-quick-table) for a symptom → cause → fix table and
-[`RELIABILITY.md`](RELIABILITY.md) for the retry/circuit-breaker behaviour behind provider errors.
-
-
+See [Appendix C](#appendix-c--troubleshooting-quick-table) for a symptom → cause → fix table and [`RELIABILITY.md`](RELIABILITY.md) for the retry/circuit-breaker behaviour behind provider errors.
 
 ---
 
 # Part 10 — Making it your own: extending Mercury (the tenth movement: the agent evolves)
 
-The final movement closes the loop that opened in Part 0: Mercury is not a product you consume, it is
-a platform you grow. Every subsystem you've met — tools, skills, workflows, personalities, adapters,
-providers, patterns, memory — has a **public extension point**, and most can be added **without
-editing Mercury's source**. This part is for **🧑‍💻 developers**.
+The final movement closes the loop that opened in Part 0: Mercury is not a product you consume, it is a platform you grow. Every subsystem you've met — tools, skills, workflows, personalities, adapters, providers, patterns, memory — has a **public extension point**, and most can be added **without editing Mercury's source**. This part is for **🧑‍💻 developers**.
 
 ## 10.1 One command to scaffold anything
 
-Mercury loads extensions both from the repository (bundled) and from `$MERCURY_HOME` (default
-`~/.mercury`). Scaffold any kind with `mercury new`:
+Mercury loads extensions both from the repository (bundled) and from `$MERCURY_HOME` (default `~/.mercury`). Scaffold any kind with `mercury new`:
 
 ```bash
 mercury new tool     my_tool --lang python    # also: js | go | cpp | java
@@ -1427,9 +1162,7 @@ mercury new plugin   my_plugin
 
 ## 10.2 A tool in any language (the polyglot contract)
 
-A polyglot tool is a folder with a `tool.json` manifest plus an executable. Mercury pipes JSON
-arguments to the program's **stdin** and reads the result from **stdout**; a non-zero exit is an
-error.
+A polyglot tool is a folder with a `tool.json` manifest plus an executable. Mercury pipes JSON arguments to the program's **stdin** and reads the result from **stdout**; a non-zero exit is an error.
 
 ```json
 {
@@ -1443,14 +1176,11 @@ error.
 }
 ```
 
-`risk` controls approval gating (Part 8); `requires` lists binaries that must be on `PATH` — the tool
-is hidden when they are missing. This is how you add a tool in Python, Go, C++ or Java without
-touching TypeScript.
+`risk` controls approval gating (Part 8); `requires` lists binaries that must be on `PATH` — the tool is hidden when they are missing. This is how you add a tool in Python, Go, C++ or Java without touching TypeScript.
 
 ## 10.3 Plugins: the most powerful extension point
 
-A **plugin** is an ES module exporting a `Plugin` with a `setup(api)` function. It is the single door
-to almost every internal registry:
+A **plugin** is an ES module exporting a `Plugin` with a `setup(api)` function. It is the single door to almost every internal registry:
 
 ```js
 // ~/.mercury/plugins/hello.mjs
@@ -1468,32 +1198,20 @@ export default {
 };
 ```
 
-The `PluginAPI` (`packages/core/src/plugins/plugin.ts`) exposes: `registerTool`, `registerHook`,
-`registerMemoryProvider`, `registerContextEngine`, `registerLLMProvider`, `registerDecisionProvider`,
-`registerPattern`, `registerWorkflowTemplate` and `registerAdapter`. List loaded plugins (and load
-errors) with `mercury plugins`. Register the module in `plugins:[]` or drop it in
-`$MERCURY_HOME/plugins/`.
+The `PluginAPI` (`packages/core/src/plugins/plugin.ts`) exposes: `registerTool`, `registerHook`, `registerMemoryProvider`, `registerContextEngine`, `registerLLMProvider`, `registerDecisionProvider`, `registerPattern`, `registerWorkflowTemplate` and `registerAdapter`. List loaded plugins (and load errors) with `mercury plugins`. Register the module in `plugins:[]` or drop it in `$MERCURY_HOME/plugins/`.
 
 ## 10.4 Custom LLM, decision, memory & pattern providers
 
 Through the same `PluginAPI`, you can replace or add to Mercury's "brains":
 
-- **`LLMProvider`** — implement `chat()`/streaming for a `provider/model` id; register with
-  `api.registerLLMProvider`. This is how you add a provider that isn't in Part 2's list.
-- **`DecisionProvider`** — answer typed questions (`choice`, `noul`/boolean, `score`) with
-  confidences; `packages/core/src/decision/jev.ts` is a compact reference.
-- **`Pattern`** — a reasoning loop; register with `api.registerPattern` or drop in
-  `~/.mercury/patterns/*.js`. Built-ins: `react`, `cot`, `plan-execute`, `reflexion`, `tot`,
-  `self-consistency`, `critic`.
+- **`LLMProvider`** — implement `chat()`/streaming for a `provider/model` id; register with `api.registerLLMProvider`. This is how you add a provider that isn't in Part 2's list.
+- **`DecisionProvider`** — answer typed questions (`choice`, `noul`/boolean, `score`) with confidences; `packages/core/src/decision/jev.ts` is a compact reference.
+- **`Pattern`** — a reasoning loop; register with `api.registerPattern` or drop in `~/.mercury/patterns/*.js`. Built-ins: `react`, `cot`, `plan-execute`, `reflexion`, `tot`, `self-consistency`, `critic`.
 - **`MemoryProvider` / `ContextEngine`** — plug in external memory or a custom context builder.
 
 ## 10.5 Custom gateway adapters
 
-This is the route promised in [Part 7](#74-linkedin-xtwitter-and-anything-not-in-the-list--the-honest-answer)
-for LinkedIn, X, or any platform. Implement the `Adapter` interface from `@mercury/gateway` (or
-extend `BaseAdapter`): `name`, `type`, optional `textOnly`, `start(sink)`, `stop()`, `send(out)`,
-`status()`, and optional `handleWebhook(req)` (mounted at `/webhooks/<name>`). Use the injected
-`deps.transport` for HTTP — it defaults to the real `FetchTransport`.
+This is the route promised in [Part 7](#74-linkedin-xtwitter-and-anything-not-in-the-list--the-honest-answer) for LinkedIn, X, or any platform. Implement the `Adapter` interface from `@mercury/gateway` (or extend `BaseAdapter`): `name`, `type`, optional `textOnly`, `start(sink)`, `stop()`, `send(out)`, `status()`, and optional `handleWebhook(req)` (mounted at `/webhooks/<name>`). Use the injected `deps.transport` for HTTP — it defaults to the real `FetchTransport`.
 
 > **🛠 Honoring "no mocks except for testing".** The former gateway `MockTransport` is **no longer
 > shipped** in `@mercury/gateway`; production `transport.ts` exports only `wrap()` and
@@ -1511,9 +1229,7 @@ mercury config set gateway.adapters.myplatform '{"enabled":true, "...": "..."}'
 
 ## 10.6 Authoring skills & workflows
 
-- **A skill** is a `SKILL.md` with agentskills.io frontmatter; the `description` is what the model
-  sees when deciding whether to load it. Skills are also exposed as MCP prompts and `skill://`
-  resources. Install with `mercury skills install <path|git-url>`.
+- **A skill** is a `SKILL.md` with agentskills.io frontmatter; the `description` is what the model sees when deciding whether to load it. Skills are also exposed as MCP prompts and `skill://` resources. Install with `mercury skills install <path|git-url>`.
 
   ```markdown
   ---
@@ -1542,9 +1258,7 @@ mercury config set gateway.adapters.myplatform '{"enabled":true, "...": "..."}'
 
 ## 10.7 Declarative add-ins (no source edits at all)
 
-For tools, personalities and permission profiles you don't even need a plugin — drop them into
-`<dataDir>/addins/` with an `addin.yaml` manifest. `mercury addin list` shows what's loaded;
-`mercury addin scaffold <name>` starts one. See [`ADDINS.md`](ADDINS.md).
+For tools, personalities and permission profiles you don't even need a plugin — drop them into `<dataDir>/addins/` with an `addin.yaml` manifest. `mercury addin list` shows what's loaded; `mercury addin scaffold <name>` starts one. See [`ADDINS.md`](ADDINS.md).
 
 ## 10.8 The contributor loop & architecture rules
 
@@ -1554,10 +1268,7 @@ npm test           # vitest (offline; 185 tests)
 npx eslint .       # lint (exits 0)
 ```
 
-Two architecture rules keep the codebase clean: keep **`core`** free of HTTP/server concerns (it
-depends only on `zod`, `yaml` and Node built-ins), and follow the dependency direction
-`cli, server → runtime → {tools, mcp, gateway} → core`. Deeper guidance is in
-[`EXTENDING.md`](EXTENDING.md) and [`ARCHITECTURE.md`](ARCHITECTURE.md).
+Two architecture rules keep the codebase clean: keep **`core`** free of HTTP/server concerns (it depends only on `zod`, `yaml` and Node built-ins), and follow the dependency direction `cli, server → runtime → {tools, mcp, gateway} → core`. Deeper guidance is in [`EXTENDING.md`](EXTENDING.md) and [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 > **The red thread, closed.** You began (Part 0) with an agent that was just a brain in a box. Ten
 > movements later it has hands, memory, autonomy, reach, a leash, an X-ray, and now the ability to
@@ -1569,10 +1280,7 @@ depends only on `zod`, `yaml` and Node built-ins), and follow the dependency dir
 
 ## Appendix A — CLI quick reference
 
-Invoke as `mercury <command>` (after `npm link` or the published bin) or `node
-packages/cli/dist/bin.js <command>` from a source checkout. Every command accepts `--help`. Config is
-resolved defaults < `~/.mercury/config.yaml` < env vars < CLI flags; `MERCURY_HOME` overrides the data
-directory.
+Invoke as `mercury <command>` (after `npm link` or the published bin) or `node packages/cli/dist/bin.js <command>` from a source checkout. Every command accepts `--help`. Config is resolved defaults < `~/.mercury/config.yaml` < env vars < CLI flags; `MERCURY_HOME` overrides the data directory.
 
 | Command | Purpose | Key flags / sub-args |
 |---|---|---|
@@ -1632,8 +1340,7 @@ Everything lives under `~/.mercury` (override with `MERCURY_HOME` or the `dataDi
 └── checkpoints/<sessionId>/<n>/   # session checkpoints for replay/rewind
 ```
 
-Back up by copying the whole directory (stop the server first, or use a SQLite-aware snapshot for
-`mercury.db`). The database requires **Node ≥ 22.5** for the built-in `node:sqlite` module.
+Back up by copying the whole directory (stop the server first, or use a SQLite-aware snapshot for `mercury.db`). The database requires **Node ≥ 22.5** for the built-in `node:sqlite` module.
 
 ## Appendix C — Troubleshooting quick table
 
@@ -1680,8 +1387,7 @@ Run **`mercury doctor`** first — it checks Node version, data dir, config, pro
 
 ## Appendix E — Where to go next (document map)
 
-This handbook is the single entry point; these companion docs in the same `docs/` folder go deeper on
-one subject each:
+This handbook is the single entry point; these companion docs in the same `docs/` folder go deeper on one subject each:
 
 | Document | Deep dive on |
 |---|---|
@@ -1703,5 +1409,4 @@ one subject each:
 
 ---
 
-*End of the Mercury Agent Handbook. Built for users, admins and developers alike — honest about what
-works, what's offline-tested, and what you'll need to wire up yourself. Welcome aboard.*
+*End of the Mercury Agent Handbook. Built for users, admins and developers alike — honest about what works, what's offline-tested, and what you'll need to wire up yourself. Welcome aboard.*
