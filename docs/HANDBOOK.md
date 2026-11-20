@@ -2,7 +2,7 @@
 
 # ☿ The Mercury Agent Handbook
 
-### The complete, end-to-end handbook for users, administrators and developers — Mercury Agent v0.7.0
+### The complete, end-to-end handbook for users, administrators and developers — Mercury Agent v1.0.0
 
 ---
 
@@ -177,7 +177,7 @@ npm run build        # tsc project references → each package's dist/
 `npm run build` runs `tsc -b packages/cli packages/server`, which transitively builds every package through TypeScript project references. When it finishes you can run the binary directly:
 
 ```bash
-node packages/cli/dist/bin.js version      # → "mercury 0.7.0"
+node packages/cli/dist/bin.js version      # → "mercury 1.0.0"
 node packages/cli/dist/bin.js doctor       # environment health check (see Appendix C)
 ```
 
@@ -1376,11 +1376,11 @@ Invoke as `mercury <command>` (after `npm link` or the published bin) or `node p
 | `doctor` | Environment/config health check | — |
 | `update` | Self-update the installation | — |
 | `help [topic]` | Help; with a topic prints that help doc | — |
-| `version`, `-v` | Print the version (**mercury 0.7.0**) | — |
+| `version`, `-v` | Print the version (**mercury 1.0.0**) | — |
 
-> **Version note.** This handbook documents **Mercury Agent v0.7.0** (verified from
+> **Version note.** This handbook documents **Mercury Agent v1.0.0** (verified from
 > `packages/cli/src/bin.ts` and the root `package.json`). Some older appendices elsewhere still print
-> `0.3.0`/`0.1.0` — treat **0.7.0** as authoritative.
+> `0.3.0`/`0.1.0` — treat **1.0.0** as authoritative.
 
 ## Appendix B — Data directory layout
 

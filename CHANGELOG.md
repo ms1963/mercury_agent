@@ -7,6 +7,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-20
+
+First stable major release, consolidating the five frontier-autonomy feature areas (economics & routing, governance & security, built-in verification, reliability engineering, proactive event triggers).
+
 ### Added
 - **Economics & routing — spend the least money likely to succeed, with hard per-task budgets
   and a live cost-vs-value readout.** Builds on the existing model router and budgets subsystem;
@@ -287,7 +291,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   audit log), observability (event traces, replay, Prometheus `/metrics`) and a no-build web UI.
 - MIT license.
 
-[Unreleased]: https://github.com/ms1963/mercury_agent/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/ms1963/mercury_agent/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/ms1963/mercury_agent/compare/v0.7.0...v1.0.0
 [0.3.0]: https://github.com/ms1963/mercury_agent/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ms1963/mercury_agent/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ms1963/mercury_agent/releases/tag/v0.1.0
