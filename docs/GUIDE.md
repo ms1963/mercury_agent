@@ -1410,11 +1410,11 @@ variables < CLI flags (see Appendix B), and `MERCURY_HOME` overrides the data di
 | `doctor` | Environment / configuration health check (see Appendix E). | — |
 | `update` | Self-update the installation. | — |
 | `help [topic]` | Show help; with a topic, prints the matching help doc. | — |
-| `version`, `-v` | Print the version (currently prints `mercury 1.0.1`). | — |
+| `version`, `-v` | Print the version (prints `mercury 1.1.1`). | — |
 
-> **Version note.** This guide documents the **1.1.1** release (the root `package.json` is `1.1.1`). The
-> `mercury version` string in `packages/cli/src/bin.ts` currently still prints `mercury 1.0.1` (the CLI
-> banner lagged the release bump); treat **1.1.1** as the authoritative release version.
+> **Version note.** This guide documents the **1.1.1** release (the root `package.json` is `1.1.1`).
+> `mercury version` in `packages/cli/src/bin.ts` resolves its string dynamically from the CLI
+> package.json, so it reports `mercury 1.1.1` and tracks the release automatically.
 
 > Honest-status note: `import-agent`, `update`, and `install.sh` have been exercised only against the
 > offline/mock setup in this repository; they have not been validated against a real Hermes install, a

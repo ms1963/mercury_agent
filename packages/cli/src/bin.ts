@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 /** `mercury` command-line entry point. */
 import { createInterface } from 'node:readline/promises';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { createLogger, setConfigValue, SYSTEM_PRINCIPAL } from '@mercury/core';
 import { createMercury, type Mercury } from '@mercury/runtime';
 import { startServer } from '@mercury/server';
@@ -88,11 +91,22 @@ async function setup(m: Mercury, a: Args): Promise<void> {
   }
 }
 
+/** Resolve the CLI package version from its package.json (never hardcode). */
+function pkgVersion(): string {
+  try {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const pkg = JSON.parse(readFileSync(join(here, '..', 'package.json'), 'utf8')) as { version?: string };
+    return pkg.version ?? '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+
 async function main(argv: string[]): Promise<void> {
   const a = parseArgs(argv);
   const command = a._[0] ?? (a.flags.help ? 'help' : 'chat');
   if (command === 'new') return cmd.newCmd(a);
-  if (command === 'version' || a.flags.v) return console.log('mercury 1.0.1');
+  if (command === 'version' || a.flags.v) return console.log(`mercury ${pkgVersion()}`);
 
   const serve = command === 'serve' || (command === 'mcp' && a._[1] === 'serve');
   const m = await boot(a, serve);

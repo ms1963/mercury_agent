@@ -1469,12 +1469,12 @@ Invoke as `mercury <command>` (after `npm link` or the published bin) or `node p
 | `doctor` | Environment/config health check | — |
 | `update` | Self-update the installation | — |
 | `help [topic]` | Help; with a topic prints that help doc | — |
-| `version`, `-v` | Print the version (currently **mercury 1.0.1**) | — |
+| `version`, `-v` | Print the version (**mercury 1.1.1**) | — |
 
 > **Version note.** This handbook documents the **Mercury Agent v1.1.1** release (the root
-> `package.json` is `1.1.1`). The `mercury version` string in `packages/cli/src/bin.ts` currently
-> still prints `mercury 1.0.1` (the CLI banner lagged the release bump); treat **1.1.1** as the
-> authoritative release version. Some older appendices elsewhere still print `0.3.0`/`0.1.0`.
+> `package.json` is `1.1.1`). `mercury version` resolves its string dynamically from the CLI
+> package.json, so it reports **mercury 1.1.1** and tracks the release automatically. Some older
+> appendices elsewhere still print `0.3.0`/`0.1.0`.
 
 ## Appendix B — Data directory layout
 
