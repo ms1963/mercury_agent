@@ -122,9 +122,12 @@ async function toggleRecording(ui) {
     chat.recorder = null;
     ui.mic.textContent = '🎤';
     ui.input.placeholder = t('chat.transcribing');
-    const r = await api('/api/voice/transcribe', { body: new Blob(chunks, { type: rec.mimeType || 'audio/webm' }) });
-    ui.input.value = (ui.input.value ? ui.input.value + ' ' : '') + r.text;
-    ui.input.placeholder = t('chat.placeholder');
+    try {
+      const r = await api('/api/voice/transcribe', { body: new Blob(chunks, { type: rec.mimeType || 'audio/webm' }) });
+      ui.input.value = (ui.input.value ? ui.input.value + ' ' : '') + r.text;
+    } finally {
+      ui.input.placeholder = t('chat.placeholder');
+    }
   });
   rec.start();
   chat.recorder = rec;

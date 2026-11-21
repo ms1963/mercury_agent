@@ -19,7 +19,13 @@ export async function runTemplate(template: string, vars: Record<string, string>
     const timer = setTimeout(() => child.kill('SIGKILL'), 300_000);
     child.stdout.on('data', (d: Buffer) => (stdout += d.toString()));
     child.stderr.on('data', (d: Buffer) => (stderr += d.toString()));
-    child.on('error', (e) => reject(new MercuryError(`Voice command failed: ${e.message}`, 'voice_command', 'voice')));
+    child.on('error', (e: NodeJS.ErrnoException) => {
+      const msg =
+        e.code === 'ENOENT'
+          ? `Voice command failed: '${bin}' was not found. Install it and make sure it is on the PATH of the process running 'mercury serve'. On macOS, apps started from the GUI/launchd do not inherit your shell PATH, so Homebrew binaries in /opt/homebrew/bin may be missing — start the server from a terminal, or set an absolute path in voice.stt.command / voice.tts.command (e.g. /opt/homebrew/bin/${bin}).`
+          : `Voice command failed: ${e.message}`;
+      reject(new MercuryError(msg, 'voice_command', 'voice'));
+    });
     child.on('close', (code) => {
       clearTimeout(timer);
       if (code === 0) resolve({ stdout });
