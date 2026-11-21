@@ -266,6 +266,9 @@ docker compose up -d
   survives restarts and updates.
 - Open <http://localhost:3000> as before.
 - To stop it: `docker compose down`. To update later: `git pull` then `docker compose up -d --build`.
+- Want the offline voice feature (talk/listen) inside Docker? Use the voice image instead:
+  `docker compose --profile voice up -d --build mercury-voice` (bigger download — it bundles the
+  speech engines).
 
 > This runs Mercury on *your* machine/server. Anyone who should reach it from another device needs
 > network access to it; for internet exposure put it behind a reverse proxy with HTTPS. That's an

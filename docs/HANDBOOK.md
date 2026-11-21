@@ -210,8 +210,11 @@ docker compose down         # stop — the named volume (your data) survives
 
 The repo ships a `Dockerfile` and a `docker-compose.yml` declaring a named volume `mercury-data` mounted at the data directory, so your DB, config and secrets survive container restarts. Pass provider keys via the compose `environment:` block or an `env_file:` — **never bake keys into the image.**
 
-> **Status.** The Docker image build has **not been run** (the test environment has the docker CLI
-> but no daemon). The Dockerfile and compose file are provided as-is.
+For offline voice (STT/TTS) inside the container, build the voice-enabled image — it bundles `ffmpeg` + `whisper` + `piper` (larger, includes CPU PyTorch):
+
+```bash
+docker compose --profile voice up -d --build mercury-voice   # or: docker build -f Dockerfile.voice -t mercury-agent:voice .
+```
 
 ## 1.5 Platform notes (macOS / Linux / Windows)
 

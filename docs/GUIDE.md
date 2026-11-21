@@ -166,8 +166,13 @@ docker compose up -d        # builds the image and runs the server; data persist
 The repository ships a `Dockerfile` and a `docker-compose.yml` (which declares a named volume
 `mercury-data` mounted at the data directory). See Part II for details.
 
-> **Status:** the Docker image build has **not been run** (the test environment has the docker CLI
-> but no daemon). The Dockerfile and compose file are provided as-is and have not been exercised.
+**Offline voice in the container.** The default image is slim and does **not** bundle the offline
+voice engines. For in-container offline STT/TTS, build the voice-enabled image — it ships `ffmpeg`,
+`whisper` and `piper` (larger, as it includes CPU PyTorch):
+
+```bash
+docker compose --profile voice up -d --build mercury-voice   # or: docker build -f Dockerfile.voice -t mercury-agent:voice .
+```
 
 ## 1.5 First-run setup
 
@@ -305,7 +310,9 @@ docker compose down           # stop (the volume — your data — survives)
 The `Dockerfile` builds all packages and runs `serve`; `docker-compose.yml` mounts a named volume
 `mercury-data` at the data directory so your DB, config and secrets persist across container
 restarts. Pass provider keys via the compose `environment:` block or an `env_file:` — do not bake
-them into the image. (See the Docker build status caveat in §1.4.)
+them into the image. For offline voice inside the container, build the voice-enabled image
+(`Dockerfile.voice`, compose profile `voice`) as shown in §1.4; it adds `ffmpeg` + `whisper` +
+`piper` and keeps whisper's model cache on the `mercury-data` volume.
 
 ## 2.5 Reverse proxy & TLS
 

@@ -110,7 +110,7 @@ mercury/
 ├─ personalities/     bundled personalities (*.md)
 ├─ locales/           i18n catalogs (en.json, de.json)
 ├─ docs/              architecture, security, extending, help topics (docs/help/*.md + docs/help/de/*.md)
-└─ deploy/            Dockerfile, docker-compose.yml, systemd unit
+└─ deploy/            Dockerfile, Dockerfile.voice (offline voice), docker-compose.yml, systemd unit
 ```
 
 Dependency direction: `cli, server → runtime → {tools, mcp, gateway} → core`. `core` depends
