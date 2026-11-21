@@ -1377,6 +1377,47 @@ Over HTTP: `GET /api/learning` (status + config + route stats + playbooks; scope
 (`?task`). The web UI **Learning** panel (admin-only) shows the same status, auto-tuned routing table and
 failure playbooks. Configure under `learning` (see Appendix B) and the [`learning` help](help/learning.md).
 
+## 12.7 Self-distilling skills (1.2.0)
+
+Beyond the hand-written skills of §5.6, Mercury can **distil its own** reusable, parameterized skills
+from runs that went well. The subsystem is **off by default** (`skills.distill.enabled: false`).
+
+- **Distillation** — after a successful run, or when you 👍 a run, the proven tool sequence is captured
+  and its concrete values are generalized into named parameters. A winning run needs at least
+  `minToolCalls` tool calls to be eligible. A new trace that is ≥ `dedupMinSimilarity` similar to an
+  existing skill updates it and bumps its version instead of creating a duplicate.
+- **Governance** — new skills start as `pending` and are inert until approved, unless `autoApprove`
+  promotes them immediately. Approve or retire from the **Distilled Skills** panel or over HTTP.
+- **Promote/demote by evidence** — each use updates the skill's success-rate and average-cost stats;
+  a skill below `retireBelowSuccessRate` after at least `minRunsBeforeRetire` uses is auto-retired,
+  and `maxSkills` caps retention (oldest retired pruned first).
+- **Reuse** — when an incoming task matches an approved skill ≥ `matchMinSimilarity`, the proven path
+  is injected into the agent's system prompt as a strong "proven skill" plan hint.
+
+State is stored by DB **migration #7** (`distilled_skills`). Over HTTP: `GET /api/distilled-skills`
+(list), `POST /api/distilled-skills/:id/approve`, `POST /api/distilled-skills/:id/retire` (auth-gated).
+Configure under `skills.distill` (see Appendix B) and the [`skills` help](help/skills.md).
+
+## 12.8 Deterministic run replay & time-travel debugging (1.2.0)
+
+Mercury persists a trace of every run's event stream so you can replay and debug it like a recording.
+This is **on by default** (`replay.enabled: true`) and backward-compatible.
+
+- **Trace** — each run's `input`, deterministic `seed`, ordered steps and (for forks) lineage are
+  stored by DB **migration #8** (`run_traces`). `retainTraces` caps how many are kept.
+- **Time-travel** — list traced runs, scrub the timeline, and inspect the reconstructed state at any
+  step (LLM/tool-call counts, cost, tokens, taint). Per-step deltas are recomputed on demand; set
+  `persistDeltas` to also store them (larger traces).
+- **Fork & re-run** — pick a step, optionally edit an input, and re-run from there: a new linked run
+  (`parent_run_id` + `from_step`) reuses the upstream prefix and deterministically recomputes
+  everything downstream. The recomputed portion runs the real agent path, so governance/approvals
+  still apply to it.
+
+Programmatically via the `mercury.traces` facade (`listTraces`, `getTrace`, `getStateAt`, `replayFrom`).
+Over HTTP: `GET /api/traces`, `GET /api/runs/:id/timetravel`, `GET /api/runs/:id/state?step=N`,
+`POST /api/runs/:id/replay {fromStep, edits}`. The web UI **Run Replay** panel (admin-only) drives all
+of this. Configure under `replay` (see Appendix B) and the [`replay` help](help/replay.md).
+
 ---
 
 ## Appendix A — Full CLI reference
@@ -1414,11 +1455,11 @@ variables < CLI flags (see Appendix B), and `MERCURY_HOME` overrides the data di
 | `doctor` | Environment / configuration health check (see Appendix E). | — |
 | `update` | Self-update the installation. | — |
 | `help [topic]` | Show help; with a topic, prints the matching help doc. | — |
-| `version`, `-v` | Print the version (prints `mercury 1.1.1`). | — |
+| `version`, `-v` | Print the version (prints `mercury 1.2.0`). | — |
 
-> **Version note.** This guide documents the **1.1.1** release (the root `package.json` is `1.1.1`).
+> **Version note.** This guide documents the **1.2.0** release (the root `package.json` is `1.2.0`).
 > `mercury version` in `packages/cli/src/bin.ts` resolves its string dynamically from the CLI
-> package.json, so it reports `mercury 1.1.1` and tracks the release automatically.
+> package.json, so it reports `mercury 1.2.0` and tracks the release automatically.
 
 > Honest-status note: `import-agent`, `update`, and `install.sh` have been exercised only against the
 > offline/mock setup in this repository; they have not been validated against a real Hermes install, a
@@ -1549,6 +1590,22 @@ shown is the default applied when the key is omitted. Keys are grouped by their 
 | `skills.dirs` | `[]` | Extra skill directories. |
 | `skills.autoCreate` | `true` | Auto-distil skills from successful runs. |
 | `skills.minToolCallsForSkill` | `4` | Minimum tool calls before a run becomes a skill. |
+| `skills.distill.enabled` | `false` | **Self-distilling skills (1.2.0)** master switch (distil / match / record). |
+| `skills.distill.autoApprove` | `false` | Skip review and mark newly distilled skills approved immediately. |
+| `skills.distill.minToolCalls` | `2` | A winning run must have made at least this many tool calls to distil a skill. |
+| `skills.distill.matchMinSimilarity` | `0.3` | Min similarity (0..1) to reuse an approved skill for an incoming task. |
+| `skills.distill.dedupMinSimilarity` | `0.6` | Min similarity (0..1) to treat a new trace as the same skill (dedup/version). |
+| `skills.distill.minRunsBeforeRetire` | `5` | Uses required before a skill is eligible for auto-retire. |
+| `skills.distill.retireBelowSuccessRate` | `0.5` | Auto-retire an approved skill below this observed success rate. |
+| `skills.distill.maxSkills` | `500` | Hard cap on stored distilled skills (oldest retired pruned beyond it). |
+
+### `replay` (1.2.0)
+
+| Key | Default | Notes |
+| --- | --- | --- |
+| `replay.enabled` | `true` | Persist a per-run bus-event trace for time-travel replay. |
+| `replay.retainTraces` | `1000` | Max run traces retained (oldest pruned beyond it). |
+| `replay.persistDeltas` | `false` | Also persist per-step state deltas (larger traces; faster state reconstruction). |
 
 ### `reflection`
 

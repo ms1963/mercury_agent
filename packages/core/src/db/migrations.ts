@@ -153,4 +153,26 @@ CREATE TABLE learning_playbooks (
 );
 CREATE INDEX idx_learning_playbooks_updated ON learning_playbooks(updated_at);
 `,
+  /* 7: self-distilling skills — parameterized skills distilled from winning run traces (Feature: distill) */ `
+CREATE TABLE distilled_skills (
+  id TEXT PRIMARY KEY, name TEXT NOT NULL, trigger TEXT NOT NULL, params TEXT NOT NULL DEFAULT '[]',
+  steps TEXT NOT NULL DEFAULT '[]', version INTEGER NOT NULL DEFAULT 1,
+  status TEXT NOT NULL DEFAULT 'pending', source_runs TEXT NOT NULL DEFAULT '[]',
+  uses INTEGER NOT NULL DEFAULT 0, successes INTEGER NOT NULL DEFAULT 0, failures INTEGER NOT NULL DEFAULT 0,
+  cost_sum REAL NOT NULL DEFAULT 0, tokens_sum INTEGER NOT NULL DEFAULT 0, last_used TEXT,
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX idx_distilled_skills_name ON distilled_skills(name);
+CREATE INDEX idx_distilled_skills_status ON distilled_skills(status, updated_at);
+`,
+  /* 8: deterministic run replay & time-travel debugging — per-run trace metadata + fork lineage (Feature: replay) */ `
+CREATE TABLE run_traces (
+  run_id TEXT PRIMARY KEY, session_id TEXT, user_id TEXT, input TEXT,
+  seed TEXT NOT NULL DEFAULT '{}', steps INTEGER NOT NULL DEFAULT 0,
+  parent_run_id TEXT, from_step INTEGER, edits TEXT,
+  deltas TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE INDEX idx_run_traces_user ON run_traces(user_id, created_at);
+CREATE INDEX idx_run_traces_parent ON run_traces(parent_run_id);
+`,
 ];

@@ -60,7 +60,8 @@ After login you get:
   toggle (dark / light, the `◐` button), and **Log out**.
 
 Admin‑only panels (for example **Users**, **Governance**, **Verification**,
-**Reliability**, **Proactive** and **Learning**) appear in the nav only when you
+**Reliability**, **Distilled Skills**, **Run Replay**, **Proactive** and
+**Learning**) appear in the nav only when you
 are signed in as an admin. These are gated client‑side by an `ADMIN_ONLY` set in
 `app.js` (the nav entry is filtered out for non‑admins) and server‑side by the
 scope each backing route requires — the **Learning** panel, for instance, calls
@@ -101,7 +102,7 @@ See [docs/PROVIDERS.md](PROVIDERS.md) for the full list of providers.
 | **Memory**        | Read and edit agent notes and user notes; search memory                                                                                        | memory commands                    |
 | **Skills**        | List and manage installed skills                                                                                                               | `mercury skills`                   |
 | **Tools**         | Browse the built‑in tools and add / remove MCP servers                                                                                         | `mercury tools`, `mercury mcp`     |
-| **Scheduler**     | Create, edit (inline Name/When/Task editor), run now, inspect history, pause/resume/delete scheduled tasks                                       | `mercury schedule`                 |
+| **Scheduler**     | Create, edit (inline Name/When/Task editor — the **Task** field is a multi‑line textarea for longer instructions), run now, inspect history, pause/resume/delete scheduled tasks                                       | `mercury schedule`                 |
 | **Integrations**  | Chat‑gateway pairing; admins get a review queue to respond to or dismiss messages                                                              | `mercury gateway`                  |
 | **Models**        | Route a task to a model; view model (with lane), router and budget configuration; a **cost‑vs‑value** card per active task (cost so far, projected final cost, value/cost ratio, budget‑used) | `mercury config` (`llm.*`)         |
 | **Governance** (admin) | Issue / revoke least‑privilege **credential grants**, list and **test policy‑as‑code** rules, and open a **replayable run trace** ("why did you do that?") | (UI only; `GET /api/grants` · `/api/policies` · `/api/runs/:id/trace`) |
@@ -109,6 +110,8 @@ See [docs/PROVIDERS.md](PROVIDERS.md) for the full list of providers.
 | **Reliability** (admin) | View per‑agent **SLOs** (success / intervention / cost vs targets), record a run and **replay** it as a regression diff, and see **chaos** fault‑injection status (off by default) | `mercury reliability` · `GET /api/slo` · `/api/chaos` · `GET/POST /api/recordings` · `POST /api/recordings/:id/replay` |
 | **Proactive** (admin) | Review notification **rules**, recent **events** (interrupt vs defer), the **digest queue**; flush the digest, poll sources, or inject a test event | `mercury proactive` · `GET /api/proactive` · `POST /api/proactive/events \| digest/flush \| poll` |
 | **Learning** (admin) | Review what Mercury has learned from completed runs: the current learning **status** (on / off — off by default), the **auto‑tuned routing** table (observed success rate and average cost per difficulty bucket / model), and the recorded **failure playbooks** (error signature → remediation that later worked) | `mercury learn stats \| hints \| playbooks` · `GET /api/learning` · `/api/learning/stats` · `/api/learning/playbooks` · `/api/learning/hint` |
+| **Distilled Skills** (admin) | Review self‑distilled skills: the current distill **status** (on / off — off by default), the review queue, and each skill's trigger, parameters, version and stats (uses, success rate, average cost); **approve** or **retire** a skill | (UI only; `GET /api/distilled-skills` · `POST /api/distilled-skills/:id/approve \| retire`) |
+| **Run Replay** (admin) | **Time‑travel debugging**: list traced runs, scrub a run's **timeline**, inspect the **reconstructed state** at any step (LLM/tool calls, cost, tokens, taint), and **edit an input + re‑run from a step** — forking a new linked run that reuses the upstream prefix and recomputes downstream | (UI only; `GET /api/traces` · `/api/runs/:id/timetravel` · `/api/runs/:id/state?step=N` · `POST /api/runs/:id/replay`) |
 | **Users** (admin) | Add users, change roles, delete users — every action is audited                                                                                | `mercury user add \| role \| delete` |
 | **Debug**         | Live run / event stream and diagnostics                                                                                                        | `mercury doctor`                   |
 | **Reflections**   | View the agent's self‑reflections                                                                                                              | (UI only)                          |

@@ -406,6 +406,56 @@ export function registerManageRoutes(app: FastifyInstance, { m, auth, sse }: Ctx
     return { hint: m.learning.hintFor(task, p.userId) ?? null };
   });
 
+  // ---- distilled skills: reusable parameterized skills distilled from winning run traces --------
+  app.get('/api/distilled-skills', async (req) => {
+    auth(req, 'audit.read');
+    const dc = m.config.skills.distill;
+    const status = (req.query as Body).status as string | undefined;
+    return {
+      enabled: dc.enabled,
+      config: {
+        autoApprove: dc.autoApprove,
+        matchMinSimilarity: dc.matchMinSimilarity,
+        dedupMinSimilarity: dc.dedupMinSimilarity,
+        minRunsBeforeRetire: dc.minRunsBeforeRetire,
+        retireBelowSuccessRate: dc.retireBelowSuccessRate,
+      },
+      skills: m.distiller.list(status as never),
+    };
+  });
+  app.get('/api/distilled-skills/:id', async (req) => {
+    auth(req, 'audit.read');
+    const skill = m.distiller.get(param(req));
+    if (!skill) throw new HttpError(404, 'skill not found');
+    return skill;
+  });
+  app.post('/api/distilled-skills/:id/approve', async (req) => {
+    auth(req, 'config.manage');
+    const skill = m.distiller.approve(param(req));
+    if (!skill) throw new HttpError(404, 'skill not found');
+    return skill;
+  });
+  app.post('/api/distilled-skills/:id/retire', async (req) => {
+    auth(req, 'config.manage');
+    const skill = m.distiller.retire(param(req));
+    if (!skill) throw new HttpError(404, 'skill not found');
+    return skill;
+  });
+  app.post('/api/distilled-skills/distill', async (req) => {
+    auth(req, 'config.manage');
+    const runId = (req.body as Body).runId as string | undefined;
+    if (!runId) throw new HttpError(400, 'runId is required');
+    const skill = m.distiller.distillFromRun(runId, { force: true });
+    if (!skill) throw new HttpError(422, 'run not eligible for distillation');
+    return skill;
+  });
+  app.get('/api/distilled-skills/match/preview', async (req) => {
+    auth(req, 'audit.read');
+    const task = (req.query as Body).task as string | undefined;
+    if (!task) throw new HttpError(400, 'task is required');
+    return { match: m.distiller.match(task) ?? null };
+  });
+
   // ---- help, i18n, settings ---------------------------------------------------------
   app.get('/api/help', async (req) => {
     const q = req.query as Body;

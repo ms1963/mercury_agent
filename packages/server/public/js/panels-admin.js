@@ -28,7 +28,10 @@ export const renderScheduler = (view) => panel(view, t('scheduler.title'), async
   const showEditor = (s) => {
     const nameIn = field(t('common.name'), { value: s.name, className: 'grow' });
     const whenEdit = field(t('scheduler.when'), { value: s.nl || s.spec, className: 'grow' });
-    const taskEdit = field(t('scheduler.task'), { value: s.task, className: 'grow' });
+    // Multi-line editor for the task description, pre-filled with the current task, so longer
+    // instructions are comfortable to read and edit (not a cramped single-line field).
+    const taskEdit = h('textarea', { className: 'grow', rows: '5', placeholder: t('scheduler.task'), style: 'width:100%;resize:vertical;min-height:6em' }, s.task || '');
+    taskEdit.value = s.task || '';
     const save = safe(async () => {
       await api(`/api/schedules/${s.id}`, { method: 'PATCH', body: { name: nameIn.value, when: whenEdit.value, task: taskEdit.value } });
       editor.replaceChildren();
@@ -36,8 +39,9 @@ export const renderScheduler = (view) => panel(view, t('scheduler.title'), async
       await reload();
     });
     editor.replaceChildren(card(`${t('common.edit', 'Edit')}: ${s.name}`,
-      h('div.row', {}, nameIn, whenEdit, taskEdit),
-      h('div.row', {}, h('button.primary', { onclick: save }, t('common.save', 'Save')),
+      h('div.row', {}, nameIn, whenEdit),
+      h('div', { style: 'margin-top:.5em' }, h('label.small.muted', {}, t('scheduler.task')), taskEdit),
+      h('div.row', { style: 'margin-top:.5em' }, h('button.primary', { onclick: save }, t('common.save', 'Save')),
         h('button', { onclick: safe(() => editor.replaceChildren()) }, t('common.cancel', 'Cancel')))));
   };
   // Run now returns immediately (the run executes in the background), so give the user
@@ -337,6 +341,43 @@ export const renderLearning = (view) => panel(view, t('learning.title', 'Learnin
 });
 
 /**
+ * Self-distilling skills: reusable parameterized skills the agent distilled from its own winning
+ * run traces. Shows each skill's trigger, step sequence, governance status and running stats, with
+ * approve/retire actions (admins). A pending skill must be approved before the planner reuses it.
+ */
+export const renderDistill = (view) => panel(view, t('distill.title', 'Distilled Skills'), async (reload) => {
+  const data = await api('/api/distilled-skills').catch(() => null);
+  if (!data) return card(null, h('p.muted', {}, t('distill.unavailable', 'distilled-skills subsystem unavailable')));
+
+  const statusCard = card(t('distill.status', 'Status'),
+    h('p.small.muted', {}, t('distill.intro', 'Mercury distils reusable, parameterized skills from its own successful (or 👍-rated) runs: the proven tool sequence with concrete values generalized into parameters. New skills land in a review queue; once approved, the planner reuses a matching skill to run the proven path. Off by default.')),
+    h('p', {}, t('common.status') + ': ', badge(data.enabled, t('distill.on', 'distilling ON'), t('distill.off', 'off (safe)')),
+      h('span.small', {}, ` · ${t('distill.autoApprove', 'auto-approve')} ${data.config.autoApprove ? 'on' : 'off'} · ${t('distill.matchMin', 'match ≥')} ${data.config.matchMinSimilarity} · ${t('distill.retireBelow', 'retire < ')} ${Math.round(data.config.retireBelowSuccessRate * 100)}% ${t('distill.overN', 'over')} ${data.config.minRunsBeforeRetire} ${t('distill.uses', 'uses')}`)));
+
+  const statusBadge = (s) => h(`span.badge.${s === 'approved' ? 'on' : s === 'retired' ? 'off' : ''}`, {}, s);
+  const steps = (x) => h('span.small', {}, (x.steps || []).map((st) => st.tool).join(' → ') || '—');
+  const actions = (x) => !isAdmin() ? null : h('div.row', {},
+    x.status !== 'approved' ? h('button.primary', { onclick: safe(async () => (await api(`/api/distilled-skills/${x.id}/approve`, { body: {} }), toast(t('distill.approved', 'Skill approved')), reload())) }, t('distill.approve', 'Approve')) : null,
+    x.status !== 'retired' ? h('button', { onclick: safe(async () => (await api(`/api/distilled-skills/${x.id}/retire`, { body: {} }), toast(t('distill.retired', 'Skill retired')), reload())) }, t('distill.retire', 'Retire')) : null);
+
+  const skillsCard = card(t('distill.skills', 'Distilled skills'),
+    data.skills.length ? table(data.skills, [
+      [t('distill.name', 'Name'), (x) => h('code', {}, x.name)],
+      [t('distill.trigger', 'Trigger'), (x) => h('span.small', {}, (x.trigger || '').slice(0, 60))],
+      [t('distill.steps', 'Steps'), steps],
+      [t('distill.params', 'Params'), (x) => h('span.small', {}, (x.params || []).map((p) => p.name).join(', ') || '—')],
+      [t('distill.version', 'Ver'), (x) => x.version],
+      [t('common.status'), (x) => statusBadge(x.status)],
+      [t('distill.usesCol', 'Uses'), (x) => x.stats.uses],
+      [t('reliability.successRate', 'Success rate'), (x) => badge(x.stats.successRate >= 0.5, `${Math.round(x.stats.successRate * 100)}%`, `${Math.round(x.stats.successRate * 100)}%`)],
+      [t('distill.avgCost', 'Avg cost $'), (x) => Number(x.stats.avgCost).toFixed(5)],
+      ['', actions],
+    ]) : h('p.muted', {}, t('distill.empty', 'No skills distilled yet. Run tasks with distilling enabled, or 👍 a good run.')));
+
+  return [statusCard, skillsCard];
+});
+
+/**
  * Proactive (but not annoying): pending/reacted events, the deferred digest queue and the
  * notification rules that map events to actions and interrupt-vs-defer routing.
  */
@@ -457,4 +498,63 @@ export const renderGovernance = (view) => panel(view, t('governance.title', 'Gov
     h('div.row', {}, runId, h('button.primary', { onclick: showTrace }, t('governance.replay', 'Replay'))), traceOut);
 
   return [grantsCard, policiesCard, traceCard];
+});
+
+/**
+ * Deterministic run replay & time-travel debugging: list traced runs, open a run's timeline,
+ * scrub across steps to inspect the reconstructed state, edit the input and re-run (fork) from a
+ * chosen step — streaming the recomputed downstream as a new linked run.
+ */
+export const renderReplay = (view) => panel(view, t('replay.title', 'Run Replay'), async (reload) => {
+  const sel = state.replaySel || {};
+  const data = await api('/api/traces').catch(() => null);
+  if (!data) return card(null, h('p.muted', {}, t('replay.unavailable', 'run replay is disabled')));
+
+  const intro = card(t('replay.status', 'Time-travel debugging'),
+    h('p.small.muted', {}, t('replay.intro', 'Every run is traced. Open a run to scrub its timeline, inspect the reconstructed state at each step, edit an input, and re-run deterministically from any step — forking a new linked run that reuses the upstream prefix and recomputes everything downstream.')));
+
+  const runsCard = card(t('replay.runs', 'Traced runs'),
+    data.traces.length ? table(data.traces, [
+      [t('replay.runId', 'Run'), (x) => h('code.small', {}, x.runId.slice(0, 18))],
+      [t('replay.input', 'Input'), (x) => h('span.small', {}, (x.input || '').slice(0, 50))],
+      [t('replay.steps', 'Steps'), (x) => x.steps],
+      [t('replay.parent', 'Forked from'), (x) => x.parentRunId ? h('code.small', {}, `${x.parentRunId.slice(0, 10)}@${x.fromStep}`) : '—'],
+      ['', (x) => h('button', { onclick: safe(async () => { state.replaySel = { runId: x.runId, step: x.steps }; await reload(); }) }, t('replay.open', 'Open'))],
+    ]) : h('p.muted', {}, t('replay.empty', 'No traced runs yet. Run a task first.')));
+
+  if (!sel.runId) return [intro, runsCard];
+
+  const trace = await api(`/api/runs/${sel.runId}/timetravel`).catch(() => null);
+  if (!trace) return [intro, runsCard, card(null, h('p.muted', {}, t('replay.notrace', 'No trace for this run.')))];
+  const total = trace.steps.length;
+  const step = Math.max(0, Math.min(sel.step ?? total, total));
+  const stateAt = await api(`/api/runs/${sel.runId}/state?step=${step}`).catch(() => null);
+
+  const timeline = card(`${t('replay.timeline', 'Timeline')} — ${sel.runId.slice(0, 18)} (${total} ${t('replay.steps', 'steps')})`,
+    h('input', { type: 'range', min: 0, max: String(total), value: String(step), style: 'width:100%',
+      oninput: safe(async (e) => { state.replaySel = { ...sel, step: Number(e.target.value) }; await reload(); }) }),
+    h('p.small.muted', {}, `${t('replay.atStep', 'Step')} ${step} / ${total}`),
+    h('ol.small', {}, trace.steps.map((s) => h(`li${s.seq === step ? '.active' : ''}`, {},
+      h('a', { href: '#', onclick: safe(async (e) => { e.preventDefault(); state.replaySel = { ...sel, step: s.seq }; await reload(); }) },
+        `${s.seq}. [${s.category}] ${s.summary}`)))));
+
+  const stateCard = card(t('replay.state', 'Reconstructed state at step'),
+    stateAt ? h('div', {},
+      h('p.small', {}, `${t('replay.llm', 'LLM calls')}: ${stateAt.llmCalls} · ${t('replay.tools', 'tool calls')}: ${stateAt.toolCalls} · ${t('replay.cost', 'cost $')}: ${Number(stateAt.cost).toFixed(5)} · ${t('replay.tokens', 'tokens')}: ${stateAt.tokens}${stateAt.tainted ? ' · ⚠ tainted' : ''}`),
+      h('pre.small', { style: 'max-height:220px;overflow:auto' }, (stateAt.messages || []).map((msgp) => `${msgp.role}: ${(msgp.content || '').slice(0, 200)}`).join('\n') || '—'))
+      : h('p.muted', {}, '—'));
+
+  const forkCard = card(t('replay.fork', 'Re-run from here (fork)'),
+    h('p.small.muted', {}, t('replay.forkHelp', 'Reuse everything up to the selected step, edit the instruction, and recompute downstream as a new linked run.')),
+    (() => { const inp = field(t('replay.editInput', 'Edited input (blank = reuse original)'), { id: 'replay-edit', value: '' });
+      return h('div.row', {}, inp,
+        h('button.primary', { onclick: safe(async () => {
+          const edits = inp.value.trim() ? { input: inp.value.trim() } : {};
+          const res = await api(`/api/runs/${sel.runId}/replay`, { body: { fromStep: step, edits } });
+          toast(`${t('replay.forked', 'Forked run')} ${res.run.runId.slice(0, 12)} (${res.run.status})`);
+          state.replaySel = { runId: res.run.runId, step: undefined };
+          await reload();
+        }) }, t('replay.rerun', 'Re-run from step'))); })());
+
+  return [intro, runsCard, timeline, stateCard, forkCard];
 });

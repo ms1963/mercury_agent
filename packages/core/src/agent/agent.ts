@@ -276,6 +276,17 @@ export class Agent {
         learnedHint = '';
       }
     }
+    // Self-distilling skills: when an APPROVED skill matches this request, inject its proven
+    // tool sequence as strong guidance (execute the proven path). Opt-in and depth-0 only;
+    // no-op when disabled or nothing matches (graceful degradation).
+    let skillHint = '';
+    if (run.depth === 0 && d.config.skills.distill.enabled) {
+      try {
+        skillHint = d.services.distiller?.planHintFor(opts.input)?.text ?? '';
+      } catch {
+        skillHint = '';
+      }
+    }
     return buildSystemPrompt({
       persona,
       canary: d.guardrails.canary,
@@ -285,7 +296,7 @@ export class Agent {
       contextFiles: ctxFiles.instructions,
       skillsIndex: d.skills.index(run.platform),
       memory,
-      extra: [opts.systemExtra, learnedHint, nudge].filter(Boolean).join('\n\n'),
+      extra: [opts.systemExtra, learnedHint, skillHint, nudge].filter(Boolean).join('\n\n'),
       depth: run.depth,
       textOnlyPlatform: !['cli', 'web'].includes(run.platform),
     });

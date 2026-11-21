@@ -55,6 +55,11 @@ import {
   SkillRegistry,
   SkillComposer,
   LearningService,
+  DistillerService,
+  SqliteSkillStore,
+  TimeTravelService,
+  SqliteTraceStore,
+  type ReplayForkRequest,
   Spawner,
   ToolExecutor,
   ToolRegistry,
@@ -185,6 +190,10 @@ export class Mercury {
   readonly composer: SkillComposer;
   /** Learning: experience hints, auto-tuned routing, failure playbooks from run history. */
   readonly learning: LearningService;
+  /** Self-distilling skills: distil/match/govern reusable proven paths from winning run traces. */
+  readonly distiller: DistillerService;
+  /** Deterministic run replay & time-travel debugging: per-run traces, step inspection, fork/re-run. */
+  readonly traces: TimeTravelService;
   readonly checkpoints: CheckpointManager;
   readonly voice: VoiceService;
   readonly attachments: AttachmentStore;
@@ -350,11 +359,14 @@ export class Mercury {
     });
     this.slo = new SloService(config, this.db);
 
+    // Self-distilling skills: distil reusable parameterized skills from winning run traces,
+    // govern them, and reuse approved ones. Backed by a real SQLite store (no mocks).
+    this.distiller = new DistillerService(config, new SqliteSkillStore(this.db), this.db, this.bus);
     this.services = {
       config, logger: this.logger, llm: this.llm, memory: this.memory, skills: this.skills, decisions: this.decisions,
       judgment: this.judgment, jail: this.jail, checkpoints: this.checkpoints, attachments: this.attachments,
       voice: this.voice, tools: this.tools, executor: this.executor, wiki: config.wiki.enabled ? this.wiki : undefined,
-      learning: this.learning, composition: this.composer, extra: {},
+      learning: this.learning, distiller: this.distiller, composition: this.composer, extra: {},
     };
     this.agent = new Agent({
       config, db: this.db, bus: this.bus, hooks: this.hooks, llm: this.llm, tools: this.tools, executor: this.executor,
@@ -363,6 +375,37 @@ export class Mercury {
       attachments: this.attachments, services: this.services, reflector: this.reflector,
     });
     this.commands = new CommandProcessor(this.agent, this.help, this.checkpoints, this.approvals, this.reflector);
+
+    // Deterministic run replay & time-travel debugging: persist per-run trace metadata, inspect
+    // reconstructed state at any step, and fork a run from a chosen step with edited inputs —
+    // reusing the upstream prefix and recomputing downstream through the real agent (so governance
+    // and approvals apply to the recomputed portion). Backed by a real SQLite store (no mocks).
+    this.traces = new TimeTravelService(
+      config,
+      new SqliteTraceStore(this.db),
+      this.recorder,
+      this.db,
+      this.bus,
+      async (req: ReplayForkRequest) => {
+        const principal = req.userId ? this.users.principalFor(this.users.get(req.userId)) : this.principalFor();
+        // Reuse the upstream prefix as the new run's seeded session history; the edited input
+        // becomes the active instruction that drives the recomputed downstream portion.
+        const session = this.memory.episodic.createSession(principal.userId, { platform: 'replay', model: req.seed.model });
+        for (const m of req.prefixMessages) this.memory.episodic.append(session.id, principal.userId, m);
+        const r = await this.agent.run({
+          principal,
+          input: req.input,
+          platform: 'replay',
+          sessionId: session.id,
+          parentRunId: req.parentRunId,
+          model: req.seed.model,
+          pattern: req.seed.pattern,
+          reflect: false,
+        });
+        return { runId: r.runId, status: r.status, output: r.output, toolNames: r.toolNames };
+      },
+    );
+
     this.spawner = new Spawner(config, this.agent);
     this.workflows = new WorkflowEngine({ bundled: join(this.assets, 'workflows'), user: join(dataDir, 'workflows') }, this.spawner, this.judgment, this.llm, this.memory.blackboard, this.db, this.bus, config);
     this.scheduler = new Scheduler(this.db, (s, signal) => this.runSchedule(s.userId, s.task, signal), this.bus, { tickMs: config.scheduler.tickMs, defaultRetries: config.scheduler.maxRetries });
@@ -480,6 +523,18 @@ export class Mercury {
     if (config.learning.enabled) {
       this.learning.start();
       this.cleanups.push(() => this.learning.stop());
+    }
+    // Self-distilling skills: subscribe to run.end so winning traces are distilled and reused-skill
+    // outcomes recorded automatically (off by default).
+    if (config.skills.distill.enabled) {
+      this.distiller.start();
+      this.cleanups.push(() => this.distiller.stop());
+    }
+    // Deterministic run replay: subscribe to run.start/run.end so every run's trace metadata is
+    // captured for later inspection and forking (enabled by default; gated by config.replay.enabled).
+    if (config.replay.enabled) {
+      this.traces.start();
+      this.cleanups.push(() => this.traces.stop());
     }
     if (config.scheduler.enabled) this.scheduler.start();
     if (config.proactive.enabled) {

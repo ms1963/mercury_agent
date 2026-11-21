@@ -115,7 +115,58 @@ export function registerCoreRoutes(app: FastifyInstance, { m, auth, sse }: Ctx):
   app.post('/api/runs/:id/stop', async (req) => ({ stopped: m.agent.stop((req.params as Body).id as string) }));
   app.post('/api/runs/:id/feedback', async (req) => {
     auth(req);
-    return { updated: m.reflector.feedback((req.params as Body).id as string, Boolean((req.body as Body).positive)) };
+    const runId = (req.params as Body).id as string;
+    const positive = Boolean((req.body as Body).positive);
+    const updated = m.reflector.feedback(runId, positive);
+    // Self-distilling skills: a 👍 marks this run as a winning path worth distilling.
+    let distilled: string | undefined;
+    if (positive && m.config.skills.distill.enabled) {
+      try {
+        distilled = m.distiller.onFeedback(runId, true)?.id;
+      } catch {
+        /* distillation must never break feedback */
+      }
+    }
+    return { updated, distilled };
+  });
+
+  // ---- deterministic run replay & time-travel debugging -----------------------
+  // Full ordered trace for a run (steps + metadata + fork lineage). Distinct from the plain
+  // audit-trail /api/runs/:id/trace — this view carries time-travel metadata and fork lineage.
+  app.get('/api/runs/:id/timetravel', async (req) => {
+    auth(req);
+    if (!m.config.replay.enabled) throw new HttpError(404, 'run replay is disabled');
+    const trace = m.traces.getTrace((req.params as Body).id as string);
+    if (!trace) throw new HttpError(404, 'no trace for this run');
+    return trace;
+  });
+  // Reconstructed accumulated state at a given step (scrub/time-travel inspection).
+  app.get('/api/runs/:id/state', async (req) => {
+    auth(req);
+    if (!m.config.replay.enabled) throw new HttpError(404, 'run replay is disabled');
+    const step = Number((req.query as Body).step ?? 0) || 0;
+    const state = m.traces.getStateAt((req.params as Body).id as string, step);
+    if (!state) throw new HttpError(404, 'no trace for this run');
+    return state;
+  });
+  // Recently traced runs (run viewer list).
+  app.get('/api/traces', async (req) => {
+    const p = auth(req);
+    if (!m.config.replay.enabled) throw new HttpError(404, 'run replay is disabled');
+    return { traces: m.traces.listTraces(p.userId, Number((req.query as Body).limit ?? 50) || 50) };
+  });
+  // Fork a run from a chosen step with edited inputs → a new linked run (recomputes downstream).
+  app.post('/api/runs/:id/replay', async (req) => {
+    const p = auth(req);
+    if (!m.config.replay.enabled) throw new HttpError(404, 'run replay is disabled');
+    const b = req.body as Body;
+    const result = await m.traces.replayFrom((req.params as Body).id as string, {
+      fromStep: b.fromStep !== undefined ? Number(b.fromStep) : undefined,
+      edits: (b.edits as Record<string, unknown>) ?? undefined,
+      userId: p.userId,
+    });
+    if (!result) throw new HttpError(404, 'run replay is disabled');
+    return result;
   });
 
   // ---- sessions ---------------------------------------------------------------

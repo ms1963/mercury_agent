@@ -264,6 +264,31 @@ export const ConfigSchema = z.object({
       dirs: z.array(z.string()).default([]),
       autoCreate: z.boolean().default(true),
       minToolCallsForSkill: z.number().default(4),
+      /**
+       * Self-distilling skills: the agent distills reusable, parameterized skills from its own
+       * successful/upvoted run traces, governs them (review → approve, versioned, promote/demote
+       * by success-rate & cost) and reuses an approved matching skill to run proven paths. OFF by
+       * default (opt-in, backward-compatible): nothing is distilled, matched or recorded until enabled.
+       */
+      distill: z
+        .object({
+          enabled: z.boolean().default(false),
+          /** Skip governance review and mark newly distilled skills `approved` immediately. */
+          autoApprove: z.boolean().default(false),
+          /** A winning run must have made at least this many tool calls to distil a skill from it. */
+          minToolCalls: z.number().int().positive().default(2),
+          /** Minimum trigger/intent similarity (0..1) to match an incoming task to an approved skill. */
+          matchMinSimilarity: z.number().min(0).max(1).default(0.3),
+          /** Minimum trigger similarity (0..1) to treat a new trace as the SAME skill (dedup/version). */
+          dedupMinSimilarity: z.number().min(0).max(1).default(0.6),
+          /** A skill is eligible for auto-retire only after at least this many recorded uses. */
+          minRunsBeforeRetire: z.number().int().positive().default(5),
+          /** Auto-retire an approved skill whose observed success rate falls below this (0..1). */
+          retireBelowSuccessRate: z.number().min(0).max(1).default(0.5),
+          /** Hard cap on stored distilled skills (oldest retired ones are pruned beyond it). */
+          maxSkills: z.number().int().positive().default(500),
+        })
+        .prefault({}),
     })
     .prefault({}),
 
@@ -538,6 +563,23 @@ export const ConfigSchema = z.object({
       recordEvents: z.boolean().default(true),
       otlpEndpoint: z.string().optional(),
       metrics: z.boolean().default(true),
+    })
+    .prefault({}),
+
+  /**
+   * Deterministic run replay & time-travel debugging: persist a per-run trace (built on the
+   * recorded event stream), scrub/inspect reconstructed state at any step, and fork a run from a
+   * chosen step with edited inputs to deterministically recompute everything downstream while
+   * reusing the upstream prefix. Enabled by default; backward-compatible.
+   */
+  replay: z
+    .object({
+      /** Master switch for trace persistence, the facade methods and the server endpoints. */
+      enabled: z.boolean().default(true),
+      /** Max number of per-run traces to retain (oldest pruned first). */
+      retainTraces: z.number().int().positive().default(1000),
+      /** Also persist reconstructed per-step state deltas (larger traces; off by default). */
+      persistDeltas: z.boolean().default(false),
     })
     .prefault({}),
 

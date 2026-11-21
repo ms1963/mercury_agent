@@ -7,6 +7,43 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-21
+
+### Added
+- **Self-distilling skills** (`packages/core/src/skills/`, off by default under `skills.distill.enabled`).
+  - The agent distils reusable, *parameterized* skills from its own successful (or 👍-rated) run
+    traces: the proven tool sequence is captured and concrete values are generalized into named
+    parameters. Distillation triggers on run success and on positive (👍) feedback.
+  - Governance: newly distilled skills land in a review queue (`status: proposed`) and must be
+    approved before use, unless `skills.distill.autoApprove` is set. Skills are versioned; a
+    sufficiently similar new trace updates the existing skill (dedup by `dedupMinSimilarity`)
+    rather than creating a duplicate.
+  - Promote/demote by evidence: approved skills accrue success-rate and average-cost stats and are
+    auto-retired once they fall below `retireBelowSuccessRate` after at least `minRunsBeforeRetire`
+    uses. A hard cap (`maxSkills`) prunes the oldest retired skills.
+  - Reuse: when an incoming task matches an approved skill (≥ `matchMinSimilarity`), the proven
+    path surfaces to the agent as a "proven skill" plan hint so it can execute the known-good
+    procedure instead of re-deriving it.
+  - REST `/api/distilled-skills` (list / `:id/approve` / `:id/retire`, auth-gated) and an admin
+    **Distilled Skills** panel in the web UI (EN + DE i18n). Config under `skills.distill`.
+- **Deterministic run replay & time-travel debugging** (`packages/core/src/timetravel/`, on by
+  default under `replay.enabled`).
+  - Every run's bus-event stream is persisted as a per-run trace (new `run_traces` table,
+    migration #8) capturing input, seed, steps and lineage.
+  - Time-travel: list traced runs, scrub the timeline, and inspect the reconstructed state
+    (LLM/tool-call counts, cost, tokens, taint) at any step.
+  - Fork & re-run: edit an input and "re-run from here" — a new linked run (`parent_run_id` +
+    `from_step`) reuses the upstream prefix and deterministically recomputes everything downstream.
+    Governance/approvals still apply on the recomputed portion.
+  - Mercury facade `mercury.traces` (`getTrace`, `getStateAt`, `listTraces`, `replayFrom`), REST
+    `GET /api/traces`, `GET /api/runs/:id/timetravel`, `GET /api/runs/:id/state?step=N`,
+    `POST /api/runs/:id/replay {fromStep, edits}`, and an admin **Run Replay** panel in the web UI
+    (EN + DE i18n). Config under `replay` (`enabled`, `retainTraces`, `persistDeltas`).
+
+### Changed
+- Scheduler: the task description field in the schedule edit form is now a multi-line textarea
+  (easier to read and edit longer task instructions).
+
 ## [1.1.1] - 2026-11-21
 
 ### Added

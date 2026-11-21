@@ -95,7 +95,7 @@ mercury/
 │  │  └─ src/
 │  │     types/  config/  db/  events/  logging/  security/  auth/  budgets/
 │  │     llm/  router/  decision/  agent/  agent/patterns/  memory/  skills/ (+composer)
-│  │     learning/  reflection/  tools/ (registry+executor)  workflows/  scheduler/
+│  │     learning/  distill/  timetravel/  reflection/  tools/ (registry+executor)  workflows/  scheduler/
 │  │     attachments/  voice/  plugins/  checkpoints/  i18n/  help/  extensions/
 │  ├─ tools/       @mercury/tools    — 50+ built-in tools, toolsets, polyglot runner,
 │  │                                    execute_code sandbox, terminal & browser backends
@@ -410,6 +410,59 @@ from the environment (`resolvePreset`, reporting any still-missing env vars) and
 config under `mcp.servers.<name>`, after which the existing MCP client subsystem (§5.6) connects to it
 like any user-defined server. Only the resolved config is ever written — the preset itself never holds a
 secret value.
+
+### 5.19 Self-distilling skills (`core/src/distill`)
+Mercury distils reusable, parameterized skills from its own winning runs. The `Distiller` service
+(`distill/distiller.ts`, behind the `DistillStore` port over `distill/store.ts`) subscribes to the
+`EventBus`: on `run.end` with success — and on positive (👍) feedback — it reads the run's tool-call
+sequence and generalizes concrete argument values into named parameters, producing a candidate skill
+(trigger text, params, ordered steps, `source_runs`). **Off at the master switch by default**
+(`skills.distill.enabled = false`): nothing is distilled, matched or recorded until enabled.
+
+* **Dedup & versioning** — a new trace whose trigger is ≥ `dedupMinSimilarity` similar (Jaccard
+  token-overlap) to an existing skill updates that skill and bumps its `version` instead of inserting
+  a duplicate; otherwise a new row is created.
+* **Governance** — candidates land as `status: pending` and are inert until approved (via the
+  **Distilled Skills** panel or `POST /api/distilled-skills/:id/approve`), unless
+  `skills.distill.autoApprove` promotes them on creation. A winning run must have made at least
+  `minToolCalls` tool calls to be eligible.
+* **Promote/demote by evidence** — each use updates `uses`/`successes`/`failures`/`cost_sum`/
+  `tokens_sum`; an approved skill whose observed success rate falls below `retireBelowSuccessRate`
+  after at least `minRunsBeforeRetire` uses is auto-retired. `maxSkills` caps retention (oldest
+  retired pruned first).
+* **Reuse** — `planHintFor(input)` finds an approved skill whose trigger matches the incoming task
+  ≥ `matchMinSimilarity` and the agent (§5.1, depth 0 only) injects the proven path into the system
+  prompt as a strong "proven skill" plan hint so it executes the known-good procedure.
+
+Persistence is **migration #7**: `distilled_skills` (PK `id`, unique `name`, indexed on
+`(status, updated_at)`), storing `trigger`, JSON `params`/`steps`/`source_runs`, `version`, `status`
+and the rolling stats counters. Wired as `m.distiller` (started/stopped with the runtime), read/managed
+via `GET /api/distilled-skills` and `POST /api/distilled-skills/:id/{approve,retire}`. Distillation must
+never break a run — recording is wrapped so a failure is swallowed. Config `skills.distill`.
+
+### 5.20 Deterministic run replay & time-travel debugging (`core/src/timetravel`)
+Every run's event stream is persisted as a per-run trace so a run can be inspected and re-run like a
+recording. The `TimeTravelService` (`timetravel/service.ts`, behind the `TraceStore` port over
+`timetravel/store.ts`) subscribes to the `EventBus` and records, per run, the `input`, the deterministic
+`seed` (model/router inputs needed to reproduce choices), the ordered steps, and — for a forked run —
+its lineage (`parent_run_id`, `from_step`, `edits`). **On by default** (`replay.enabled = true`);
+backward-compatible.
+
+* **Reconstruct state** — `getStateAt(runId, step)` folds the recorded events up to `step` into a
+  reconstructed snapshot (LLM-call and tool-call counts, accumulated cost, tokens, taint flag). Deltas
+  are recomputed on demand; set `replay.persistDeltas` to also persist per-step deltas (larger traces).
+* **Fork & replay** — `replayFrom(runId, { fromStep, edits })` creates a new linked run that reuses the
+  upstream prefix (events ≤ `fromStep`) verbatim and deterministically recomputes everything downstream
+  from the (optionally edited) input, via the runtime's `forkRunner` (a session-based continuation of
+  the agent loop). Because the recomputed portion runs the real agent path, **governance, policy and
+  approvals (§5.13) still apply** to it; only the untouched prefix is replayed as-is.
+* **Retention** — `retainTraces` caps stored traces (oldest pruned first).
+
+Persistence is **migration #8**: `run_traces` (PK `run_id`, indexed on `(user_id, created_at)` and
+`parent_run_id`) storing `input`, `seed`, `steps`, the fork lineage columns and optional `deltas`.
+Exposed as the `mercury.traces` facade (`getTrace`, `getStateAt`, `listTraces`, `replayFrom`), the REST
+endpoints `GET /api/traces`, `GET /api/runs/:id/timetravel`, `GET /api/runs/:id/state?step=N` and
+`POST /api/runs/:id/replay {fromStep, edits}`, and the admin **Run Replay** panel. Config `replay`.
 
 ---
 

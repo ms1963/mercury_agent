@@ -2,7 +2,7 @@
 
 # ☿ The Mercury Agent Handbook
 
-### The complete, end-to-end handbook for users, administrators and developers — Mercury Agent v1.1.1
+### The complete, end-to-end handbook for users, administrators and developers — Mercury Agent v1.2.0
 
 ---
 
@@ -522,9 +522,9 @@ Useful `chat` flags: `--model <id>` (override the model for this one turn), `--s
 > account (that makes you the admin), pick a provider in **Settings**, and type into the Chat box.
 > That's it — everything else in this handbook is optional depth.
 
-## 3.2 The web UI at a glance (15 panels)
+## 3.2 The web UI at a glance (17 panels)
 
-The web UI is a single no-build page served by `mercury serve`. It has **dark/light themes** and **English/German** locales, and fifteen panels — each panel is explored in the part shown:
+The web UI is a single no-build page served by `mercury serve`. It has **dark/light themes** and **English/German** locales, and seventeen panels — each panel is explored in the part shown:
 
 | Panel | What it does | Covered in |
 |---|---|---|
@@ -541,6 +541,8 @@ The web UI is a single no-build page served by `mercury serve`. It has **dark/li
 | **Users** (admin) | manage accounts & roles | [Part 8](#83-security-authentication-tokens--rbac) |
 | **Debug** | breakpoints, step-through, resume/skip | [Part 9](#93-live-debugging-breakpoints-for-an-agent) |
 | **Reflections** | post-run scores, lessons, auto-skills | [Part 5](#55-reflection--memory-lessons-how-mercury-gets-better) |
+| **Distilled Skills** (admin) | review/approve/retire self-distilled skills | [Part 5](#57-self-distilling-skills-120) |
+| **Run Replay** (admin) | scrub a run's timeline, inspect state, fork a corrected re-run | [Part 5](#58-run-replay--time-travel-debugging-120) |
 | **Help** | the in-app help pages (also in German) | — |
 | **Settings** | providers, keys, everything else | [Part 2](#part-2--the-brain-llm-providers--models-the-second-movement-choosing-and-switching-intelligence) |
 
@@ -781,6 +783,75 @@ learning:
 The sub-switches default `true`, but because the master `learning.enabled` is `false`, the whole
 subsystem stays dormant until you enable it. See [docs/help/learning.md](help/learning.md).
 
+## 5.7 Self-distilling skills (1.2.0)
+
+Where learning (5.6) tunes *behaviour*, **self-distilling skills** turn a winning run into a reusable,
+parameterized **skill** you can review, approve and let Mercury reuse automatically. When a run succeeds
+— or you mark it `/feedback good` (👍) — Mercury distils its tool-call sequence into a candidate skill,
+parameterizing the task-specific values. It is **off by default** (`skills.distill.enabled: false`).
+
+Candidates are not trusted blindly — they go through **governance**:
+
+| Stage | What happens |
+|---|---|
+| **Distil** | On run success or a 👍, a trace with at least `minToolCalls` (**2**) tool calls becomes a candidate (near-duplicates of an existing skill version it instead, by `dedupMinSimilarity`). |
+| **Review & approve** | A candidate stays `pending` until an admin approves it (unless `autoApprove: true`). Each approval is a new **version**. |
+| **Reuse** | For a new task, an approved skill above `matchMinSimilarity` surfaces to the planner as a **"proven skill"** hint, so Mercury executes a path that already worked. |
+| **Promote / retire** | Approved skills are auto-retired once they have ≥ `minRunsBeforeRetire` (**5**) uses but fall below `retireBelowSuccessRate` (**0.5**) observed success. `maxSkills` (**500**) caps storage. |
+
+Admins manage them in the web **Distilled Skills** panel and over the API at
+`GET /api/distilled-skills`, `POST /api/distilled-skills/:id/approve` and
+`POST /api/distilled-skills/:id/retire`. They are stored in the `distilled_skills` table (migration #7).
+The config block:
+
+```yaml
+skills:
+  distill:
+    enabled: false            # master switch — OFF by default
+    autoApprove: false        # approve candidates without review
+    minToolCalls: 2           # min tool calls in a winning run to distil
+    matchMinSimilarity: 0.3   # reuse an approved skill above this similarity
+    dedupMinSimilarity: 0.6   # treat a trace as an existing skill above this
+    minRunsBeforeRetire: 5    # uses before auto-retire is eligible
+    retireBelowSuccessRate: 0.5
+    maxSkills: 500
+```
+
+See [docs/help/skills.md](help/skills.md).
+
+## 5.8 Run replay & time-travel debugging (1.2.0)
+
+Every run's bus events are captured into a per-run **trace** (migration #8 `run_traces`), so you can
+replay a run deterministically, inspect what the agent "knew" at any step, and fork a corrected run.
+It is **on by default** (`replay.enabled: true`).
+
+- **List & scrub.** Browse traced runs, then step through the timeline event by event.
+- **Inspect state.** At any step, Mercury reconstructs the state the agent had at that point.
+- **Edit & re-run from here.** Change an input at step *N* and *"re-run from here"*: Mercury **forks a new
+  linked run** (`parent_run_id` + `from_step`) that reuses the unchanged upstream prefix and recomputes
+  everything downstream. **Governance and approvals still apply** to the recomputed portion.
+
+Admins use the web **Run Replay** panel; programmatically it is exposed as the `mercury.traces` facade
+(`getTrace`, `getStateAt`, `listTraces`, `replayFrom`) and over the API:
+
+```
+GET  /api/runs/:id/timetravel         # the run's trace timeline
+GET  /api/runs/:id/state?step=N       # reconstructed state at step N
+GET  /api/traces                      # list traced runs
+POST /api/runs/:id/replay {fromStep, edits}   # fork a corrected run from a step
+```
+
+Configure under `replay` (defaults shown):
+
+```yaml
+replay:
+  enabled: true           # capture per-run bus-event traces
+  retainTraces: 1000      # max traces retained (oldest pruned)
+  persistDeltas: false    # also persist per-step state deltas
+```
+
+See [docs/help/replay.md](help/replay.md).
+
 ---
 
 # Part 6 — Autonomy: scheduler & workflows (the sixth movement: work that runs itself)
@@ -801,7 +872,7 @@ mercury schedule run    <id>          # run it now, once
 mercury schedule delete <id>
 ```
 
-Scheduled tasks can run a single agent or a whole workflow, carry attached skills, and **deliver their results to a gateway target** (Part 7) — e.g. post the morning summary to your Telegram. The scheduler ticks every `scheduler.tickMs` (**30 s**), retries a failed run up to `scheduler.maxRetries` (**2**), and keeps per-schedule history. Manage everything in the web **Scheduler** panel (each row has **Edit**, **Run now**, **History**, pause and delete), or over HTTP with `/api/schedules` (`PATCH /api/schedules/:id` edits one).
+Scheduled tasks can run a single agent or a whole workflow, carry attached skills, and **deliver their results to a gateway target** (Part 7) — e.g. post the morning summary to your Telegram. The scheduler ticks every `scheduler.tickMs` (**30 s**), retries a failed run up to `scheduler.maxRetries` (**2**), and keeps per-schedule history. Manage everything in the web **Scheduler** panel (each row has **Edit**, **Run now**, **History**, pause and delete — the Edit form's **Task** field is a multi-line textarea for longer prompts), or over HTTP with `/api/schedules` (`PATCH /api/schedules/:id` edits one).
 
 > **👤 For users — a "scheduled agent" is just this.** When the request mentions "scheduled agents",
 > it means a saved task here: a prompt + a time + optional delivery target. No code required.

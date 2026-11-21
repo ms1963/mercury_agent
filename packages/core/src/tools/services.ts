@@ -17,6 +17,7 @@ import type { Spawner } from '../workflows/spawner.js';
 import type { WorkflowEngine } from '../workflows/engine.js';
 import type { WikiService } from '../wiki/service.js';
 import type { LearningService } from '../learning/service.js';
+import type { DistillerService } from '../distill/distiller.js';
 import type { SkillComposer } from '../skills/composer.js';
 import type { ToolRegistry } from './registry.js';
 import type { ToolExecutor } from './executor.js';
@@ -46,6 +47,8 @@ export interface ToolServices {
   wiki?: WikiService;
   /** Learning subsystem (experience hints, auto-tuned routing, failure playbooks). */
   learning?: LearningService;
+  /** Self-distilling skills subsystem (distil/match/govern reusable proven paths). */
+  distiller?: DistillerService;
   /** Skill/tool composition executor (recursion-guarded, cached). */
   composition?: SkillComposer;
   deliver?: DeliverFn;
