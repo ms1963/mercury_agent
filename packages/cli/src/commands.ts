@@ -1,6 +1,6 @@
 /** Administrative subcommands (users, tokens, tools, skills, schedules, config, doctor, import...). */
 import { execFileSync, spawnSync } from 'node:child_process';
-import { cpSync, existsSync, readFileSync, readdirSync } from 'node:fs';
+import { cpSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { getPath, installSkills, mercuryHome, resolveVoicePreset, runEvalSuite, scaffold, scaffoldAddin, selectEvals, setConfigValue, voicePresets, type EvalObservation, type ExtensionKind, type VoiceKind } from '@mercury/core';
@@ -500,4 +500,88 @@ export async function mcpCmd(m: Mercury, a: Args): Promise<void> {
     return out(lines.join('\n'));
   }
   return out(m.mcp.status(), true);
+}
+
+/**
+ * Sharable agent bundles ("Mercury packs"): export a signed subset of this instance's config and
+ * install it into another instance.
+ *   mercury bundle list                                      installed bundles (ledger)
+ *   mercury bundle export <name> [--version v] [--sections a,b,c] [--out file] [--desc ...]
+ *   mercury bundle inspect <file>                            verify signature + compatibility
+ *   mercury bundle install <file>                            verify → install (governed)
+ */
+export async function bundleCmd(m: Mercury, a: Args): Promise<void> {
+  const sub = a._[1] ?? 'list';
+  const json = !!flag(a, 'json');
+  if (!m.config.bundles.enabled) {
+    out('Bundles are disabled. Enable them with `bundles.enabled: true` in your config.');
+    return;
+  }
+
+  if (sub === 'list') {
+    const installed = m.bundles.list();
+    if (json) return out(installed, true);
+    if (!installed.length) return out('No bundles installed yet.');
+    return out(
+      installed
+        .map(
+          (b) =>
+            `${b.name.padEnd(24)} v${String(b.version).padEnd(10)} applied=[${b.applied.join(',')}] pending=[${b.pending.join(',')}] ${b.status}  ${b.createdAt}`,
+        )
+        .join('\n'),
+    );
+  }
+
+  if (sub === 'export') {
+    const name = need(a._[2], 'mercury bundle export <name> [--version v] [--sections a,b,c] [--out file] [--desc ...]');
+    const sections = flag(a, 'sections')
+      ? (flag(a, 'sections')!.split(',').map((s) => s.trim()).filter(Boolean) as never)
+      : undefined;
+    const { bundle, path } = m.bundles.exportToFile({
+      name,
+      version: flag(a, 'version'),
+      sections,
+      description: flag(a, 'desc'),
+      author: flag(a, 'author'),
+    });
+    const outPath = flag(a, 'out');
+    if (outPath) writeFileSync(outPath, JSON.stringify(bundle, null, 2), 'utf8');
+    if (json) return out(bundle, true);
+    return out(
+      `Exported bundle "${bundle.manifest.name}" v${bundle.manifest.version} [${bundle.manifest.sections.join(', ') || 'empty'}]\n` +
+        `  signature: ${bundle.signature.slice(0, 16)}…\n` +
+        `  written to: ${outPath ?? path}`,
+    );
+  }
+
+  if (sub === 'inspect') {
+    const file = need(a._[2], 'mercury bundle inspect <file>');
+    const res = m.bundles.inspect(m.bundles.read(file));
+    if (json) return out(res, true);
+    const lines = [
+      `Bundle "${res.manifest.name}" v${res.manifest.version} (format v${res.manifest.formatVersion}, from Mercury v${res.manifest.mercuryVersion})`,
+      `  sections:   ${res.sections.join(', ') || '(none)'}`,
+      `  governed:   ${res.governed.join(', ') || '(none)'} (install routes these through approval)`,
+      `  signature:  ${res.signatureValid ? 'VALID' : 'INVALID / tampered'}`,
+      `  compatible: ${res.compatible ? 'yes' : 'no'}`,
+      `  digest:     ${res.digest.slice(0, 16)}…`,
+    ];
+    if (res.issues.length) lines.push(`  issues:     ${res.issues.join('; ')}`);
+    return out(lines.join('\n'));
+  }
+
+  if (sub === 'install') {
+    const file = need(a._[2], 'mercury bundle install <file>');
+    const res = m.bundles.install(m.bundles.read(file), { source: file });
+    if (json) return out(res, true);
+    const head = res.status === 'installed' ? '✓ Installed' : res.status === 'unchanged' ? '• Unchanged' : '✗ Rejected';
+    const lines = [`${head} bundle "${res.name}" v${res.version}`, `  applied: ${res.applied.join(', ') || '(none)'}`];
+    if (res.pending.length) lines.push(`  pending approval (governed): ${res.pending.join(', ')} — approve in the web UI or via the API`);
+    if (res.issues.length) lines.push(`  notes: ${res.issues.join('; ')}`);
+    return out(lines.join('\n'));
+  }
+
+  throw new Error(
+    'usage: mercury bundle <list | export <name> [--version v] [--sections a,b,c] [--out file] | inspect <file> | install <file>> [--json]',
+  );
 }

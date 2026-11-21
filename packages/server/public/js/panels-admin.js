@@ -558,3 +558,206 @@ export const renderReplay = (view) => panel(view, t('replay.title', 'Run Replay'
 
   return [intro, runsCard, timeline, stateCard, forkCard];
 });
+
+
+
+/**
+ * Evaluation-driven self-improvement: closed eval suites promoted from real/👍-rated runs, a scored
+ * regression gate (pass-rate, cost-per-task, intervention-rate, output-similarity), and a GOVERNED
+ * auto-tuner that proposes config changes, tests each against the suite and keeps only the ones that
+ * improve the score without breaking governance or the per-task budget. Accepted tunes are versioned
+ * and reversible. Auto-apply is off by default.
+ */
+export const renderEvals = (view) => panel(view, t('evals.title', 'Evaluations & Auto-tune'), async (reload) => {
+  const data = await api('/api/evals').catch(() => null);
+  if (!data) return card(null, h('p.muted', {}, t('evals.unavailable', 'evals subsystem unavailable')));
+  const sel = state.evalSel || {};
+  const pct = (x) => `${Math.round((x || 0) * 100)}%`;
+
+  const at = data.config.autotune || {};
+  const statusCard = card(t('evals.status', 'Status'),
+    h('p.small.muted', {}, t('evals.intro', 'Promote real (or 👍-rated) runs into labeled eval cases, replay a suite for a single blended score (pass-rate, cost-per-task, intervention-rate, output-similarity), and let the governed auto-tuner propose, test and keep only changes that improve the score — never breaking governance or the per-task budget. Accepted tunes are versioned and reversible.')),
+    h('p', {}, t('common.status') + ': ', badge(data.enabled, t('evals.on', 'evals ON'), t('evals.off', 'off')),
+      h('span.small', {}, ` · ${t('evals.autotune', 'auto-tune')} ${at.enabled ? t('evals.autotuneOn', 'ON') : t('evals.autotuneOff', 'off (safe)')} · ${t('evals.autoApply', 'auto-apply')} ${at.autoApply ? 'on' : 'off'} · ${t('evals.minImprovement', 'min improvement')} ${pct(at.minImprovement)} · ${t('evals.costCeiling', 'cost ceiling $')}${data.config.costCeiling}`)));
+
+  // ---- create suite (admin) ----
+  const si = { name: field(t('evals.suiteName', 'suite name'), { className: 'grow' }), agent: field(t('evals.agent', 'agent (default)')), description: field(t('common.description'), { className: 'grow' }) };
+  const createCard = isAdmin() ? card(t('evals.newSuite', 'New suite'),
+    h('div.row', {}, ...Object.values(si), h('button.primary', { onclick: safe(async () => {
+      if (!si.name.value) return toast(t('evals.needName', 'name is required'), true);
+      await api('/api/evals/suites', { body: { name: si.name.value, agent: si.agent.value || 'default', description: si.description.value } });
+      toast(t('common.saved')); si.name.value = ''; await reload();
+    }) }, t('common.create')))) : null;
+
+  const suitesCard = card(t('evals.suites', 'Suites'),
+    data.suites.length ? table(data.suites, [
+      [t('evals.suiteName', 'Suite'), (x) => h('code', {}, x.name)],
+      [t('evals.agent', 'Agent'), (x) => h('span.small', {}, x.agent)],
+      [t('common.description'), (x) => h('span.small', {}, (x.description || '').slice(0, 60))],
+      ['', (x) => h('button', { onclick: safe(async () => { state.evalSel = { suiteId: x.id }; await reload(); }) }, t('evals.open', 'Open'))],
+    ]) : h('p.muted', {}, t('evals.noSuites', 'No suites yet. Create one, then promote runs into it.')));
+
+  if (!sel.suiteId) return [statusCard, createCard, suitesCard];
+
+  // ---- selected suite detail ----
+  const detail = await api(`/api/evals/suites/${sel.suiteId}`).catch(() => null);
+  if (!detail) return [statusCard, createCard, suitesCard, card(null, h('p.muted', {}, t('evals.suiteGone', 'Suite not found.')))];
+
+  const casesCard = card(`${t('evals.cases', 'Cases')} — ${detail.suite.name}`,
+    detail.cases.length ? table(detail.cases, [
+      [t('evals.caseName', 'Case'), (x) => h('code.small', {}, x.name)],
+      [t('evals.input', 'Input'), (x) => h('span.small', {}, (x.input || '').slice(0, 50))],
+      [t('evals.expectTools', 'Expect tools'), (x) => h('span.small', {}, (x.expected?.tools || []).join(', ') || '—')],
+      [t('evals.expectContains', 'Contains'), (x) => h('span.small', {}, (x.expected?.contains || []).join(', ') || '—')],
+      [t('evals.maxCost', 'Max $'), (x) => x.expected?.maxCost ?? '—'],
+      [t('evals.source', 'From run'), (x) => x.sourceRunId ? h('code.small', {}, x.sourceRunId.slice(0, 10)) : '—'],
+      ['', (x) => isAdmin() ? h('button.danger', { onclick: safe(async () => (await api(`/api/evals/cases/${x.id}`, { method: 'DELETE' }), toast(t('common.saved')), reload())) }, '×') : null],
+    ]) : h('p.muted', {}, t('evals.noCases', 'No cases yet.')));
+
+  const ci = { name: field(t('evals.caseName', 'case name')), input: field(t('evals.input', 'input'), { className: 'grow' }), tools: field(t('evals.expectTools', 'expect tools (comma)')), contains: field(t('evals.expectContains', 'contains (comma)')), output: field(t('evals.refOutput', 'reference output (optional)'), { className: 'grow' }), maxCost: field(t('evals.maxCost', 'max $'), { type: 'number', step: '0.001' }) };
+  const addCaseCard = isAdmin() ? card(t('evals.addCase', 'Add a case'),
+    h('div.row', {}, ...Object.values(ci), h('button.primary', { onclick: safe(async () => {
+      if (!ci.name.value || !ci.input.value) return toast(t('evals.needCase', 'name and input are required'), true);
+      const expected = {};
+      if (ci.tools.value.trim()) expected.tools = ci.tools.value.split(',').map((s) => s.trim()).filter(Boolean);
+      if (ci.contains.value.trim()) expected.contains = ci.contains.value.split(',').map((s) => s.trim()).filter(Boolean);
+      if (ci.output.value.trim()) expected.output = ci.output.value.trim();
+      if (ci.maxCost.value) expected.maxCost = Number(ci.maxCost.value);
+      await api('/api/evals/cases', { body: { suiteId: sel.suiteId, name: ci.name.value, input: ci.input.value, expected } });
+      toast(t('common.saved')); ci.name.value = ci.input.value = ''; await reload();
+    }) }, t('common.create')))) : null;
+
+  const pi = { runId: field(t('evals.runId', 'run id to promote'), { className: 'grow' }), name: field(t('evals.caseName', 'case name (optional)')) };
+  const promoteCard = isAdmin() ? card(t('evals.promote', 'Promote a run → eval case'),
+    h('p.small.muted', {}, t('evals.promoteHelp', 'Turn a real run into a labeled, reproducible case: its input plus the tools it fired and its output become the expected outcome.')),
+    h('div.row', {}, ...Object.values(pi), h('button.primary', { onclick: safe(async () => {
+      if (!pi.runId.value) return toast(t('evals.needRun', 'run id is required'), true);
+      await api('/api/evals/promote', { body: { runId: pi.runId.value.trim(), suiteId: sel.suiteId, name: pi.name.value || undefined } });
+      toast(t('evals.promoted', 'Run promoted to a case')); pi.runId.value = ''; await reload();
+    }) }, t('evals.promoteBtn', 'Promote')))) : null;
+
+  const trendCard = card(t('evals.trend', 'Scorecard trend'),
+    detail.trend.length ? table(detail.trend, [
+      [t('evals.label', 'Label'), (x) => h('span.small', {}, x.label || '—')],
+      [t('evals.score', 'Score'), (x) => badge((x.score ?? 0) >= 0.5, pct(x.score), pct(x.score))],
+      [t('evals.passRate', 'Pass'), (x) => pct(x.passRate)],
+      [t('evals.costPerTask', '$/task'), (x) => Number(x.costPerTask || 0).toFixed(5)],
+      [t('evals.interventionRate', 'Intervene'), (x) => pct(x.interventionRate)],
+      [t('evals.similarity', 'Similarity'), (x) => pct(x.similarity)],
+      [t('evals.casesCol', 'Cases'), (x) => x.cases],
+      ['Time', (x) => when(x.createdAt)],
+    ]) : h('p.muted', {}, t('evals.noScores', 'No scores yet. Run the suite.')));
+
+  const tuneOut = h('div');
+  const renderEvaluations = (res) => {
+    const rows = res.evaluations || [];
+    tuneOut.replaceChildren(card(t('evals.proposals', 'Tune proposals'),
+      h('p.small', {}, `${t('evals.baseline', 'Baseline score')}: ${pct(res.baseline?.score)} · ${t('evals.applied', 'auto-applied')}: ${(res.applied || []).length}`),
+      rows.length ? table(rows, [
+        [t('evals.kind', 'Kind'), (x) => h('code.small', {}, x.proposal.kind)],
+        [t('common.description'), (x) => h('span.small', {}, x.proposal.summary)],
+        [t('evals.candidate', 'Candidate'), (x) => pct(x.candidateScore)],
+        [t('evals.improvement', 'Δ'), (x) => h('span.small', {}, `${x.improvement >= 0 ? '+' : ''}${pct(x.improvement)}`)],
+        [t('evals.accepted', 'Accepted'), (x) => x.rejectedReason ? h('span.badge.off', {}, x.rejectedReason) : badge(x.accepted, t('evals.keep', 'improves'), t('evals.reject', 'rejected'))],
+        ['', (x) => isAdmin() && x.accepted ? h('button.primary', { onclick: safe(async () => (await api(`/api/evals/suites/${sel.suiteId}/apply-tune`, { body: x }), toast(t('evals.tuneApplied', 'Tune applied')), reload())) }, t('evals.apply', 'Apply')) : null],
+      ]) : h('p.muted', {}, t('evals.noProposals', 'No proposals generated.'))));
+  };
+  const actionsCard = isAdmin() ? card(t('evals.actions', 'Run & tune'),
+    h('div.row', {},
+      h('button.primary', { onclick: safe(async () => { const s = await api(`/api/evals/suites/${sel.suiteId}/run`, { body: {} }); toast(`${t('evals.ran', 'Suite scored')}: ${pct(s.score)}`); await reload(); }) }, t('evals.runSuite', 'Run suite')),
+      h('button', { onclick: safe(async () => { const res = await api(`/api/evals/suites/${sel.suiteId}/tune`, { body: {} }); renderEvaluations(res); toast(t('evals.tuned', 'Proposals evaluated')); }) }, t('evals.proposeTune', 'Propose tune')),
+      h('button', { onclick: safe(async () => { state.evalSel = {}; await reload(); }) }, t('evals.back', 'Back to suites'))),
+    tuneOut) : null;
+
+  const tunes = await api(`/api/evals/tunes?suiteId=${sel.suiteId}`).catch(() => ({ tunes: [] }));
+  const tunesCard = card(t('evals.tuneHistory', 'Accepted tunes (versioned, reversible)'),
+    tunes.tunes.length ? table(tunes.tunes, [
+      ['v', (x) => x.version],
+      [t('evals.kind', 'Kind'), (x) => h('code.small', {}, x.kind)],
+      [t('common.description'), (x) => h('span.small', {}, x.summary)],
+      [t('evals.candidate', 'Score'), (x) => pct(x.candidateScore)],
+      [t('common.status'), (x) => badge(!x.reverted, x.status, t('evals.reverted', 'reverted'))],
+      ['Time', (x) => when(x.createdAt)],
+      ['', (x) => isAdmin() && !x.reverted ? h('button', { onclick: safe(async () => (await api(`/api/evals/tunes/${x.id}/revert`, { body: {} }), toast(t('evals.tuneReverted', 'Tune reverted')), reload())) }, t('evals.revert', 'Revert')) : null],
+    ]) : h('p.muted', {}, t('evals.noTunes', 'No tunes accepted yet.')));
+
+  return [statusCard, suitesCard, casesCard, addCaseCard, promoteCard, trendCard, actionsCard, tunesCard];
+});
+
+/**
+ * Sharable Agent Bundles ("Mercury packs"): export the current config (skills, workflows,
+ * personality, policy, MCP presets) as a single versioned, signed artifact; inspect one without
+ * installing; and install into this instance in one step. Install verifies the signature (tamper
+ * detection), checks version/compatibility, is idempotent, and routes governed sections
+ * (policy / MCP presets) through the approval path instead of applying them silently.
+ */
+export const renderBundles = (view) => panel(view, t('bundles.title', 'Agent Bundles'), async (reload) => {
+  const data = await api('/api/bundles').catch(() => null);
+  if (!data) return card(null, h('p.muted', {}, t('bundles.unavailable', 'bundles subsystem unavailable')));
+  const SECTIONS = ['skills', 'workflows', 'personality', 'policy', 'mcp'];
+
+  const statusCard = card(t('bundles.status', 'Status'),
+    h('p.small.muted', {}, t('bundles.intro', 'Package a Mercury configuration — skills, workflows, personality, policy and MCP presets — into one versioned, signed artifact you can share. Installing verifies the signature, checks version/compatibility, is idempotent (same digest = no-op), and routes governed sections (policy, MCP) through approval instead of applying them silently.')),
+    h('p', {}, t('common.status') + ': ', badge(data.enabled, t('bundles.on', 'bundles ON'), t('bundles.off', 'off')),
+      h('span.small', {}, ` · ${t('bundles.requireSig', 'require signature')} ${data.config.requireSignature ? 'on' : 'off'} · ${t('bundles.autoPolicy', 'auto-approve policy')} ${data.config.autoApprovePolicy ? 'on' : 'off'} · ${t('bundles.autoMcp', 'auto-approve MCP')} ${data.config.autoApproveMcp ? 'on' : 'off'}`)));
+
+  // ---- export ----
+  const ei = { name: field(t('bundles.name', 'pack name'), { className: 'grow' }), version: field(t('bundles.version', 'version e.g. 1.0.0')), description: field(t('common.description'), { className: 'grow' }), author: field(t('bundles.author', 'author (optional)')) };
+  const secBoxes = SECTIONS.map((s) => { const cb = h('input', { type: 'checkbox', checked: true }); return { s, label: h('label.small', {}, cb, ' ' + s), cb }; });
+  const exportOut = h('div');
+  const exportCard = isAdmin() ? card(t('bundles.export', 'Export a bundle'),
+    h('div.row', {}, ...Object.values(ei)),
+    h('div.row', {}, ...secBoxes.map((b) => b.label)),
+    h('div.row', {}, h('button.primary', { onclick: safe(async () => {
+      if (!ei.name.value) return toast(t('bundles.needName', 'name is required'), true);
+      const sections = secBoxes.filter((b) => b.cb.checked).map((b) => b.s);
+      const bundle = await api('/api/bundles/export', { body: { name: ei.name.value, version: ei.version.value || undefined, sections, description: ei.description.value || undefined, author: ei.author.value || undefined } });
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = h('a', { href: url, download: `${bundle.manifest.name}-${bundle.manifest.version}.mercury.json` }, `${t('bundles.download', 'Download')} ${bundle.manifest.name}-${bundle.manifest.version}.mercury.json`);
+      exportOut.replaceChildren(card(t('bundles.exported', 'Exported & signed'),
+        h('p.small', {}, `${t('bundles.sig', 'signature')}: `, h('code.small', {}, bundle.signature.slice(0, 24) + '…')),
+        h('p.small', {}, `${t('bundles.sections', 'sections')}: ${bundle.manifest.sections.join(', ')}`), a));
+      a.click();
+      toast(t('bundles.exportedToast', 'Bundle exported'));
+    }) }, t('bundles.exportBtn', 'Export & download'))),
+    exportOut) : null;
+
+  // ---- inspect / install ----
+  const paste = field(t('bundles.paste', 'paste bundle JSON here, or choose a file'), { className: 'grow' });
+  const fileIn = h('input', { type: 'file', accept: '.json,application/json', onchange: safe(async (e) => { const f = e.target.files?.[0]; if (f) paste.value = await f.text(); }) });
+  const ioOut = h('div');
+  const readBundle = () => { try { return JSON.parse(paste.value); } catch { toast(t('bundles.badJson', 'bundle must be valid JSON'), true); return null; } };
+  const installCard = card(t('bundles.install', 'Inspect / install a bundle'),
+    h('p.small.muted', {}, t('bundles.installHelp', 'Inspect shows the manifest, whether the signature is valid and whether it is compatible — without changing anything. Install applies the ungoverned sections and queues policy/MCP for approval.')),
+    h('div.row', {}, fileIn),
+    h('div.row', {}, paste),
+    h('div.row', {},
+      h('button', { onclick: safe(async () => { const b = readBundle(); if (!b) return; const r = await api('/api/bundles/inspect', { body: b }); ioOut.replaceChildren(card(t('bundles.inspectResult', 'Inspect'),
+        h('p.small', {}, `${r.manifest.name} v${r.manifest.version} · ${t('bundles.format', 'format')} ${r.manifest.formatVersion} · ${t('bundles.from', 'from Mercury')} ${r.manifest.mercuryVersion}`),
+        h('p', {}, t('bundles.sigValid', 'Signature') + ': ', badge(r.signatureValid, t('bundles.valid', 'valid'), t('bundles.invalid', 'INVALID')), ' · ', t('bundles.compatible', 'Compatible') + ': ', badge(r.compatible, t('bundles.yes', 'yes'), t('bundles.no', 'no'))),
+        h('p.small', {}, `${t('bundles.sections', 'sections')}: ${r.sections.join(', ')} · ${t('bundles.governed', 'governed')}: ${r.governed.join(', ') || '—'}`),
+        r.issues.length ? h('p.small.muted', {}, t('bundles.issues', 'Issues') + ': ' + r.issues.join('; ')) : null,
+        json({ digest: r.digest }))); }) }, t('bundles.inspectBtn', 'Inspect')),
+      isAdmin() ? h('button.primary', { onclick: safe(async () => { const b = readBundle(); if (!b) return; const r = await api('/api/bundles/install', { body: { bundle: b, source: 'web-ui' } });
+        ioOut.replaceChildren(card(t('bundles.installResult', 'Install'),
+          h('p', {}, t('common.status') + ': ', badge(r.status !== 'rejected', r.status, r.status), r.alreadyInstalled ? ' · ' + t('bundles.idempotent', 'already installed (no-op)') : ''),
+          h('p.small', {}, `${t('bundles.applied', 'applied')}: ${r.applied.join(', ') || '—'} · ${t('bundles.pending', 'pending approval')}: ${r.pending.join(', ') || '—'}`),
+          r.issues.length ? h('p.small.muted', {}, t('bundles.issues', 'Issues') + ': ' + r.issues.join('; ')) : null));
+        toast(`${t('bundles.installed', 'Installed')}: ${r.status}`); await reload(); }) }, t('bundles.installBtn', 'Install')) : null),
+    ioOut);
+
+  const installedCard = card(t('bundles.installed', 'Installed bundles'),
+    data.installed.length ? table(data.installed, [
+      [t('bundles.name', 'Name'), (x) => h('code', {}, x.name)],
+      [t('bundles.version', 'Ver'), (x) => x.version],
+      [t('bundles.digest', 'Digest'), (x) => h('code.small', {}, (x.digest || '').slice(0, 12))],
+      [t('common.status'), (x) => badge(x.status !== 'rejected', x.status, x.status)],
+      [t('bundles.applied', 'Applied'), (x) => h('span.small', {}, (x.applied || []).join(', ') || '—')],
+      [t('bundles.pending', 'Pending'), (x) => h('span.small', {}, (x.pending || []).join(', ') || '—')],
+      ['Time', (x) => when(x.updatedAt || x.createdAt)],
+      ['', (x) => isAdmin() && (x.pending || []).length ? h('button.primary', { onclick: safe(async () => (await api(`/api/bundles/${x.id}/approve`, { body: {} }), toast(t('bundles.approved', 'Governed sections approved')), reload())) }, t('bundles.approve', 'Approve')) : null],
+    ]) : h('p.muted', {}, t('bundles.noneInstalled', 'No bundles installed yet.')));
+
+  return [statusCard, exportCard, installCard, installedCard];
+});

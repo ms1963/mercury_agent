@@ -60,8 +60,8 @@ After login you get:
   toggle (dark / light, the `◐` button), and **Log out**.
 
 Admin‑only panels (for example **Users**, **Governance**, **Verification**,
-**Reliability**, **Distilled Skills**, **Run Replay**, **Proactive** and
-**Learning**) appear in the nav only when you
+**Reliability**, **Distilled Skills**, **Run Replay**, **Evaluations & Auto-tune**,
+**Agent Bundles**, **Proactive** and **Learning**) appear in the nav only when you
 are signed in as an admin. These are gated client‑side by an `ADMIN_ONLY` set in
 `app.js` (the nav entry is filtered out for non‑admins) and server‑side by the
 scope each backing route requires — the **Learning** panel, for instance, calls
@@ -112,6 +112,8 @@ See [docs/PROVIDERS.md](PROVIDERS.md) for the full list of providers.
 | **Learning** (admin) | Review what Mercury has learned from completed runs: the current learning **status** (on / off — off by default), the **auto‑tuned routing** table (observed success rate and average cost per difficulty bucket / model), and the recorded **failure playbooks** (error signature → remediation that later worked) | `mercury learn stats \| hints \| playbooks` · `GET /api/learning` · `/api/learning/stats` · `/api/learning/playbooks` · `/api/learning/hint` |
 | **Distilled Skills** (admin) | Review self‑distilled skills: the current distill **status** (on / off — off by default), the review queue, and each skill's trigger, parameters, version and stats (uses, success rate, average cost); **approve** or **retire** a skill | (UI only; `GET /api/distilled-skills` · `POST /api/distilled-skills/:id/approve \| retire`) |
 | **Run Replay** (admin) | **Time‑travel debugging**: list traced runs, scrub a run's **timeline**, inspect the **reconstructed state** at any step (LLM/tool calls, cost, tokens, taint), and **edit an input + re‑run from a step** — forking a new linked run that reuses the upstream prefix and recomputes downstream | (UI only; `GET /api/traces` · `/api/runs/:id/timetravel` · `/api/runs/:id/state?step=N` · `POST /api/runs/:id/replay`) |
+| **Evaluations & Auto-tune** (admin) | **Evaluation-driven self-improvement**: browse eval **suites** and their cases, **promote** a run into a case, **run a suite** for a deterministic weighted score (pass-rate / cost / intervention / similarity) and view its **trend**, and **propose / apply / revert** governed auto-tunes (accepted only if they improve the score without breaking the budget ceiling or governance-protected config) | (UI only; `GET/POST /api/evals/*`) |
+| **Agent Bundles** (admin) | **Sharable agent bundles**: **export** selected sections (skills, workflows, personality, policy, MCP) to a signed bundle and **download** it, **install/upload** a bundle (signature verified, compatibility checked, idempotent, policy/MCP queued for approval), and **list** installed bundles | (UI only; `GET/POST /api/bundles/*`) |
 | **Users** (admin) | Add users, change roles, delete users — every action is audited                                                                                | `mercury user add \| role \| delete` |
 | **Debug**         | Live run / event stream and diagnostics                                                                                                        | `mercury doctor`                   |
 | **Reflections**   | View the agent's self‑reflections                                                                                                              | (UI only)                          |

@@ -7,6 +7,44 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-21
+
+### Added
+- **Evaluation-driven self-improvement** (`packages/core/src/evals/`, harness on by default under
+  `evals.enabled`; auto-tuning OFF by default under `evals.autotune.enabled`).
+  - Closed eval cases are promoted from real (or 👍-rated) run traces into labeled cases capturing
+    the input and the expected tools / output substrings / cost ceiling (`mercury.evals.promoteRun`).
+  - A deterministic, scored regression gate runs a suite of cases and aggregates a weighted score
+    over pass-rate, cost-per-task, intervention-rate and output-similarity (weights configurable
+    under `evals.weights`). Scores are persisted (retention `evals.retainScores`) and trendable.
+  - A governed auto-tuner proposes changes (model routing, pattern, temperature, skill
+    promote/retire, prompt), measures each proposal against the suite, and keeps ONLY changes that
+    improve the aggregate score by at least `evals.autotune.minImprovement` without breaking the
+    per-task budget ceiling (`evals.costCeiling`) or touching governance-protected config
+    (`security.*`, `governance.*`, `approvals.*`, `policies.*`). Proposals auto-apply only when both
+    `evals.autotune.enabled` and `evals.autotune.autoApply` are set.
+  - Accepted tunes are versioned and reversible: each records the previous values and can be reverted
+    (`mercury.evals.revertTune`).
+  - Facade `mercury.evals`, REST `/api/evals/*` (auth-gated), and an admin **Evaluations & Auto-tune**
+    panel in the web UI (EN + DE i18n). Config under `evals`.
+- **Sharable Agent Bundles** ("Mercury packs", `packages/core/src/bundles/`, on by default under
+  `bundles.enabled`).
+  - A single versioned, signed artifact bundles skills + workflows + personality + policy + MCP
+    presets. Export the current config (any subset of sections) to a bundle file
+    (`mercury.bundles.export` / `exportToFile`), and install it into another instance in one command
+    or endpoint (`mercury.bundles.install`).
+  - Integrity: bundles carry a format version and an HMAC-SHA256 signature; install verifies the
+    signature (tamper detection) and checks version/compatibility before applying. Installs are
+    idempotent (re-installing the same bundle digest is a no-op).
+  - Governance: installing policy or MCP preset sections goes through the same approval/governance
+    path (queued unless `bundles.autoApprovePolicy` / `bundles.autoApproveMcp`), never silently.
+  - Facade `mercury.bundles`, CLI `mercury bundle export|inspect|install`, REST `/api/bundles/*`
+    (auth-gated), and an admin **Agent Bundles** panel in the web UI (EN + DE i18n). Config under
+    `bundles`.
+
+### Changed
+- Version bumped to 1.3.0 across all workspace packages.
+
 ## [1.2.0] - 2026-11-21
 
 ### Added

@@ -92,6 +92,8 @@ export * from './verification/index.js';
 export * from './proactive/index.js';
 export * from './distill/index.js';
 export * from './timetravel/index.js';
+export * from './evals/index.js';
+export * from './bundles/index.js';
 export * from './voice/voice.js';
 export * from './voice/ports.js';
 export * from './voice/factory.js';

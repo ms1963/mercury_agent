@@ -456,6 +456,146 @@ export function registerManageRoutes(app: FastifyInstance, { m, auth, sse }: Ctx
     return { match: m.distiller.match(task) ?? null };
   });
 
+  // ---- evals: evaluation-driven self-improvement (closed evals + governed auto-tune) -----------
+  app.get('/api/evals', async (req) => {
+    auth(req, 'audit.read');
+    const ec = m.config.evals;
+    return {
+      enabled: ec.enabled,
+      config: {
+        retainScores: ec.retainScores,
+        weights: ec.weights,
+        costCeiling: ec.costCeiling,
+        autotune: ec.autotune,
+      },
+      suites: m.evals.listSuites(),
+    };
+  });
+  app.get('/api/evals/suites/:id', async (req) => {
+    auth(req, 'audit.read');
+    const suite = m.evals.getSuite(param(req));
+    if (!suite) throw new HttpError(404, 'suite not found');
+    return { suite, cases: m.evals.listCases(suite.id), trend: m.evals.trend(suite.id) };
+  });
+  app.post('/api/evals/suites', async (req) => {
+    auth(req, 'config.manage');
+    const b = req.body as Body;
+    if (!b.name) throw new HttpError(400, 'name is required');
+    return m.evals.createSuite(String(b.name), (b.agent as string) ?? 'default', (b.description as string) ?? '');
+  });
+  app.post('/api/evals/cases', async (req) => {
+    auth(req, 'config.manage');
+    const b = req.body as Body;
+    if (!b.suiteId || !b.name || !b.input) throw new HttpError(400, 'suiteId, name and input are required');
+    try {
+      return m.evals.addCase({
+        suiteId: String(b.suiteId),
+        name: String(b.name),
+        input: String(b.input),
+        expected: b.expected as never,
+        tags: b.tags as string[] | undefined,
+      });
+    } catch (e) {
+      throw new HttpError(400, (e as Error).message);
+    }
+  });
+  app.delete('/api/evals/cases/:id', async (req) => (auth(req, 'config.manage'), { removed: m.evals.removeCase(param(req)) }));
+  app.post('/api/evals/promote', async (req) => {
+    auth(req, 'config.manage');
+    const b = req.body as Body;
+    if (!b.runId) throw new HttpError(400, 'runId is required');
+    try {
+      return m.evals.promoteRun(String(b.runId), {
+        suiteId: b.suiteId as string | undefined,
+        suiteName: b.suiteName as string | undefined,
+        name: b.name as string | undefined,
+        expected: b.expected as never,
+        tags: b.tags as string[] | undefined,
+      });
+    } catch (e) {
+      throw new HttpError(422, (e as Error).message);
+    }
+  });
+  app.post('/api/evals/suites/:id/run', async (req) => {
+    auth(req, 'config.manage');
+    if (!m.evals.getSuite(param(req))) throw new HttpError(404, 'suite not found');
+    const b = (req.body as Body) ?? {};
+    return m.evals.runSuite(param(req), { label: b.label as string | undefined });
+  });
+  app.get('/api/evals/suites/:id/trend', async (req) => (auth(req, 'audit.read'), { scores: m.evals.trend(param(req)) }));
+  app.post('/api/evals/suites/:id/tune', async (req) => {
+    auth(req, 'config.manage');
+    if (!m.evals.getSuite(param(req))) throw new HttpError(404, 'suite not found');
+    const b = (req.body as Body) ?? {};
+    return m.evals.proposeTune(param(req), b.proposals as never);
+  });
+  app.post('/api/evals/suites/:id/apply-tune', async (req) => {
+    auth(req, 'config.manage');
+    if (!m.evals.getSuite(param(req))) throw new HttpError(404, 'suite not found');
+    const b = req.body as Body;
+    if (!b || typeof b !== 'object') throw new HttpError(400, 'a tune evaluation is required');
+    try {
+      return m.evals.applyTune(param(req), b as never);
+    } catch (e) {
+      throw new HttpError(400, (e as Error).message);
+    }
+  });
+  app.get('/api/evals/tunes', async (req) => {
+    auth(req, 'audit.read');
+    return { tunes: m.evals.listTunes((req.query as Body).suiteId as string | undefined) };
+  });
+  app.post('/api/evals/tunes/:id/revert', async (req) => {
+    auth(req, 'config.manage');
+    try {
+      return m.evals.revertTune(param(req));
+    } catch (e) {
+      throw new HttpError(404, (e as Error).message);
+    }
+  });
+
+  // ---- bundles: sharable agent bundles ("Mercury packs") — export/sign/inspect/install ----------
+  app.get('/api/bundles', async (req) => {
+    auth(req, 'audit.read');
+    const bc = m.config.bundles;
+    return {
+      enabled: bc.enabled,
+      config: { requireSignature: bc.requireSignature, autoApprovePolicy: bc.autoApprovePolicy, autoApproveMcp: bc.autoApproveMcp },
+      installed: m.bundles.list(),
+    };
+  });
+  app.post('/api/bundles/export', async (req) => {
+    auth(req, 'config.manage');
+    const b = req.body as Body;
+    if (!b.name) throw new HttpError(400, 'name is required');
+    return m.bundles.export({
+      name: String(b.name),
+      version: b.version as string | undefined,
+      sections: b.sections as never,
+      description: b.description as string | undefined,
+      author: b.author as string | undefined,
+    });
+  });
+  app.post('/api/bundles/inspect', async (req) => {
+    auth(req, 'audit.read');
+    const b = req.body as Body;
+    if (!b || !b.manifest) throw new HttpError(400, 'a bundle is required');
+    return m.bundles.inspect(b as never);
+  });
+  app.post('/api/bundles/install', async (req) => {
+    auth(req, 'config.manage');
+    const b = req.body as Body;
+    const bundle = (b.bundle ?? b) as Body;
+    if (!bundle || !bundle.manifest) throw new HttpError(400, 'a bundle is required');
+    return m.bundles.install(bundle as never, { source: b.source as string | undefined });
+  });
+  app.post('/api/bundles/:id/approve', async (req) => {
+    auth(req, 'config.manage');
+    const b = (req.body as Body) ?? {};
+    const rec = m.bundles.approvePending(param(req), b.sections as never, b.bundle as never);
+    if (!rec) throw new HttpError(404, 'install record not found');
+    return rec;
+  });
+
   // ---- help, i18n, settings ---------------------------------------------------------
   app.get('/api/help', async (req) => {
     const q = req.query as Body;

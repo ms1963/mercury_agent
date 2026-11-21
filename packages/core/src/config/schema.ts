@@ -710,6 +710,82 @@ export const ConfigSchema = z.object({
     })
     .prefault({}),
 
+  /**
+   * Evaluation-driven self-improvement: a closed evals + auto-tune loop. Promote real (or
+   * 👍-rated) runs into labeled eval cases, replay a suite to score pass-rate / cost-per-task /
+   * intervention-rate / output similarity (reusing the record/replay + SLO + economics machinery),
+   * and let a governed "tuner" propose config/routing/skill changes that are only kept when they
+   * improve the score without breaking governance or budget. Every accepted change is diffed,
+   * versioned and reversible.
+   *
+   * The harness itself is ON by default but safe (it only reads/scores unless you run it); the
+   * auto-tuner is OFF by default (it mutates config) and must be explicitly enabled.
+   */
+  evals: z
+    .object({
+      /** Master switch for the eval harness, facade methods and endpoints (safe: read/score only). */
+      enabled: z.boolean().default(true),
+      /** Max number of recorded suite scores to retain per suite (oldest pruned first). */
+      retainScores: z.number().int().positive().default(500),
+      /** Weights that combine the four metrics into a single 0..1 score (normalized internally). */
+      weights: z
+        .object({
+          passRate: z.number().nonnegative().default(0.5),
+          cost: z.number().nonnegative().default(0.2),
+          intervention: z.number().nonnegative().default(0.15),
+          similarity: z.number().nonnegative().default(0.15),
+        })
+        .prefault({}),
+      /** Cost (in $) treated as the worst acceptable cost-per-task when normalizing the cost metric. */
+      costCeiling: z.number().positive().default(0.05),
+      /**
+       * Governed auto-tune. A tuner subagent proposes changes (model routing, agent pattern,
+       * distilled-skill promote/retire, prompt/temperature tweaks), tests each against the eval
+       * suite, and keeps ONLY changes that improve the score by at least `minImprovement` without
+       * breaking governance or the per-task budget. OFF by default (it mutates configuration).
+       */
+      autotune: z
+        .object({
+          enabled: z.boolean().default(false),
+          /** Minimum absolute score gain (0..1) a proposal must deliver to be accepted. */
+          minImprovement: z.number().min(0).max(1).default(0.02),
+          /** Max proposals evaluated per tune request (runaway guard). */
+          maxProposals: z.number().int().positive().default(8),
+          /** Apply an accepted proposal automatically; when false, applying needs explicit approval. */
+          autoApply: z.boolean().default(false),
+        })
+        .prefault({}),
+    })
+    .prefault({}),
+
+  /**
+   * Sharable agent bundles ("Mercury packs"): a single versioned, signed artifact bundling a skill
+   * set + workflows + personality + policy + MCP presets. Export the current configuration (or a
+   * subset) into a bundle file and install it into another Mercury instance in one command. Installs
+   * verify the integrity signature (tamper detection), check version/compatibility, are idempotent,
+   * and route policy/MCP-preset application through the normal governance/approval path.
+   */
+  bundles: z
+    .object({
+      /** Master switch for export/inspect/install (facade, CLI and endpoints). */
+      enabled: z.boolean().default(true),
+      /** Bundle storage directory. Empty → `<dataDir>/bundles`, resolved in the runtime. */
+      dir: z.string().default(''),
+      /**
+       * HMAC-SHA256 integrity signing secret. Shared across instances that exchange bundles so an
+       * installer can verify a bundle it did not create. The default lets bundles work out of the
+       * box (integrity + tamper detection); override it in production for authenticity.
+       */
+      signingSecret: z.string().default('mercury-bundle-default-key'),
+      /** Reject a bundle whose signature is missing or does not verify (tamper/compat guard). */
+      requireSignature: z.boolean().default(true),
+      /** Apply bundled policy-as-code rules immediately instead of queuing them for approval. */
+      autoApprovePolicy: z.boolean().default(false),
+      /** Apply bundled MCP presets/servers immediately instead of queuing them for approval. */
+      autoApproveMcp: z.boolean().default(false),
+    })
+    .prefault({}),
+
   plugins: z.array(z.string()).default([]),
   hooks: z
     .array(z.object({ event: z.string(), type: z.enum(['log', 'webhook']).default('log'), url: z.string().optional() }))

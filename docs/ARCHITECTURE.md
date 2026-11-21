@@ -95,7 +95,7 @@ mercury/
 │  │  └─ src/
 │  │     types/  config/  db/  events/  logging/  security/  auth/  budgets/
 │  │     llm/  router/  decision/  agent/  agent/patterns/  memory/  skills/ (+composer)
-│  │     learning/  distill/  timetravel/  reflection/  tools/ (registry+executor)  workflows/  scheduler/
+│  │     learning/  distill/  timetravel/  evals/  bundles/  reflection/  tools/ (registry+executor)  workflows/  scheduler/
 │  │     attachments/  voice/  plugins/  checkpoints/  i18n/  help/  extensions/
 │  ├─ tools/       @mercury/tools    — 50+ built-in tools, toolsets, polyglot runner,
 │  │                                    execute_code sandbox, terminal & browser backends
@@ -463,6 +463,67 @@ Persistence is **migration #8**: `run_traces` (PK `run_id`, indexed on `(user_id
 Exposed as the `mercury.traces` facade (`getTrace`, `getStateAt`, `listTraces`, `replayFrom`), the REST
 endpoints `GET /api/traces`, `GET /api/runs/:id/timetravel`, `GET /api/runs/:id/state?step=N` and
 `POST /api/runs/:id/replay {fromStep, edits}`, and the admin **Run Replay** panel. Config `replay`.
+
+### 5.21 Evaluation-driven self-improvement (`core/src/evals`)
+Closes the loop from observed runs to governed configuration changes. `EvalService`
+(`evals/service.ts`, behind the `EvalStore`/`TuneStore` ports over `evals/store.ts`) turns real
+behaviour into a scored regression gate and drives a governed auto-tuner. **Harness on by default**
+(`evals.enabled = true`); **auto-tuning off by default** (`evals.autotune.enabled = false`).
+
+* **Promote** — `promoteRun(runId)` reads a real (or 👍-rated) run from the `runs`/`events` log and
+  derives a labeled `EvalCase`: the input plus the *expected* tool names, output substrings and a cost
+  ceiling observed on that run. Cases are grouped into suites.
+* **Deterministic scoring** — `runSuite(suiteId)` executes every case through an injected
+  `EvalCaseRunner` (the runtime wires this to an ephemeral, non-reflecting agent run) and scores each
+  with the pure functions in `evals/scorer.ts`: `scoreCase` (pass = no error ∧ all expected tools
+  present ∧ all expected substrings present ∧ cost ≤ ceiling; `similarity` = Jaccard `textSimilarity`
+  to the reference output; `intervened` = errored), then `aggregateScore` combines pass-rate,
+  cost-per-task, intervention-rate and output-similarity into a single 0..1 score using
+  `evals.weights`. Score points are persisted (retention `evals.retainScores`) and trendable.
+* **Governed auto-tuner** — `proposeTune(suiteId, proposals?)` measures each `TuneProposal` (model
+  routing, pattern, temperature, skill promote/retire, prompt) against the suite via
+  `measureProposal`, and `evals/tuner.ts` gates it: `violatesGovernance` rejects any patch touching a
+  governance-protected prefix (`security.*`, `governance.*`, `approvals.*`, `policies.*`); the per-task
+  **budget ceiling** (`evals.costCeiling`) rejects a proposal whose cost-per-task exceeds it; a
+  proposal is **accepted only if** it improves the aggregate score by at least
+  `evals.autotune.minImprovement`. Proposals auto-apply only when **both** `evals.autotune.enabled`
+  and `evals.autotune.autoApply` are set; otherwise they are returned for review.
+* **Versioned & reversible** — `applyTune` captures the previous config values and writes a versioned
+  `TuneRecord`; `revertTune(id)` restores the captured values and marks the record reverted
+  (idempotent).
+
+Persistence is **migrations #9 and #10**: `eval_suites`, `eval_cases`, `eval_scores` and `tune_history`.
+Exposed as the `mercury.evals` facade (`promoteRun`, `runSuite`, `proposeTune`, `applyTune`,
+`revertTune`, `listTunes`, suites/cases CRUD), the REST endpoints under `GET/POST /api/evals/*`
+(read-gated by `audit.read`, mutations by `config.manage`), and the admin **Evaluations & Auto-tune**
+panel. Config `evals`.
+
+### 5.22 Sharable Agent Bundles (`core/src/bundles`)
+Packages a running agent's configuration into one portable, signed artifact ("Mercury pack") and
+installs it into another instance. `BundleService` (`bundles/service.ts`, behind the `BundleStore` port
+over `bundles/store.ts`) with the pure pack/verify helpers in `bundles/bundle.ts`. **On by default**
+(`bundles.enabled = true`).
+
+* **Export** — `export(sections?)` reads the selected sections from the current config — `skills`,
+  `workflows`, `personality` (`agent.personality`), `policy` (`security.policies`), `mcp`
+  (`mcp.servers`) — into a `Bundle` with a manifest (name, description, author, bundle `version`,
+  `mercuryVersion`, `formatVersion`) and an HMAC-SHA256 `signature` over the canonical JSON of
+  `{manifest, contents}`. `exportToFile` writes it under `bundles.dir`.
+* **Integrity & compatibility** — `verifyBundle(b, secret)` recomputes the HMAC and compares in
+  constant time, so any tampering with manifest or contents fails verification (enforced on install
+  when `bundles.requireSignature`). `checkCompat` rejects a bundle whose `formatVersion` exceeds the
+  supported `BUNDLE_FORMAT_VERSION`, or whose major `mercuryVersion` exceeds the running major.
+* **Idempotent, governed install** — `install(bundle, source)` verifies signature → checks compat →
+  short-circuits if the same bundle digest is already recorded (idempotent) → applies ungoverned
+  sections directly and **queues governed sections** (`policy`, `mcp`) for approval unless
+  `bundles.autoApprovePolicy` / `bundles.autoApproveMcp` are set. `approvePending` applies a queued
+  section through the same governance path. `inspect(bundle)` reports manifest, sections and
+  verification/compat **without installing**.
+
+Persistence is **migration #11**: `installed_bundles` (digest-keyed, with pending governed sections).
+Exposed as the `mercury.bundles` facade (`export`, `exportToFile`, `inspect`, `install`,
+`approvePending`, `list`), the CLI `mercury bundle export|inspect|install`, the REST endpoints under
+`GET/POST /api/bundles/*` (auth-gated), and the admin **Agent Bundles** panel. Config `bundles`.
 
 ---
 

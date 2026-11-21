@@ -175,4 +175,44 @@ CREATE TABLE run_traces (
 CREATE INDEX idx_run_traces_user ON run_traces(user_id, created_at);
 CREATE INDEX idx_run_traces_parent ON run_traces(parent_run_id);
 `,
+  /* 9: evaluation-driven self-improvement — labeled eval suites + cases promoted from real runs (Feature: evals) */ `
+CREATE TABLE eval_suites (
+  id TEXT PRIMARY KEY, name TEXT NOT NULL, agent TEXT NOT NULL DEFAULT 'default',
+  description TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX idx_eval_suites_name ON eval_suites(name);
+CREATE TABLE eval_cases (
+  id TEXT PRIMARY KEY, suite_id TEXT NOT NULL REFERENCES eval_suites(id) ON DELETE CASCADE,
+  name TEXT NOT NULL, input TEXT NOT NULL, expected TEXT NOT NULL DEFAULT '{}',
+  source_run_id TEXT, tags TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE INDEX idx_eval_cases_suite ON eval_cases(suite_id, created_at);
+CREATE TABLE eval_scores (
+  id TEXT PRIMARY KEY, suite_id TEXT NOT NULL, agent TEXT NOT NULL DEFAULT 'default',
+  pass_rate REAL NOT NULL DEFAULT 0, cost_per_task REAL NOT NULL DEFAULT 0,
+  intervention_rate REAL NOT NULL DEFAULT 0, similarity REAL NOT NULL DEFAULT 0,
+  score REAL NOT NULL DEFAULT 0, cases INTEGER NOT NULL DEFAULT 0, label TEXT, created_at TEXT NOT NULL
+);
+CREATE INDEX idx_eval_scores_suite ON eval_scores(suite_id, created_at);
+`,
+  /* 10: governed auto-tune — versioned, reversible accepted config changes with before/after score (Feature: evals) */ `
+CREATE TABLE tune_history (
+  id TEXT PRIMARY KEY, suite_id TEXT NOT NULL, agent TEXT NOT NULL DEFAULT 'default',
+  kind TEXT NOT NULL, summary TEXT NOT NULL DEFAULT '', patch TEXT NOT NULL DEFAULT '{}',
+  previous TEXT NOT NULL DEFAULT '{}', baseline_score REAL NOT NULL DEFAULT 0,
+  candidate_score REAL NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'accepted',
+  reverted INTEGER NOT NULL DEFAULT 0, version INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE INDEX idx_tune_history_suite ON tune_history(suite_id, created_at);
+`,
+  /* 11: sharable agent bundles — idempotency/audit ledger for installed Mercury packs (Feature: bundles) */ `
+CREATE TABLE installed_bundles (
+  id TEXT PRIMARY KEY, name TEXT NOT NULL, version TEXT NOT NULL DEFAULT '0.0.0',
+  digest TEXT NOT NULL, sections TEXT NOT NULL DEFAULT '[]', applied TEXT NOT NULL DEFAULT '{}',
+  pending TEXT NOT NULL DEFAULT '{}', status TEXT NOT NULL DEFAULT 'installed',
+  source TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE INDEX idx_installed_bundles_name ON installed_bundles(name, created_at);
+`,
 ];

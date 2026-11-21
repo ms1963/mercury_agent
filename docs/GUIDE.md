@@ -1425,6 +1425,60 @@ Over HTTP: `GET /api/traces`, `GET /api/runs/:id/timetravel`, `GET /api/runs/:id
 `POST /api/runs/:id/replay {fromStep, edits}`. The web UI **Run Replay** panel (admin-only) drives all
 of this. Configure under `replay` (see Appendix B) and the [`replay` help](help/replay.md).
 
+## 12.9 Evaluation-driven self-improvement (1.3.0)
+
+Mercury can turn real behaviour into a scored regression gate and let a **governed** auto-tuner improve
+the agent against it. The harness is **on by default** (`evals.enabled: true`, safe — it only
+reads/scores); the auto-tuner is **off by default** (`evals.autotune.enabled: false`, it mutates
+config).
+
+- **Promote** — turn a real (or 👍-rated) run into a labeled eval case capturing the input and the
+  expected tools / output substrings / cost ceiling, grouped into a suite.
+- **Score** — run a suite and get a deterministic, weighted 0..1 score over **pass-rate**,
+  **cost-per-task**, **intervention-rate** and **output-similarity** (weights under `evals.weights`).
+  Scores are persisted (retention `evals.retainScores`) and trendable.
+- **Tune (governed)** — propose changes (model routing, pattern, temperature, skill promote/retire,
+  prompt); each is tested against the suite and accepted **only** if it improves the score by at least
+  `evals.autotune.minImprovement` **without** exceeding the per-task budget ceiling
+  (`evals.costCeiling`) or touching governance-protected config (`security.*`, `governance.*`,
+  `approvals.*`, `policies.*`). Accepted tunes auto-apply only when both `autotune.enabled` and
+  `autotune.autoApply` are set; otherwise they await explicit approval.
+- **Reverse** — every applied tune is versioned and reversible.
+
+State is stored by DB **migrations #9/#10** (`eval_suites`, `eval_cases`, `eval_scores`,
+`tune_history`). Programmatically via the `mercury.evals` facade (`promoteRun`, `runSuite`,
+`proposeTune`, `applyTune`, `revertTune`, `listTunes`). Over HTTP: `GET/POST /api/evals/*` (auth-gated;
+reads need `audit.read`, mutations `config.manage`). The web UI **Evaluations & Auto-tune** panel
+(admin-only) drives all of this. Configure under `evals` (see Appendix B) and the
+[`evals` help](help/evals.md).
+
+## 12.10 Sharable Agent Bundles (1.3.0)
+
+Package a running agent's configuration into one portable, signed artifact ("Mercury pack") and install
+it into another instance in one command. **On by default** (`bundles.enabled: true`).
+
+```bash
+mercury bundle export --sections skills,workflows,personality --out team.mbundle
+mercury bundle inspect team.mbundle          # manifest + sections + signature/compat, no install
+mercury bundle install team.mbundle          # verify signature → check compat → idempotent apply
+mercury bundle list                          # installed bundles
+```
+
+- **Export** any subset of `skills`, `workflows`, `personality`, `policy`, `mcp` into a bundle with a
+  manifest (name, version, `mercuryVersion`, `formatVersion`) and an HMAC-SHA256 signature.
+- **Integrity** — install verifies the signature (any tampering fails) when `bundles.requireSignature`,
+  and checks version/compatibility before applying.
+- **Idempotent** — re-installing the same bundle digest is a no-op.
+- **Governed** — bundled `policy` and `mcp` sections are **queued for approval** (not applied silently)
+  unless `bundles.autoApprovePolicy` / `bundles.autoApproveMcp` are set; approve them through the normal
+  governance path.
+
+State is stored by DB **migration #11** (`installed_bundles`). Programmatically via the
+`mercury.bundles` facade (`export`, `exportToFile`, `inspect`, `install`, `approvePending`, `list`).
+Over HTTP: `GET/POST /api/bundles/*` (auth-gated). The web UI **Agent Bundles** panel (admin-only)
+offers export/download and install/upload. Configure under `bundles` (see Appendix B) and the
+[`bundles` help](help/bundles.md).
+
 ---
 
 ## Appendix A — Full CLI reference
@@ -1459,14 +1513,15 @@ variables < CLI flags (see Appendix B), and `MERCURY_HOME` overrides the data di
 | `new <kind> <name>` | Scaffold a new extension. `kind` ∈ `tool\|skill\|workflow\|adapter\|plugin`. | `--lang <python\|js\|go\|cpp\|java>` |
 | `replay <runId>` | Re-run a recorded run from its persisted events (debugging). | — |
 | `eval` | Run the built-in deterministic self-evaluation suite against the agent and report pass/score with per-run token/cost accounting. | `--tag <tag>` (filter: `basic\|tools\|memory\|reasoning\|grounding`), `--json` |
+| `bundle <list\|export\|inspect\|install>` | **Sharable agent bundles (1.3.0)** — export selected config sections to a signed bundle, inspect one without installing, install one (verify signature → check compat → idempotent governed apply), or list installed bundles. | `--sections <a,b>`, `--out <file>`, `--version <v>`, `--desc <text>`, `--author <name>`, `--json` |
 | `doctor` | Environment / configuration health check (see Appendix E). | — |
 | `update` | Self-update the installation. | — |
 | `help [topic]` | Show help; with a topic, prints the matching help doc. | — |
-| `version`, `-v` | Print the version (prints `mercury 1.2.0`). | — |
+| `version`, `-v` | Print the version (prints `mercury 1.3.0`). | — |
 
-> **Version note.** This guide documents the **1.2.0** release (the root `package.json` is `1.2.0`).
+> **Version note.** This guide documents the **1.3.0** release (the root `package.json` is `1.3.0`).
 > `mercury version` in `packages/cli/src/bin.ts` resolves its string dynamically from the CLI
-> package.json, so it reports `mercury 1.2.0` and tracks the release automatically.
+> package.json, so it reports `mercury 1.3.0` and tracks the release automatically.
 
 > Honest-status note: `import-agent`, `update`, and `install.sh` have been exercised only against the
 > offline/mock setup in this repository; they have not been validated against a real Hermes install, a
@@ -1613,6 +1668,33 @@ shown is the default applied when the key is omitted. Keys are grouped by their 
 | `replay.enabled` | `true` | Persist a per-run bus-event trace for time-travel replay. |
 | `replay.retainTraces` | `1000` | Max run traces retained (oldest pruned beyond it). |
 | `replay.persistDeltas` | `false` | Also persist per-step state deltas (larger traces; faster state reconstruction). |
+
+### `evals` (1.3.0)
+
+| Key | Default | Notes |
+| --- | --- | --- |
+| `evals.enabled` | `true` | Master switch for the eval harness, facade and endpoints (safe: read/score only). |
+| `evals.retainScores` | `500` | Max recorded suite scores retained per suite (oldest pruned first). |
+| `evals.weights.passRate` | `0.5` | Weight of pass-rate in the aggregate score (normalized internally). |
+| `evals.weights.cost` | `0.2` | Weight of the cost-per-task metric. |
+| `evals.weights.intervention` | `0.15` | Weight of the intervention-rate metric. |
+| `evals.weights.similarity` | `0.15` | Weight of the output-similarity metric. |
+| `evals.costCeiling` | `0.05` | Cost ($) treated as worst-acceptable cost-per-task (normalizes the cost metric **and** gates tuning). |
+| `evals.autotune.enabled` | `false` | **Governed auto-tuner** master switch (it mutates config — off by default). |
+| `evals.autotune.minImprovement` | `0.02` | Minimum absolute score gain (0..1) a proposal must deliver to be accepted. |
+| `evals.autotune.maxProposals` | `8` | Max proposals evaluated per tune request (runaway guard). |
+| `evals.autotune.autoApply` | `false` | Apply an accepted proposal automatically; when false, applying needs explicit approval. |
+
+### `bundles` (1.3.0)
+
+| Key | Default | Notes |
+| --- | --- | --- |
+| `bundles.enabled` | `true` | Master switch for export/inspect/install (facade, CLI and endpoints). |
+| `bundles.dir` | `''` | Bundle storage directory; empty → `<dataDir>/bundles`. |
+| `bundles.signingSecret` | `mercury-bundle-default-key` | HMAC-SHA256 signing secret; **override in production** for authenticity. |
+| `bundles.requireSignature` | `true` | Reject a bundle whose signature is missing or does not verify (tamper/compat guard). |
+| `bundles.autoApprovePolicy` | `false` | Apply bundled policy-as-code rules immediately instead of queuing for approval. |
+| `bundles.autoApproveMcp` | `false` | Apply bundled MCP presets/servers immediately instead of queuing for approval. |
 
 ### `reflection`
 

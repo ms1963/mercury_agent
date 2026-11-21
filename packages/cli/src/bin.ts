@@ -29,6 +29,8 @@ Usage: mercury <command> [options]
   workflow [list|run <name> <input>]
   wiki [init|status|ingest <path|->|query "<q>"|lint [--delta] [--no-llm]]
   addin [list|scaffold <name>]   Manage declarative add-ins (tools/personalities/permissions)
+  bundle [list|export <name>|inspect <file>|install <file>]
+                            Export/install a signed, versioned agent bundle ("Mercury pack")
   perms [list|show <personality>]   Inspect per-agent/personality permission profiles
   config [path|get <key>|set <key> <value>]
   voice [presets|show|use <stt|tts> <preset>]
@@ -150,6 +152,8 @@ async function main(argv: string[]): Promise<void> {
         return await cmd.wikiCmd(m, a);
       case 'addin':
         return await cmd.addinCmd(m, a);
+      case 'bundle':
+        return await cmd.bundleCmd(m, a);
       case 'perms':
         return await cmd.permsCmd(m, a);
       case 'config':

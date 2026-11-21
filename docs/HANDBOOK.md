@@ -2,7 +2,7 @@
 
 # ☿ The Mercury Agent Handbook
 
-### The complete, end-to-end handbook for users, administrators and developers — Mercury Agent v1.2.0
+### The complete, end-to-end handbook for users, administrators and developers — Mercury Agent v1.3.0
 
 ---
 
@@ -82,7 +82,7 @@ What you get, at a glance:
 | You get… | In one line |
 |---|---|
 | A **CLI** | `mercury …` — chat, configure, schedule, manage, everything scriptable |
-| A **web UI** | A no-build single-page app with 15 panels (chat, runs, memory, scheduler, …) |
+| A **web UI** | A no-build single-page app with 17 panels (chat, runs, memory, scheduler, …) |
 | **19 chat gateways** | Telegram, Discord, Slack, WhatsApp, Facebook, X, LinkedIn, Signal, Matrix, Teams, Email, SMS, ... |
 | **Multi-agent workflows** | Nine templates — pipeline, debate, map-reduce, coordinator-worker, … |
 | **Persistent memory** | Six kinds, from working scratch to curated long-term facts |
@@ -525,9 +525,9 @@ Useful `chat` flags: `--model <id>` (override the model for this one turn), `--s
 > account (that makes you the admin), pick a provider in **Settings**, and type into the Chat box.
 > That's it — everything else in this handbook is optional depth.
 
-## 3.2 The web UI at a glance (17 panels)
+## 3.2 The web UI at a glance (19 panels)
 
-The web UI is a single no-build page served by `mercury serve`. It has **dark/light themes** and **English/German** locales, and seventeen panels — each panel is explored in the part shown:
+The web UI is a single no-build page served by `mercury serve`. It has **dark/light themes** and **English/German** locales, and nineteen panels — each panel is explored in the part shown:
 
 | Panel | What it does | Covered in |
 |---|---|---|
@@ -546,6 +546,8 @@ The web UI is a single no-build page served by `mercury serve`. It has **dark/li
 | **Reflections** | post-run scores, lessons, auto-skills | [Part 5](#55-reflection--memory-lessons-how-mercury-gets-better) |
 | **Distilled Skills** (admin) | review/approve/retire self-distilled skills | [Part 5](#57-self-distilling-skills-120) |
 | **Run Replay** (admin) | scrub a run's timeline, inspect state, fork a corrected re-run | [Part 5](#58-run-replay--time-travel-debugging-120) |
+| **Evaluations & Auto-tune** (admin) | promote runs to cases, run suites, view scores/trends, propose & apply/revert governed tunes | [Part 5](#59-evaluation-driven-self-improvement-130) |
+| **Agent Bundles** (admin) | export/download a signed bundle, install/upload one, list installed bundles | [Part 7](#77-sharable-agent-bundles-130) |
 | **Help** | the in-app help pages (also in German) | — |
 | **Settings** | providers, keys, everything else | [Part 2](#part-2--the-brain-llm-providers--models-the-second-movement-choosing-and-switching-intelligence) |
 
@@ -854,6 +856,37 @@ replay:
 ```
 
 See [docs/help/replay.md](help/replay.md).
+
+## 5.9 Evaluation-driven self-improvement (1.3.0)
+
+Mercury can hold itself to a measurable bar and improve against it — **safely**. The harness is **on by
+default** (it only reads and scores); the auto-tuner that mutates config is **off by default**.
+
+1. **Promote** a real (or 👍-rated) run into a labeled **eval case** — the input plus the expected
+   tools, output substrings and a cost ceiling — and group cases into a **suite**.
+2. **Score** a suite deterministically: each case runs through an ephemeral agent run and is scored on
+   pass/fail, cost, intervention and output-similarity; the suite gets a single weighted **0..1 score**
+   that is persisted and trendable.
+3. **Tune under governance**: a tuner proposes changes (model routing, pattern, temperature, skill
+   promote/retire, prompt), tests each against the suite, and keeps **only** changes that improve the
+   score by at least `minImprovement` **without** blowing the per-task budget ceiling or touching
+   governance-protected config (`security.*`, `governance.*`, `approvals.*`, `policies.*`). Nothing
+   auto-applies unless you set **both** `autotune.enabled` and `autotune.autoApply`.
+4. **Reverse** any applied tune — every one is versioned and reversible.
+
+```yaml
+evals:
+  enabled: true           # harness on (safe: read/score only)
+  retainScores: 500
+  costCeiling: 0.05        # worst-acceptable cost-per-task; also gates tuning
+  autotune:
+    enabled: false         # auto-tuner off by default (it mutates config)
+    minImprovement: 0.02
+    autoApply: false
+```
+
+Facade `mercury.evals`, REST `GET/POST /api/evals/*` (auth-gated), web **Evaluations & Auto-tune**
+panel. See [docs/help/evals.md](help/evals.md).
 
 ---
 
@@ -1170,6 +1203,31 @@ Other MCP-aware apps (another Mercury, Claude Desktop, an IDE) can consume **Mer
 > initialize handshake; connections to **real external MCP servers** have not been exercised against
 > live services. The chat-platform adapters have likewise not been run against the live platforms.
 > See [`../STATUS.md`](../STATUS.md).
+
+## 7.7 Sharable Agent Bundles (1.3.0)
+
+Reach also means **taking your agent's setup with you**. A **bundle** ("Mercury pack") is a single
+versioned, signed artifact that packages a subset of your configuration — `skills`, `workflows`,
+`personality`, `policy` and `mcp` presets — so you can hand a ready-made agent to a teammate or a second
+instance. **On by default** (`bundles.enabled`).
+
+```bash
+mercury bundle export --sections skills,workflows,personality --out team.mbundle
+mercury bundle inspect team.mbundle          # manifest + sections + signature/compat, no install
+mercury bundle install team.mbundle          # verify signature → check compat → idempotent governed apply
+mercury bundle list                          # what's installed
+```
+
+- **Signed & verified** — each bundle carries an HMAC-SHA256 signature over its canonical content;
+  install **rejects any tampered bundle** (when `requireSignature`) and checks version/compatibility
+  before applying anything.
+- **Idempotent** — re-installing the same bundle digest changes nothing.
+- **Governed** — bundled `policy` and `mcp` sections are **queued for approval**, not applied silently,
+  unless you opt in with `autoApprovePolicy` / `autoApproveMcp`.
+
+Facade `mercury.bundles`, CLI `mercury bundle …`, REST `GET/POST /api/bundles/*` (auth-gated), web
+**Agent Bundles** panel (export/download, install/upload, list). See
+[docs/help/bundles.md](help/bundles.md).
 
 ---
 

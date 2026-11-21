@@ -5,7 +5,9 @@
  * Anthropic) must be configured; the offline mock is only available when
  * MERCURY_ENABLE_MOCK=1 is set (used by the test suite).
  */
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
 import {
   Agent,
   ApprovalService,
@@ -59,6 +61,13 @@ import {
   SqliteSkillStore,
   TimeTravelService,
   SqliteTraceStore,
+  EvalService,
+  SqliteEvalStore,
+  SqliteTuneStore,
+  type EvalCaseRunner,
+  BundleService,
+  SqliteBundleStore,
+  setConfigValue,
   type ReplayForkRequest,
   Spawner,
   ToolExecutor,
@@ -121,6 +130,17 @@ function parseJsonObject(text: string): Record<string, unknown> | unknown[] | un
     } catch {
       return undefined;
     }
+  }
+}
+
+/** Resolve the runtime package version from its package.json (stamped into exported bundles). */
+function runtimeVersion(): string {
+  try {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const pkg = JSON.parse(readFileSync(join(here, '..', 'package.json'), 'utf8')) as { version?: string };
+    return pkg.version ?? '0.0.0';
+  } catch {
+    return '0.0.0';
   }
 }
 
@@ -194,6 +214,8 @@ export class Mercury {
   readonly distiller: DistillerService;
   /** Deterministic run replay & time-travel debugging: per-run traces, step inspection, fork/re-run. */
   readonly traces: TimeTravelService;
+  readonly evals: EvalService;
+  readonly bundles: BundleService;
   readonly checkpoints: CheckpointManager;
   readonly voice: VoiceService;
   readonly attachments: AttachmentStore;
@@ -405,6 +427,68 @@ export class Mercury {
         return { runId: r.runId, status: r.status, output: r.output, toolNames: r.toolNames };
       },
     );
+
+    // Evaluation-driven self-improvement: promote real runs into labeled eval cases, replay a suite
+    // to score it into a persisted time series, and run the governed auto-tuner (which keeps ONLY
+    // changes that improve the score without breaking governance/budget). The eval runner replays a
+    // case against the REAL agent (no mocks); temperature overrides are applied around the run since
+    // the agent takes model/pattern per run but reads temperature from config. Accepted tunes persist
+    // to the config file (when one exists) so they survive restart, and are reversible/versioned.
+    const persist = (path: string, value: unknown): void => {
+      if (this.configFile) setConfigValue(path, value, this.configFile);
+    };
+    const evalRunner: EvalCaseRunner = async (c, overrides) => {
+      const principal = this.principalFor();
+      const prevTemp = this.config.agent.temperature;
+      if (overrides?.temperature !== undefined) this.config.agent.temperature = overrides.temperature;
+      const start = Date.now();
+      try {
+        const r = await this.agent.run({
+          principal,
+          input: c.input,
+          platform: 'eval',
+          kind: 'subagent',
+          ephemeral: true,
+          reflect: false,
+          model: overrides?.model,
+          pattern: overrides?.pattern,
+        });
+        return {
+          output: r.output,
+          toolNames: r.toolNames,
+          inputTokens: r.usage.inputTokens,
+          outputTokens: r.usage.outputTokens,
+          cost: r.usage.cost,
+          durationMs: Date.now() - start,
+          error: r.status === 'error' || r.status === 'blocked' ? r.error ?? r.status : undefined,
+        };
+      } finally {
+        this.config.agent.temperature = prevTemp;
+      }
+    };
+    this.evals = new EvalService(
+      new SqliteEvalStore(this.db),
+      new SqliteTuneStore(this.db),
+      config,
+      evalRunner,
+      this.db,
+      { persist, distiller: this.distiller, bus: this.bus },
+    );
+
+    // Sharable agent bundles ("Mercury packs"): export a signed subset of this instance's config and
+    // install it into another instance — with integrity/tamper verification, version/compatibility
+    // gating, idempotent installs and a governed approval path for policy/MCP sections. Backed by a
+    // real SQLite install ledger (no mocks).
+    this.bundles = new BundleService(new SqliteBundleStore(this.db), config, {
+      dir: config.bundles.dir || join(dataDir, 'bundles'),
+      signingSecret: config.bundles.signingSecret,
+      requireSignature: config.bundles.requireSignature,
+      autoApprovePolicy: config.bundles.autoApprovePolicy,
+      autoApproveMcp: config.bundles.autoApproveMcp,
+      mercuryVersion: runtimeVersion(),
+      persist,
+      bus: this.bus,
+    });
 
     this.spawner = new Spawner(config, this.agent);
     this.workflows = new WorkflowEngine({ bundled: join(this.assets, 'workflows'), user: join(dataDir, 'workflows') }, this.spawner, this.judgment, this.llm, this.memory.blackboard, this.db, this.bus, config);
