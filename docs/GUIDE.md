@@ -715,6 +715,13 @@ Invoke a skill in chat with `/<skill-name>`. Mercury can also **create skills au
 reflection (after `skills.minToolCallsForSkill` tool calls, when `skills.autoCreate` is on) and refine
 them with success statistics. Write your own: see Part VIII and [EXTENDING.md](EXTENDING.md).
 
+**Skill composition (1.1.1).** The `SkillComposer` and the `skill_compose` tool (toolset `skills`, risk
+`moderate`) let a skill build on other skills — one skill can reference and run another, with the
+results composed into a single procedure. Composition is bounded by `composition.maxDepth` and
+`composition.maxSteps` and cached (`composition.cache`) to avoid recomputation. It is **on by default**
+(`composition.enabled: true`); when disabled the `skill_compose` tool returns an error rather than
+running. See Appendix B.
+
 ## 5.7 Scheduler
 
 Run agent tasks on a schedule (natural language, cron, intervals or one-shot):
@@ -737,8 +744,8 @@ pause / delete controls) or via `/api/schedules` (`PATCH /api/schedules/:id` edi
 ## 5.8 Workflows (multi-agent)
 
 Templates: `single`, `pipeline`, `round-robin`, `coordinator-worker`, `tree`, `map-reduce`,
-`router`, `blackboard`, `debate`. A workflow spec (YAML/JSON) names the template, its agents (role,
-model, toolsets, pattern) and budgets.
+`router`, `blackboard`, `debate`, `planner-executor`. A workflow spec (YAML/JSON) names the template,
+its agents (role, model, toolsets, pattern) and budgets.
 
 ```bash
 mercury workflow list
@@ -747,6 +754,34 @@ mercury workflow run debate "Remote work is better than office work"
 
 Also runnable from the web UI or the `run_workflow` tool/MCP tool. `type: auto` lets the decision
 engine pick a template. Authoring workflows: Part VIII.
+
+**`planner-executor` — for work that was finishing too early (1.1.1).** When a run ends after one or
+two steps even though the goal needs more, use `planner-executor`: a **planner** makes one structured
+call to decompose the goal into several concrete steps, an **executor** runs each step in order
+(feeding earlier results forward), re-planning once on a failed step instead of stopping, and an
+optional **synthesizer** writes the final combined answer. Every step emits a `workflow.step` event so
+progress is observable, and the `maxSteps` cap plus the usual run budgets prevent runaway loops.
+
+```yaml
+name: deep-dive
+type: planner-executor
+options:
+  minSteps: 3      # always run at least this many steps
+  targetSteps: 5   # how many steps the planner aims for
+  maxSteps: 12     # hard cap (never exceeded)
+  replanOnFailure: true
+agents:
+  - name: planner      # optional; produces the ordered step list
+    role: Break the goal into clear, ordered steps.
+  - name: executor     # runs each step (falls back to the first non-planner agent)
+    role: Carry out one step at a time.
+  - name: synthesizer  # optional; combines the step results
+    role: Combine the step results into a complete answer.
+```
+
+Defaults come from `workflows.planner` in config — `enabled` is **off by default** for the automatic
+pattern, but the template itself is always available by name; `options` on the spec override the
+config defaults. See Appendix B and the [`workflows` help](help/workflows.md).
 
 ## 5.9 MCP (Model Context Protocol)
 
@@ -823,6 +858,22 @@ mercury config set mcp.servers.fs '{"transport":"stdio","command":"npx","args":[
 # Or via the HTTP API: POST /api/mcp  (admin; see Appendix C).
 ```
 
+**Curated presets — the shortcut for well-known servers (1.1.1).** Rather than hand-write the config for
+a common connector, enable a shipped preset. The presets are `filesystem`, `fetch`, `github`, `git` and
+`sqlite`; all are registered `untrusted` (their output stays subject to spotlighting/policy/approval) and
+none embed secrets — they reference `${ENV_VAR}` placeholders (`MCP_FS_ROOT`, `GITHUB_TOKEN`,
+`MCP_GIT_REPO`, `MCP_SQLITE_DB`; `fetch` needs none) resolved from the environment at connect time.
+
+```bash
+mercury mcp presets                 # list presets and the env vars each one needs
+mercury mcp status                  # configured servers + whether each is connected (default sub-command)
+mercury mcp enable github --name gh # write the preset into mcp.servers (optionally under a custom name)
+mercury mcp enable github --connect # enable and connect immediately
+```
+
+`mercury mcp enable` reports any required variables that are unset so you can export them before
+connecting. See the [`mcp` help](help/mcp.md).
+
 **Check it worked and use the tools:**
 
 ```bash
@@ -866,7 +917,7 @@ gateway transcribes inbound voice memos. `voice.wakeWord.command` sets an option
 
 # Part VI — Tools reference
 
-Mercury ships **79 built-in tools** in **19 toolsets**. Every tool has a **risk** level — `safe`
+Mercury ships **81 built-in tools** in **19 toolsets**. Every tool has a **risk** level — `safe`
 (runs freely), `moderate` (gated by approval policy when derived from untrusted content), or
 `dangerous` (always needs approval). Tools whose output comes from outside (web, files, MCP) are
 tagged *untrusted* so they can never silently trigger a sensitive action.
@@ -901,12 +952,12 @@ In chat, `/tools` lists what is currently available. Over the API: `GET /api/too
 | **messaging** (2) | `send_message` (moderate), `list_platforms` (safe) |
 | **process** (4) | `process_start` (moderate), `process_list` (safe), `process_output` (safe), `process_kill` (moderate) |
 | **schedule** (3) | `schedule_create` (moderate), `schedule_list` (safe), `schedule_manage` (moderate) |
-| **skills** (4) | `skills_list` (safe), `skill_view` (safe), `skill_manage` (safe), `skill_install` (dangerous) |
+| **skills** (5) | `skills_list` (safe), `skill_view` (safe), `skill_manage` (safe), `skill_install` (dangerous), `skill_compose` (moderate) |
 | **system** (1) | `system_info` (safe) |
 | **terminal** (1) | `terminal` (moderate) |
 | **utility** (11) | `calculator`, `current_time`, `date_calc`, `unit_convert`, `regex_extract`, `text_diff`, `text_stats`, `hash_text`, `base64`, `uuid`, `todo` (all safe) |
 | **vector** (2) | `vector_index` (safe), `vector_search` (safe) |
-| **web** (5) | `web_search` (safe), `web_fetch` (safe), `http_request` (moderate), `rss_read` (safe), `weather` (safe) |
+| **web** (6) | `web_search` (safe), `web_fetch` (safe), `web_read` (moderate), `http_request` (moderate), `rss_read` (safe), `weather` (safe) |
 
 ## 6.3 Backends behind the tools
 
@@ -921,6 +972,10 @@ In chat, `/tools` lists what is currently available. Over the API: `GET /api/too
 - **`web_*`** go through `safeFetch` (SSRF guard + size cap); search provider is `tools.web.searchProvider`
   (`duckduckgo` default — works with no key; `searxng` requires `searxngUrl`; `brave` requires
   `BRAVE_API_KEY`). The `mock` search provider and the mock-weather branch have been removed.
+- **`web_read`** (1.1.1) fetches a page via `safeFetch` and runs `extractMainContent` to return just the
+  readable article text (stripping nav/ads/boilerplate). It is `moderate` risk, `sensitive` and marked
+  `untrustedOutput`, so it **always needs approval** and its output stays spotlighted. The backend is
+  HTTP + HTML extraction only; a headless-browser backend was deliberately deferred for 1.1.1.
 - **`image_generate`** uses `tools.image.provider` (`openai` default, or an OpenAI-compatible image
   provider / model). The `mock` SVG image provider has been removed; the `openai` default throws
   `OPENAI_API_KEY is not set` when unconfigured.
@@ -1288,6 +1343,36 @@ the **Proactive** panel or `mercury proactive rules|events|digest|emit|flush|pol
 `GET /api/proactive`, `POST /api/proactive/events|digest/flush|poll`. Disabled by default; configure
 under `proactive`.
 
+## 12.6 Learning from runs (1.1.1)
+
+Mercury can learn from its own completed runs. The `LearningService` does three things, each degrading
+gracefully when there isn't enough data, and the whole subsystem is **off by default**
+(`learning.enabled: false`):
+
+- **Experience hints** — at the start of a run it searches for a similar past *successful* run and
+  injects a short hint into the agent's context (`hints.maxExamples`, `hints.minSimilarity`,
+  `hints.lookback`). No similar run means no hint — nothing is forced.
+- **Auto-tuned routing** — a `RouteLearner` hook in the model router records success rates per
+  (difficulty bucket, model) and feeds them back to routing. The router only prefers a learned model
+  once there are at least `routing.minSamples` samples above `routing.minSuccessRate`; otherwise it
+  falls back to economics. A learning-adjusted decision is flagged `adjustedByLearning`.
+- **Failure playbooks** — recurring error signatures and the remediation that later worked are
+  persisted (`playbooks.minOccurrences`, `playbooks.minSimilarity`) so known failures can be avoided.
+
+State is stored by DB **migration #6** (`learning_route_stats`, keyed by `(bucket, model)`, and
+`learning_playbooks`, keyed by error signature). Inspect it from the CLI or API:
+
+```bash
+mercury learn stats [bucket]      # observed routing success rates (add --json)
+mercury learn hints <task...>     # preview the hint that would be injected for a task
+mercury learn playbooks           # recorded failure playbooks and their remediations
+```
+
+Over HTTP: `GET /api/learning` (status + config + route stats + playbooks; scope `audit.read`),
+`GET /api/learning/stats` (`?bucket`), `GET /api/learning/playbooks` (`?limit`), `GET /api/learning/hint`
+(`?task`). The web UI **Learning** panel (admin-only) shows the same status, auto-tuned routing table and
+failure playbooks. Configure under `learning` (see Appendix B) and the [`learning` help](help/learning.md).
+
 ---
 
 ## Appendix A — Full CLI reference
@@ -1306,10 +1391,11 @@ variables < CLI flags (see Appendix B), and `MERCURY_HOME` overrides the data di
 | `tools` | Inspect and toggle tools. | `list`, `toolsets`, `enable <name>`, `disable <name>` |
 | `skills` | Manage skills (progressive-disclosure procedural memory). | `list`, `view <name>`, `install <src>` |
 | `schedule` | Manage scheduled tasks. | `list`, `add --when "<cron / natural>"`, `pause <id>`, `resume <id>`, `delete <id>`, `run <id>` |
-| `workflow` | Run and list multi-agent workflows. | `list`, `run <name> <input>` |
+| `workflow` | Run and list multi-agent workflows (incl. `planner-executor`). | `list`, `run <name> <input>` |
+| `learn` | Inspect learning from runs (experience hints, auto-tuned routing, failure playbooks). | `stats [bucket]`, `hints <task...>`, `playbooks`; `--json`, `--limit <n>` |
 | `config` | Inspect and edit configuration. | `path`, `get <key>`, `set <key> <value>` |
 | `gateway` | Manage the messaging gateway and device pairing. | `status`, `start`, `pending`, `pair <CODE>` |
-| `mcp` | MCP client/server helpers. | `list`, `serve` |
+| `mcp` | MCP client/server helpers and curated presets. | `status` (default), `presets`, `enable <preset>` (`--name <n>`, `--connect`), `list`, `serve` |
 | `user` | User administration (admin only). | `list`, `add`, `passwd`, `role`, `delete` |
 | `token` | Manage API tokens. | `list`, `create <name> --scopes <...>`, `revoke <id>` |
 | `audit` | Read and verify the hash-chained audit log (admin). | `list` (filters: `--actor <id>`, `--action <name\|prefix>`, `--target <t>`, `--since <ISO>`, `--until <ISO>`, `--limit <n>`, `--offset <n>`, `--json`), `verify` |
@@ -1324,7 +1410,11 @@ variables < CLI flags (see Appendix B), and `MERCURY_HOME` overrides the data di
 | `doctor` | Environment / configuration health check (see Appendix E). | — |
 | `update` | Self-update the installation. | — |
 | `help [topic]` | Show help; with a topic, prints the matching help doc. | — |
-| `version`, `-v` | Print the version (`mercury 0.3.0`). | — |
+| `version`, `-v` | Print the version (currently prints `mercury 1.0.1`). | — |
+
+> **Version note.** This guide documents the **1.1.1** release (the root `package.json` is `1.1.1`). The
+> `mercury version` string in `packages/cli/src/bin.ts` currently still prints `mercury 1.0.1` (the CLI
+> banner lagged the release bump); treat **1.1.1** as the authoritative release version.
 
 > Honest-status note: `import-agent`, `update`, and `install.sh` have been exercised only against the
 > offline/mock setup in this repository; they have not been validated against a real Hermes install, a
@@ -1463,6 +1553,43 @@ shown is the default applied when the key is omitted. Keys are grouped by their 
 | `reflection.enabled` | `true` | Enable post-run reflection. |
 | `reflection.lessons` | `true` | Record lessons learned. |
 | `reflection.userModel` | `true` | Update the per-user model. |
+
+### `learning` (1.1.1)
+
+| Key | Default | Notes |
+| --- | --- | --- |
+| `learning.enabled` | `false` | Master switch for learning from runs (off by default). |
+| `learning.hints.enabled` | `true` | Inject a hint from the most similar past successful run. |
+| `learning.hints.maxExamples` | `1` | Past-success examples summarised into the hint. |
+| `learning.hints.minSimilarity` | `0.15` | Min token-overlap similarity (0..1) to count as "similar". |
+| `learning.hints.lookback` | `50` | Candidate past runs considered (most recent first). |
+| `learning.routing.enabled` | `true` | Adjust routing from observed per-(bucket, model) outcomes. |
+| `learning.routing.minSamples` | `5` | Min recorded runs for a pair before it influences routing. |
+| `learning.routing.minSuccessRate` | `0.5` | A learned model must clear this success rate to be preferred. |
+| `learning.playbooks.enabled` | `true` | Persist recurring failure signatures → remediation. |
+| `learning.playbooks.minOccurrences` | `2` | Occurrences before a playbook is surfaced. |
+| `learning.playbooks.minSimilarity` | `0.2` | Min task similarity (0..1) to surface a playbook. |
+
+### `composition` (1.1.1)
+
+| Key | Default | Notes |
+| --- | --- | --- |
+| `composition.enabled` | `true` | Enable skill/tool composition (the `skill_compose` tool). |
+| `composition.maxDepth` | `5` | Hard max nesting depth of sub-skill invocations (cycle guard). |
+| `composition.maxSteps` | `40` | Max steps a single composition may run. |
+| `composition.cache.enabled` | `true` | Cache intermediate composition results. |
+| `composition.cache.ttlMs` | `300000` | Cache entry TTL (5 min). |
+| `composition.cache.maxSize` | `500` | Max cached entries. |
+
+### `workflows` (1.1.1)
+
+| Key | Default | Notes |
+| --- | --- | --- |
+| `workflows.planner.enabled` | `false` | Auto planner-executor pattern (off; the template is always usable by name). |
+| `workflows.planner.minSteps` | `3` | Minimum steps a planned workflow must attempt. |
+| `workflows.planner.targetSteps` | `5` | Target number of steps the planner aims for. |
+| `workflows.planner.maxSteps` | `12` | Hard cap on steps (runaway guard; also bounded by the workflow budget). |
+| `workflows.planner.replanOnFailure` | `true` | Re-plan remaining steps on a failed step instead of stopping. |
 
 ### `tools`
 
@@ -1658,6 +1785,15 @@ Admin-only routes require the `admin` role.
 | `POST` | `/api/tools/toggle` | Enable/disable a tool. |
 | `GET` | `/api/models` | List models. |
 | `POST` | `/api/models/route` | Ask the router to pick a model. |
+
+### Learning (1.1.1)
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/learning` | Status, config flags, auto-tuned route stats and failure playbooks (scope `audit.read`). |
+| `GET` | `/api/learning/stats` | Observed routing success rates; optional `?bucket` (scope `audit.read`). |
+| `GET` | `/api/learning/playbooks` | Recorded failure playbooks; optional `?limit` (scope `audit.read`). |
+| `GET` | `/api/learning/hint` | Preview the hint for a task; `?task` required (any authenticated user). |
 
 ### Workflows, schedules
 

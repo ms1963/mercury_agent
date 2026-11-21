@@ -2,7 +2,7 @@
 
 # ☿ The Mercury Agent Handbook
 
-### The complete, end-to-end handbook for users, administrators and developers — Mercury Agent v1.0.0
+### The complete, end-to-end handbook for users, administrators and developers — Mercury Agent v1.1.1
 
 ---
 
@@ -623,7 +623,7 @@ mercury tools disable <name>       # disable a tool or a whole toolset
 
 You can also disable tools globally with `tools.disabled[]`, toggle whole toolsets with `tools.toolsets{}`, and disable toolsets **per platform** (e.g. forbid the `terminal` toolset on `telegram` only) with `tools.platforms.<name>.disabledToolsets`. In chat, `/tools` shows what's available right now. Over HTTP: `GET /api/tools`, `POST /api/tools/:name/run`, `POST /api/tools/toggle`.
 
-## 4.3 The complete catalogue (79 tools in 19 toolsets)
+## 4.3 The complete catalogue (81 tools in 19 toolsets)
 
 | Toolset | Tools (risk) |
 |---|---|
@@ -639,12 +639,12 @@ You can also disable tools globally with `tools.disabled[]`, toggle whole toolse
 | **messaging** (2) | `send_message` (moderate), `list_platforms` (safe) |
 | **process** (4) | `process_start` (moderate), `process_list` (safe), `process_output` (safe), `process_kill` (moderate) |
 | **schedule** (3) | `schedule_create` (moderate), `schedule_list` (safe), `schedule_manage` (moderate) |
-| **skills** (4) | `skills_list` (safe), `skill_view` (safe), `skill_manage` (safe), `skill_install` (dangerous) |
+| **skills** (5) | `skills_list` (safe), `skill_view` (safe), `skill_manage` (safe), `skill_install` (dangerous), `skill_compose` (moderate) |
 | **system** (1) | `system_info` (safe) |
 | **terminal** (1) | `terminal` (moderate) |
 | **utility** (11) | `calculator`, `current_time`, `date_calc`, `unit_convert`, `regex_extract`, `text_diff`, `text_stats`, `hash_text`, `base64`, `uuid`, `todo` (all safe) |
 | **vector** (2) | `vector_index` (safe), `vector_search` (safe) |
-| **web** (5) | `web_search` (safe), `web_fetch` (safe), `http_request` (moderate), `rss_read` (safe), `weather` (safe) |
+| **web** (6) | `web_search` (safe), `web_fetch` (safe), `web_read` (moderate), `http_request` (moderate), `rss_read` (safe), `weather` (safe) |
 
 ## 4.4 The backends behind the risky tools (what admins must configure)
 
@@ -743,6 +743,44 @@ On top of that, when a run used at least `skills.minToolCallsForSkill` (**4**) t
 > (Part 3) uses tools (Part 4), and its outcome becomes memory and lessons (Part 5) that make the
 > *next* run better. That loop is what makes Mercury a colleague rather than a command line.
 
+## 5.6 Learning from runs (hints, auto-tuned routing, failure playbooks)
+
+Reflection (5.5) distils *lessons*; **learning** goes a step further and lets Mercury improve its own
+*behaviour* from the history of completed runs. It is driven entirely by the real `runs` table — no
+external state — and is **off by default** (`learning.enabled: false`), so nothing is recorded,
+injected or adjusted until you turn it on. Every part degrades gracefully when there isn't enough data.
+
+It does three things, each independently toggleable:
+
+| Capability | What it does | Config sub-key |
+|---|---|---|
+| **Experience hints** | At the start of a run, finds the most similar *past successful* run and injects a short hint into the agent's context. No similar run → no hint. | `learning.hints` |
+| **Auto-tuned routing** | Records success rate per (difficulty bucket, model) and feeds it back to the model router, which prefers a learned model only once there are enough samples above a minimum success rate — otherwise it falls back to economics. A learning-adjusted route is flagged `adjustedByLearning`. | `learning.routing` |
+| **Failure playbooks** | Recurring error signatures and the remediation that later worked are persisted, so a known pitfall is surfaced on the next matching task. | `learning.playbooks` |
+
+Inspect what it has learned from the CLI:
+
+```bash
+mercury learn stats [bucket]     # observed routing success rates per (bucket, model); add --json
+mercury learn hints "<task>"     # preview the hint that would be injected for a task
+mercury learn playbooks          # recorded failure playbooks and their remediations
+```
+
+Admins get the same view in the web **Learning** panel (status, the auto-tuned routing table and the
+failure playbooks), and over the API at `GET /api/learning[/stats|/playbooks|/hint]` (scope
+`audit.read`). The full config block, with its safe defaults:
+
+```yaml
+learning:
+  enabled: false            # master switch — OFF by default
+  hints:    { enabled: true, maxExamples: 1, minSimilarity: 0.15, lookback: 50 }
+  routing:  { enabled: true, minSamples: 5, minSuccessRate: 0.5 }
+  playbooks:{ enabled: true, minOccurrences: 2, minSimilarity: 0.2 }
+```
+
+The sub-switches default `true`, but because the master `learning.enabled` is `false`, the whole
+subsystem stays dormant until you enable it. See [docs/help/learning.md](help/learning.md).
+
 ---
 
 # Part 6 — Autonomy: scheduler & workflows (the sixth movement: work that runs itself)
@@ -783,6 +821,7 @@ A **workflow** coordinates multiple agents. You choose a **template** that descr
 | `router` | pick the right agent for the input |
 | `blackboard` | agents collaborate through a shared scratchpad |
 | `debate` | agents argue opposing sides toward a conclusion |
+| `planner-executor` | a planner decomposes the goal into several steps; an executor runs them in order, re-planning on failure, then synthesises the result |
 | `auto` | let the decision engine pick the template for you |
 
 A workflow **spec** (YAML or JSON) names the template and lists its agents — each with a role, model, toolsets and reasoning pattern — plus optional budgets:
@@ -811,6 +850,41 @@ mercury workflow run research-debate "Should we migrate to Rust?"
 ```
 
 Workflows are also launchable from the web **Workflows** panel, or by the agent itself through the `run_workflow` tool (and the same tool over MCP). Authoring workflow specs in depth is in [Part 10](#106-authoring-skills--workflows).
+
+### The `planner-executor` template — for work that was ending too soon
+
+Some goals need several substantial steps, and a single-shot run tends to stop after the first. The
+`planner-executor` template fixes that: a **planner** makes one structured call to break the goal into
+an ordered list of steps (between `minSteps` and `maxSteps`, aiming for `targetSteps`); an **executor**
+agent then runs each step in turn, fed the accumulated results of the previous steps, so each step
+builds on the last; if a step fails and `replanOnFailure` is on, it re-plans the remaining work once and
+continues (bounded by the hard `maxSteps` cap and the workflow budget — no runaway); finally a
+`synthesizer` agent (or a built-in final call) merges all step outputs into one answer. Planning
+degrades gracefully — if the model returns no usable plan, deterministic generic steps keep the workflow
+at the configured depth.
+
+It is **off by default**. Turn it on and tune the step budget globally, or override per workflow via
+`options`:
+
+```yaml
+workflows:
+  planner:
+    enabled: false          # OFF by default
+    minSteps: 3             # minimum steps a planned workflow must attempt
+    targetSteps: 5          # what the planner aims for
+    maxSteps: 12            # hard cap (runaway guard; also bounded by the workflow budget)
+    replanOnFailure: true   # re-plan the remaining steps when a step fails instead of stopping
+```
+
+```yaml
+# per-workflow override
+name: deep-research
+type: planner-executor
+agents:
+  - { role: executor, model: chatllm/gpt-5.1, pattern: react }
+  - { role: synthesizer, model: chatllm/gpt-5.1 }
+options: { minSteps: 4, targetSteps: 7, maxSteps: 12, replanOnFailure: true }
+```
 
 ---
 
@@ -992,6 +1066,24 @@ mercury mcp list          # each server: transport, connected?, discovered tools
 mercury tools list        # the server's tools now show as mcp_<server>_<tool>
 mercury chat "Use the filesystem tools to list my projects folder"
 ```
+
+**Curated presets — the shortcut for well-known servers.** Rather than hand-writing the config for a
+popular reference server, Mercury ships ready-to-use **presets** for `filesystem`, `fetch`, `github`,
+`git` and `sqlite`. Each has a safe default policy (`trust: untrusted`, sampling off) and holds **no
+secrets** — anything sensitive is an `${ENV_VAR}` placeholder you set in the environment first.
+
+```bash
+mercury mcp status                 # connected servers + tool counts (the default sub-command)
+mercury mcp presets                # list the curated presets and the env vars each needs
+export MCP_FS_ROOT=/home/me/projects
+mercury mcp enable filesystem                 # resolve ${MCP_FS_ROOT}, write it into mcp.servers.filesystem
+mercury mcp enable github --name gh --connect # custom server name; connect immediately after saving
+```
+
+`mercury mcp enable <preset>` substitutes the placeholders from your environment and writes the
+resulting config under `mcp.servers.<name>` (the preset itself never stores the secret value); if a
+required env var is still unset it warns you and leaves the placeholder in place. From there the server
+behaves exactly like any server you defined by hand above. See [docs/help/mcp.md](help/mcp.md).
 
 ## 7.6 MCP server — lending Mercury's tools to others
 
@@ -1359,9 +1451,10 @@ Invoke as `mercury <command>` (after `npm link` or the published bin) or `node p
 | `skills` | Manage skills | `list`, `view <n>`, `install <src>` |
 | `schedule` | Scheduled tasks | `list`, `add --when "…"`, `edit <id>`, `pause`, `resume`, `run <id>`, `delete <id>` |
 | `workflow` | Multi-agent workflows | `list`, `run <name> <input>` |
+| `learn` | Inspect learning from runs (experience hints, auto-tuned routing, failure playbooks) | `stats [bucket]`, `hints <task…>`, `playbooks`; `--json`, `--limit <n>` |
 | `config` | Inspect/edit config | `path`, `get <key>`, `set <key> <value>` |
 | `gateway` | Messaging gateway & pairing | `status`, `start`, `pending`, `pair <CODE>` |
-| `mcp` | MCP client/server helpers | `list`, `serve` |
+| `mcp` | MCP client/server helpers & curated presets | `status` (default), `presets`, `enable <preset>` (`--name`, `--connect`), `list`, `serve` |
 | `user` | User admin (admin only) | `list`, `add`, `passwd`, `role`, `delete` |
 | `token` | API tokens | `list`, `create <name> --scopes …`, `revoke <id>` |
 | `audit` | Hash-chained audit log (admin) | `list` (filters), `verify` |
@@ -1376,11 +1469,12 @@ Invoke as `mercury <command>` (after `npm link` or the published bin) or `node p
 | `doctor` | Environment/config health check | — |
 | `update` | Self-update the installation | — |
 | `help [topic]` | Help; with a topic prints that help doc | — |
-| `version`, `-v` | Print the version (**mercury 1.0.0**) | — |
+| `version`, `-v` | Print the version (currently **mercury 1.0.1**) | — |
 
-> **Version note.** This handbook documents **Mercury Agent v1.0.0** (verified from
-> `packages/cli/src/bin.ts` and the root `package.json`). Some older appendices elsewhere still print
-> `0.3.0`/`0.1.0` — treat **1.0.0** as authoritative.
+> **Version note.** This handbook documents the **Mercury Agent v1.1.1** release (the root
+> `package.json` is `1.1.1`). The `mercury version` string in `packages/cli/src/bin.ts` currently
+> still prints `mercury 1.0.1` (the CLI banner lagged the release bump); treat **1.1.1** as the
+> authoritative release version. Some older appendices elsewhere still print `0.3.0`/`0.1.0`.
 
 ## Appendix B — Data directory layout
 

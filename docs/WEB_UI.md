@@ -59,8 +59,17 @@ After login you get:
 - Top‑right controls: a **language** selector (English / German), a **theme**
   toggle (dark / light, the `◐` button), and **Log out**.
 
-Admin‑only panels (for example **Users**) appear in the nav only when you are
-signed in as an admin.
+Admin‑only panels (for example **Users**, **Governance**, **Verification**,
+**Reliability**, **Proactive** and **Learning**) appear in the nav only when you
+are signed in as an admin. These are gated client‑side by an `ADMIN_ONLY` set in
+`app.js` (the nav entry is filtered out for non‑admins) and server‑side by the
+scope each backing route requires — the **Learning** panel, for instance, calls
+`/api/learning*`, which require the `audit.read` scope.
+
+Each panel's nav label is localised: the **Learning** entry is rendered from the
+`nav.learning` i18n key (and the panel's own strings from the `learning.*` keys)
+in both `locales/en.json` and `locales/de.json`, so it follows the language
+selector like every other panel.
 
 ---
 
@@ -99,6 +108,7 @@ See [docs/PROVIDERS.md](PROVIDERS.md) for the full list of providers.
 | **Verification** (admin) | Inspect evidence‑based completion checks and aggregate **confidence** scores, run an ad‑hoc verification, and review / resolve low‑confidence **escalations** | `GET /api/verifications[/:id]` · `POST /api/verify` · `GET /api/escalations` · `POST /api/escalations/:id/resolve` |
 | **Reliability** (admin) | View per‑agent **SLOs** (success / intervention / cost vs targets), record a run and **replay** it as a regression diff, and see **chaos** fault‑injection status (off by default) | `mercury reliability` · `GET /api/slo` · `/api/chaos` · `GET/POST /api/recordings` · `POST /api/recordings/:id/replay` |
 | **Proactive** (admin) | Review notification **rules**, recent **events** (interrupt vs defer), the **digest queue**; flush the digest, poll sources, or inject a test event | `mercury proactive` · `GET /api/proactive` · `POST /api/proactive/events \| digest/flush \| poll` |
+| **Learning** (admin) | Review what Mercury has learned from completed runs: the current learning **status** (on / off — off by default), the **auto‑tuned routing** table (observed success rate and average cost per difficulty bucket / model), and the recorded **failure playbooks** (error signature → remediation that later worked) | `mercury learn stats \| hints \| playbooks` · `GET /api/learning` · `/api/learning/stats` · `/api/learning/playbooks` · `/api/learning/hint` |
 | **Users** (admin) | Add users, change roles, delete users — every action is audited                                                                                | `mercury user add \| role \| delete` |
 | **Debug**         | Live run / event stream and diagnostics                                                                                                        | `mercury doctor`                   |
 | **Reflections**   | View the agent's self‑reflections                                                                                                              | (UI only)                          |

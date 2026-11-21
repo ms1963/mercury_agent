@@ -57,7 +57,14 @@ flowchart TB
     AG --> MEM[Memory: working, episodic, semantic, procedural, user model, blackboard]
     AG --> SK[Skills]
     RTR --> LLM[LLM providers]
+    SK --> COMP[Skill composer]
   end
+  subgraph Learning
+    LRN[Learning service: experience hints, auto-tuned routing, failure playbooks]
+  end
+  AG --> LRN
+  RTR --> LRN
+  LRN --> DB
   subgraph Foundation
     CFG[Config zod] --- BUS[EventBus + Tracer + Metrics]
     DB[(SQLite + FTS5)] --- SEC[Security: guardrails, audit, redaction, SSRF, jail]
@@ -73,7 +80,8 @@ flowchart TB
 | Composition | Builds and owns all services | `packages/runtime` |
 | Orchestration | Agent loop, reasoning patterns, workflows, subagents, reflection | `core/src/agent`, `core/src/workflows`, `core/src/reflection` |
 | Judgment | Typed calibrated decisions (Jev) for routing and meta-cognition | `core/src/decision` |
-| Capabilities | LLMs, router, tools, memory, skills, voice, attachments | `core/src/llm`, `core/src/router`, `packages/tools`, `core/src/memory`, `core/src/skills`, `core/src/voice`, `core/src/attachments` |
+| Capabilities | LLMs, router, tools, memory, skills (incl. composition), voice, attachments | `core/src/llm`, `core/src/router`, `packages/tools`, `core/src/memory`, `core/src/skills`, `core/src/voice`, `core/src/attachments` |
+| Learning | Experience hints, auto-tuned routing, failure playbooks (from run history) | `core/src/learning` |
 | Foundation | Config, DB, events, logging, security, auth, budgets, i18n, help | `core/src/{config,db,events,logging,security,auth,budgets,i18n,help}` |
 
 ---
@@ -86,12 +94,12 @@ mercury/
 │  ├─ core/        @mercury/core     — domain logic, interfaces, no HTTP server
 │  │  └─ src/
 │  │     types/  config/  db/  events/  logging/  security/  auth/  budgets/
-│  │     llm/  router/  decision/  agent/  agent/patterns/  memory/  skills/
-│  │     reflection/  tools/ (registry+executor)  workflows/  scheduler/
+│  │     llm/  router/  decision/  agent/  agent/patterns/  memory/  skills/ (+composer)
+│  │     learning/  reflection/  tools/ (registry+executor)  workflows/  scheduler/
 │  │     attachments/  voice/  plugins/  checkpoints/  i18n/  help/  extensions/
 │  ├─ tools/       @mercury/tools    — 50+ built-in tools, toolsets, polyglot runner,
 │  │                                    execute_code sandbox, terminal & browser backends
-│  ├─ mcp/         @mercury/mcp      — MCP client manager + Mercury-as-MCP-server
+│  ├─ mcp/         @mercury/mcp      — MCP client manager + Mercury-as-MCP-server + curated presets
 │  ├─ gateway/     @mercury/gateway  — adapter SDK, gateway runner, 19 adapters
 │  ├─ runtime/     @mercury/runtime  — createMercury(): composition root
 │  ├─ server/      @mercury/server   — Fastify REST/SSE API, webhooks, /mcp, web UI
@@ -127,8 +135,8 @@ sequenceDiagram
   U->>F: message (+attachments, @refs, /commands)
   F->>A: run({sessionId, userId, input})
   A->>G: input guardrail (injection heuristics + classifier, PII)
-  A->>M: build context (SOUL/AGENTS files, curated memory, skills index, recall)
-  A->>R: pick model (rules, capabilities, cost/latency/quality, Jev choice)
+  A->>M: build context (SOUL/AGENTS files, curated memory, skills index, recall, learned hint)
+  A->>R: pick model (rules, capabilities, cost/latency/quality, Jev choice, learned routing)
   loop pattern (ReAct by default)
     A->>B: pre-call budget check
     A->>L: chat(messages, tools) [stream deltas -> events]
@@ -190,6 +198,12 @@ Every arrow above emits an event (`run.start`, `llm.request`, `llm.delta`, `llm.
   `LLMService` before every call — exceeding it throws `TaskBudgetExceededError` and the task is
   halted or escalated (`budgets.perTask.onExceed`). A running **cost-vs-value** estimate is exposed
   via `GET /api/tasks`. The `RouteDecision` now also reports `lane` and `qualityNeed`.
+* **Learned routing hook** (`RouteLearner`): the router exposes an optional `setLearner()` seam.
+  After its economics/decision choice it asks the learner to `suggest(bucket, candidates)` the model
+  with the best *observed* success rate for the task's difficulty bucket; when the learner has enough
+  data it overrides the choice and the `RouteDecision` is flagged `adjustedByLearning`, otherwise the
+  router keeps its own pick (graceful, backward-compatible). The implementation is the
+  `LearningService` (§5.17); `routeBucket`/`inferDifficulty` are shared between the two.
 
 ### 5.4 Memory (`core/src/memory`)
 | Kind | Implementation |
@@ -213,6 +227,15 @@ demand. Skills are discovered from bundled, `~/.mercury/skills` and `./.mercury/
 installable from a folder or git URL, created autonomously by reflection and refined by
 `skill_update` with success statistics.
 
+**Skill composition** (`core/src/skills/composer.ts`, config `composition`): a `SkillComposer` runs a
+small pipeline whose steps are either tool calls (`{tool, args}`) or nested sub-skill compositions
+(`{skill, steps, inputs}`). Every tool step goes back through the **real** `ToolExecutor`, so policy,
+approval, audit, taint and chaos all still apply. Intermediate results are memoised in a bounded
+`TtlCache` (keyed on skill + inputs + steps) and runaway is guarded two ways — a hard depth limit
+(`composition.maxDepth`) with active-stack cycle detection, and a per-composition step budget
+(`composition.maxSteps`). Exposed as the `skill_compose` tool (§5.6). Additive: nothing runs it unless
+the tool (or an explicit caller) is used.
+
 ### 5.6 Tools (`core/src/tools`, `packages/tools`, `packages/mcp`)
 * `Tool` = name, toolset, description, zod/JSON schema, `risk` (`safe|moderate|dangerous`),
   `untrustedOutput` flag, `execute(args, ctx)`.
@@ -225,13 +248,34 @@ installable from a folder or git URL, created autonomously by reflection and ref
 * Toolsets can be enabled/disabled globally and per platform (`cli`, `web`, `telegram`, …).
 * Polyglot tools: any executable with a `tool.json` manifest speaking JSON over stdio.
 * MCP client tools are namespaced `mcp__<server>__<tool>` and filtered per server.
+* **Gated web reader** (`web_read`, toolset `web`): fetches a page through the SSRF-guarded
+  `safeFetch` and returns the *readable main content* (title + article text, boilerplate stripped by
+  `extractMainContent`), optionally with the page's links. Unlike `web_fetch` (risk `safe`), it is
+  risk-tagged `moderate`, marked `sensitive` and **always requests approval**, so opening an arbitrary
+  URL goes through the same approval/policy/audit path as other sensitive actions; its output is
+  tainted. A headless-browser backend was deliberately deferred — the current implementation is HTTP
+  fetch + HTML extraction.
+* **Skill composition tool** (`skill_compose`, toolset `skills`, risk `moderate`): drives the
+  `SkillComposer` (§5.5) behind `ctx.services.composition`; returns an error (not a throw) when
+  composition is disabled.
 
 ### 5.7 Multi-agent workflows (`core/src/workflows`)
 Templates: `single`, `pipeline`, `blackboard`, `coordinator-worker`, `tree`, `debate`,
-`map-reduce`, `router`, `round-robin`. A workflow spec (YAML/JSON) names a template, agents
-(role, model, toolsets, pattern) and budgets. `WorkflowContext.spawn()` enforces
+`map-reduce`, `router`, `round-robin`, `planner-executor`. A workflow spec (YAML/JSON) names a template,
+agents (role, model, toolsets, pattern) and budgets. `WorkflowContext.spawn()` enforces
 `maxSubagentsPerAgent` (concurrency, default 3), `maxDepth`, and per-run budgets (agents,
 steps, tokens, wall-clock). `delegate_task` uses the same mechanism.
+
+**Planner-executor** (`workflows/templates/planner.ts`, config `workflows.planner`): the fix for
+workflows terminating too early. A planner makes one structured LLM call to decompose the goal into an
+ordered list of between `minSteps` and `maxSteps` steps (aiming for `targetSteps`); an executor agent
+runs each step in turn, fed the accumulated results of prior steps, emitting one `workflow.step` per
+step; on a failed step, if `replanOnFailure` is set, it re-plans the remaining work once
+(`workflow.replan`) and continues, bounded by the hard `maxSteps` cap and the workflow budget; a
+`synthesizer` agent (or a final `complete` call) merges the step outputs into one answer. Planning
+degrades gracefully — when the LLM returns no usable JSON the plan is padded with deterministic generic
+steps so the workflow still runs the configured depth. The planner is **off by default**; step budgets
+come from config and can be overridden per workflow via `spec.options`.
 
 ### 5.8 Gateway (`packages/gateway`)
 One process hosts many `Adapter`s. Inbound messages are normalized to `InboundMessage`
@@ -326,6 +370,43 @@ digest, delivered on a cron (`proactive.digestCron`) by **reusing the Scheduler*
 Wired as `m.proactive`; API `GET /api/proactive`, `POST /api/proactive/events|digest/flush|poll`;
 CLI `mercury proactive`; **Proactive** panel. **Disabled by default.** Config `proactive`.
 
+### 5.17 Learning from runs (`core/src/learning`)
+The agent learns from its own completed runs, driven entirely by the real `runs` table and the
+`EventBus` (no external state). The `LearningService` subscribes to `run.end` and does three things,
+each independently toggleable and all **off at the master switch by default** (`learning.enabled =
+false`):
+* **1a Experience hints** — `hintFor(task, userId?)` finds the most similar past *successful* run(s)
+  by cheap token-overlap (Jaccard) similarity and distils a short "Learned from past runs" hint that
+  the agent injects into the run-start context via its system prompt. No sufficiently similar run →
+  no hint. Config `learning.hints` (`enabled`, `maxExamples`, `minSimilarity`, `lookback`).
+* **1b Auto-tuned routing** — each finished run upserts a `(difficulty bucket, model)` row (runs,
+  successes, cost, tokens) into `learning_route_stats`. As the router's `RouteLearner` (§5.3),
+  `suggest()` returns the model with the best observed success rate for a bucket once it clears
+  `routing.minSamples` and `routing.minSuccessRate` (ties broken by lower average cost); otherwise it
+  returns `null` and the router keeps its economics/decision choice. Config `learning.routing`.
+* **1c Failure playbooks** — recurring error signatures (normalised by `errorSignature`, which strips
+  ids/numbers/quoted paths/hex) are recorded in `learning_playbooks`; when a later similar task
+  succeeds, what worked is stored as that signature's remediation. `playbookForTask` /
+  `playbookForError` surface a remediation (with enough occurrences and task similarity) on the next
+  matching task or failure. Config `learning.playbooks` (`enabled`, `minOccurrences`, `minSimilarity`).
+
+Persistence is **migration #6**: `learning_route_stats` (PK `(bucket, model)`) and `learning_playbooks`
+(unique `signature`), both indexed. Wired as `m.learning` (started/stopped with the runtime, attached
+to the router via `setLearner`); reads are exposed via `GET /api/learning[/stats|/playbooks|/hint]` and
+the CLI `mercury learn stats|hints|playbooks`; the admin **Learning** panel renders status, the routing
+table and the playbooks. Learning must never break a run — recording is wrapped so a failure is
+swallowed. Config `learning`.
+
+### 5.18 Curated MCP presets (`packages/mcp/src/presets.ts`)
+Ready-to-use `McpServerConfig`s for well-known reference MCP servers (`filesystem`, `fetch`, `github`,
+`git`, `sqlite`), each with a safe default policy (`trust: 'untrusted'` so output is spotlighted,
+sampling off) and **no hardcoded secrets** — anything sensitive is a `${ENV_VAR}` placeholder listed in
+`requiredEnv`. `mercury mcp presets` lists them; `mercury mcp enable <preset>` resolves the placeholders
+from the environment (`resolvePreset`, reporting any still-missing env vars) and writes the concrete
+config under `mcp.servers.<name>`, after which the existing MCP client subsystem (§5.6) connects to it
+like any user-defined server. Only the resolved config is ever written — the preset itself never holds a
+secret value.
+
 ---
 
 ## 6. Extension points
@@ -364,8 +445,10 @@ log records security-relevant actions. Governance adds least-privilege time-limi
 sensitive actions, **taint tracking** of untrusted tool output, and a **replayable audit trail**
 (§5.13). **Verification** (§5.14) adds a human-in-the-loop safety net — low-confidence completions are
 escalated for review instead of passing silently; **chaos** fault injection (§5.15) is **off by
-default** and gated by a tool-glob allowlist so it can only run deliberately. Full threat model:
-[SECURITY.md](SECURITY.md).
+default** and gated by a tool-glob allowlist so it can only run deliberately. The gated `web_read`
+tool (§5.6) is `sensitive` and always requires approval, so opening an arbitrary web page is subject
+to the same approval/policy/audit path (and its output is tainted) as any other sensitive action.
+Full threat model: [SECURITY.md](SECURITY.md).
 
 ---
 
@@ -422,6 +505,8 @@ default** and gated by a tool-glob allowlist so it can only run deliberately. Fu
 | `hermes claw migrate` style import | `mercury import-agent` (imports `~/.hermes`) | |
 | CLI extras: user, token, schedule, skills, mcp, serve, help, new | `packages/cli/src/commands/*` | |
 
-Mercury-only additions: Jev decision engine, reasoning patterns, multi-agent workflow templates,
-RBAC/ABAC + API tokens, token budgets, MCP *server*, hash-chained audit log, debug breakpoints and
-run replay, web UI, i18n, polyglot tool protocol.
+Mercury-only additions: Jev decision engine, reasoning patterns, multi-agent workflow templates
+(including the `planner-executor` template), learning from runs (experience hints, auto-tuned routing,
+failure playbooks), skill composition, curated MCP presets, a gated `web_read` tool, RBAC/ABAC + API
+tokens, token budgets, MCP *server*, hash-chained audit log, debug breakpoints and run replay, web UI,
+i18n, polyglot tool protocol.
