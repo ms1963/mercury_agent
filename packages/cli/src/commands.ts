@@ -5,6 +5,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { getPath, installSkills, mercuryHome, resolveVoicePreset, runEvalSuite, scaffold, scaffoldAddin, selectEvals, setConfigValue, voicePresets, type EvalObservation, type ExtensionKind, type VoiceKind } from '@mercury/core';
 import type { Mercury } from '@mercury/runtime';
+import { mcpPreset, mcpPresets, resolvePreset } from '@mercury/mcp';
 import { flag, type Args } from './args.js';
 
 const out = (v: unknown, json?: boolean) => console.log(json || typeof v !== 'string' ? JSON.stringify(v, null, 2) : v);
@@ -432,4 +433,71 @@ export async function permsCmd(m: Mercury, a: Args): Promise<void> {
     );
   }
   throw new Error('usage: mercury perms [list|show <personality>]');
+}
+
+
+
+/**
+ * Learning subsystem: inspect what the agent has learned from its own runs.
+ *   mercury learn stats [bucket]         observed routing success rates per (bucket, model)
+ *   mercury learn hints <task...>        the experience hint that would be injected for a task
+ *   mercury learn playbooks              stored failure playbooks (signature → remediation)
+ */
+export async function learnCmd(m: Mercury, a: Args): Promise<void> {
+  const [, sub = 'stats', ...rest] = a._;
+  const json = !!flag(a, 'json');
+  if (!m.config.learning.enabled) {
+    out('Learning is disabled. Enable it with `learning.enabled: true` in your config to record and use run outcomes.');
+    return;
+  }
+  if (sub === 'stats') {
+    const stats = m.learning.routeStats(rest[0]);
+    if (json) return out(stats, true);
+    if (!stats.length) return out('No routing stats recorded yet.');
+    return out(stats.map((s) => `${s.bucket.padEnd(8)} ${s.model.padEnd(24)} ${s.successes}/${s.runs} (${(s.successRate * 100).toFixed(0)}%)  avg$${s.avgCost.toFixed(4)}`).join('\n'));
+  }
+  if (sub === 'hints') {
+    const task = rest.join(' ');
+    if (!task) throw new Error('usage: mercury learn hints <task...>');
+    const hint = m.learning.hintFor(task, (await m.localPrincipal()).userId);
+    if (json) return out(hint ?? null, true);
+    return out(hint ? hint.text : 'No similar past run — no hint would be injected (graceful empty case).');
+  }
+  if (sub === 'playbooks') {
+    const pbs = m.learning.playbooks(Number(flag(a, 'limit')) || 100);
+    if (json) return out(pbs, true);
+    if (!pbs.length) return out('No failure playbooks recorded yet.');
+    return out(pbs.map((p) => `[${p.occurrences}x] ${p.signature}\n    → ${p.remediation ?? '(no remediation yet)'}`).join('\n'));
+  }
+  throw new Error('usage: mercury learn <stats [bucket] | hints <task...> | playbooks> [--json]');
+}
+
+/**
+ * MCP management incl. curated connector presets.
+ *   mercury mcp status                  connected servers + tool counts (default)
+ *   mercury mcp presets                 list curated presets and the env vars they need
+ *   mercury mcp enable <preset> [--name n] [--connect]   write a preset into mcp.servers
+ */
+export async function mcpCmd(m: Mercury, a: Args): Promise<void> {
+  const sub = a._[1] ?? 'status';
+  if (sub === 'presets') {
+    if (flag(a, 'json')) return out(mcpPresets(), true);
+    return out(mcpPresets().map((p) => `${p.name.padEnd(12)} ${p.description}\n    env: ${p.requiredEnv.join(', ') || '(none)'}  — ${p.notes}`).join('\n'));
+  }
+  if (sub === 'enable') {
+    const presetName = need(a._[2], 'mercury mcp enable <preset> [--name <serverName>] [--connect]');
+    const preset = mcpPreset(presetName);
+    if (!preset) throw new Error(`Unknown preset "${presetName}". Available: ${mcpPresets().map((p) => p.name).join(', ')}`);
+    const resolved = resolvePreset(preset);
+    const serverName = flag(a, 'name') || preset.name;
+    setConfigValue(`mcp.servers.${serverName}`, resolved.config, m.configFile);
+    const lines = [`Enabled MCP preset "${preset.name}" as server "${serverName}" (saved to config).`];
+    if (resolved.missingEnv.length) lines.push(`⚠ Set these env vars before use (placeholders left in config): ${resolved.missingEnv.join(', ')}`);
+    if (flag(a, 'connect') && !resolved.missingEnv.length) {
+      const status = await m.mcp.connect(serverName, resolved.config);
+      lines.push(status.connected ? `Connected: ${status.tools.length} tool(s)` : `Connection failed: ${status.error ?? 'unknown error'}`);
+    }
+    return out(lines.join('\n'));
+  }
+  return out(m.mcp.status(), true);
 }

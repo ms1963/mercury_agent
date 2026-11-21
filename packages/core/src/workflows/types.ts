@@ -51,6 +51,14 @@ export interface WorkflowResult {
   steps: WorkflowStep[];
 }
 
+/** Default step budget for the planner-executor template (from config.workflows.planner). */
+export interface PlannerDefaults {
+  minSteps: number;
+  targetSteps: number;
+  maxSteps: number;
+  replanOnFailure: boolean;
+}
+
 export interface WorkflowContext {
   spec: WorkflowSpec;
   input: string;
@@ -59,6 +67,8 @@ export interface WorkflowContext {
   signal: AbortSignal;
   judgment: Judgment;
   blackboard: Blackboard;
+  /** Planner-executor step budget defaults (from config); overridable via spec.options. */
+  planner?: PlannerDefaults;
   /** Run one agent of the spec as a subagent (budget/depth enforced). */
   runAgent(agent: AgentSpec, task: string): Promise<RunResult>;
   /** Run several agent tasks concurrently (limited to maxSubagents). */

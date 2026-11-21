@@ -573,6 +573,97 @@ export const ConfigSchema = z.object({
     })
     .prefault({}),
 
+  /**
+   * Learning from runs. The agent mines its own run history to (a) retrieve a concise hint
+   * from the most similar PAST SUCCESSFUL run, (b) auto-tune routing from the ACTUAL observed
+   * success/cost per difficulty-bucket + model, and (c) build failure playbooks (a recurring
+   * error signature → the remediation that later worked). Master switch OFF by default
+   * (fully backward-compatible): nothing is recorded, injected or adjusted until enabled.
+   */
+  learning: z
+    .object({
+      enabled: z.boolean().default(false),
+      /** 1a — inject a hint from the most similar past successful run into the run-start context. */
+      hints: z
+        .object({
+          enabled: z.boolean().default(true),
+          /** How many past-success examples to summarise into the hint. */
+          maxExamples: z.number().int().positive().default(1),
+          /** Minimum token-overlap similarity (0..1) for a past run to count as "similar". */
+          minSimilarity: z.number().min(0).max(1).default(0.15),
+          /** Candidate past runs to consider (most recent first). */
+          lookback: z.number().int().positive().default(50),
+        })
+        .prefault({}),
+      /** 1b — adjust routing from observed outcomes per (difficulty bucket, model). */
+      routing: z
+        .object({
+          enabled: z.boolean().default(true),
+          /** Minimum recorded runs for a (bucket, model) pair before its stats influence routing. */
+          minSamples: z.number().int().positive().default(5),
+          /** A learned model must have at least this observed success rate to be preferred. */
+          minSuccessRate: z.number().min(0).max(1).default(0.5),
+        })
+        .prefault({}),
+      /** 1c — failure playbooks: recurring error signatures → remediation that later succeeded. */
+      playbooks: z
+        .object({
+          enabled: z.boolean().default(true),
+          /** Occurrences of an error signature before its playbook is surfaced. */
+          minOccurrences: z.number().int().positive().default(2),
+          /** Minimum task similarity (0..1) to surface a playbook for a new task. */
+          minSimilarity: z.number().min(0).max(1).default(0.2),
+        })
+        .prefault({}),
+    })
+    .prefault({}),
+
+  /**
+   * Skill/tool composition: a composition can invoke other skills and tools, with intermediate
+   * results cached (keyed on skill + inputs, TTL + size bounded) and a hard recursion guard
+   * (depth limit + cycle detection). Additive — only runs when the `skill_compose` tool is used.
+   */
+  composition: z
+    .object({
+      enabled: z.boolean().default(true),
+      /** Hard maximum nesting depth of sub-skill invocations (cycle/runaway guard). */
+      maxDepth: z.number().int().positive().default(5),
+      /** Maximum steps a single composition may run. */
+      maxSteps: z.number().int().positive().default(40),
+      cache: z
+        .object({
+          enabled: z.boolean().default(true),
+          ttlMs: z.number().int().positive().default(300_000),
+          maxSize: z.number().int().positive().default(500),
+        })
+        .prefault({}),
+    })
+    .prefault({}),
+
+  /**
+   * Workflow planning. The planner-executor template decomposes a task into several steps and
+   * executes them with a step budget and a re-plan-on-failure path, so workflows run deeper than
+   * a single shot. Planner is OFF by default (backward-compatible); existing templates are
+   * unaffected. Hard caps bound the loop; per-task/workflow budgets still apply.
+   */
+  workflows: z
+    .object({
+      planner: z
+        .object({
+          enabled: z.boolean().default(false),
+          /** Minimum number of steps a planned workflow must attempt. */
+          minSteps: z.number().int().positive().default(3),
+          /** Target number of steps the planner aims for. */
+          targetSteps: z.number().int().positive().default(5),
+          /** Hard cap on steps (runaway guard), also bounded by the workflow budget. */
+          maxSteps: z.number().int().positive().default(12),
+          /** Re-plan the remaining steps when a step fails instead of stopping. */
+          replanOnFailure: z.boolean().default(true),
+        })
+        .prefault({}),
+    })
+    .prefault({}),
+
   plugins: z.array(z.string()).default([]),
   hooks: z
     .array(z.object({ event: z.string(), type: z.enum(['log', 'webhook']).default('log'), url: z.string().optional() }))

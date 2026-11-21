@@ -265,6 +265,17 @@ export class Agent {
       run.depth === 0 && d.config.agent.nudgeEvery > 0 && turns % d.config.agent.nudgeEvery === 0
         ? '## Reminder\nBefore answering, consider whether anything from this conversation should be saved (the memory tool for durable facts/preferences, skill_manage for a reusable procedure).'
         : '';
+    // Experience retrieval (learning): inject a concise hint from the most similar past
+    // successful run (+ any matching failure playbook). Opt-in and depth-0 only; no-op when
+    // learning is disabled or no similar prior run exists.
+    let learnedHint = '';
+    if (run.depth === 0 && d.config.learning.enabled && d.config.learning.hints.enabled) {
+      try {
+        learnedHint = d.services.learning?.hintFor(opts.input, run.principal.userId)?.text ?? '';
+      } catch {
+        learnedHint = '';
+      }
+    }
     return buildSystemPrompt({
       persona,
       canary: d.guardrails.canary,
@@ -274,7 +285,7 @@ export class Agent {
       contextFiles: ctxFiles.instructions,
       skillsIndex: d.skills.index(run.platform),
       memory,
-      extra: [opts.systemExtra, nudge].filter(Boolean).join('\n\n'),
+      extra: [opts.systemExtra, learnedHint, nudge].filter(Boolean).join('\n\n'),
       depth: run.depth,
       textOnlyPlatform: !['cli', 'web'].includes(run.platform),
     });

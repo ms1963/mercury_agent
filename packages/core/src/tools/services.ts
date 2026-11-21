@@ -16,6 +16,8 @@ import type { Scheduler } from '../scheduler/scheduler.js';
 import type { Spawner } from '../workflows/spawner.js';
 import type { WorkflowEngine } from '../workflows/engine.js';
 import type { WikiService } from '../wiki/service.js';
+import type { LearningService } from '../learning/service.js';
+import type { SkillComposer } from '../skills/composer.js';
 import type { ToolRegistry } from './registry.js';
 import type { ToolExecutor } from './executor.js';
 import type { Attachment } from '../types/messages.js';
@@ -42,6 +44,10 @@ export interface ToolServices {
   workflows?: WorkflowEngine;
   /** LLM-Wiki subsystem (ingest/query/lint). Present when `wiki.enabled`. */
   wiki?: WikiService;
+  /** Learning subsystem (experience hints, auto-tuned routing, failure playbooks). */
+  learning?: LearningService;
+  /** Skill/tool composition executor (recursion-guarded, cached). */
+  composition?: SkillComposer;
   deliver?: DeliverFn;
   /** Extension slot for plugins and tool packages (terminal/browser backends...). */
   extra: Record<string, unknown>;

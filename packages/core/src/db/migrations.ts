@@ -138,4 +138,19 @@ CREATE TABLE proactive_events (
 );
 CREATE INDEX idx_proactive_status ON proactive_events(status, created_at);
 `,
+  /* 6: learning from runs — auto-tuned routing stats + failure playbooks (Feature: learning) */ `
+CREATE TABLE learning_route_stats (
+  bucket TEXT NOT NULL, model TEXT NOT NULL, lane TEXT,
+  runs INTEGER NOT NULL DEFAULT 0, successes INTEGER NOT NULL DEFAULT 0,
+  cost_sum REAL NOT NULL DEFAULT 0, tokens_sum INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL, PRIMARY KEY (bucket, model)
+);
+CREATE INDEX idx_learning_route_bucket ON learning_route_stats(bucket);
+CREATE TABLE learning_playbooks (
+  id TEXT PRIMARY KEY, signature TEXT UNIQUE NOT NULL, error_sample TEXT, task_sample TEXT,
+  remediation TEXT, occurrences INTEGER NOT NULL DEFAULT 1, successes INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE INDEX idx_learning_playbooks_updated ON learning_playbooks(updated_at);
+`,
 ];

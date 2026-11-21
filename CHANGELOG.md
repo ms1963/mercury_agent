@@ -7,6 +7,40 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-11-21
+
+### Added
+- **Learning from runs** (`packages/core/src/learning/`, off by default under `learning.enabled`).
+  - Experience hints: at run start the agent is given a short hint distilled from the most similar
+    past *successful* run (graceful empty when nothing is similar enough).
+  - Auto-tuned routing: observed success rates per (difficulty bucket, model) are fed back to the
+    model router, which prefers a learned model only once there are enough samples and otherwise
+    falls back to `router.economics`. Learning-adjusted decisions are flagged `adjustedByLearning`.
+  - Failure playbooks: recurring error signatures and the remediation that later worked are
+    persisted (new `learning_route_stats` and `learning_playbooks` tables, migration #6).
+  - CLI `mercury learn <stats|hints|playbooks>`, read endpoints under `/api/learning*` (auth-gated),
+    and an admin **Learning** panel in the web UI (EN + DE i18n).
+- **Skill composition** (`packages/core/src/skills/composer.ts`): a skill can invoke other skills
+  and tools as a small cached pipeline, with a hard depth limit and cycle detection (recursion
+  guard) and a per-composition step budget. Exposed as the `skill_compose` tool. Config under
+  `composition` (on by default; bounded cache).
+- **Curated MCP presets** (`packages/mcp/src/presets.ts`): `filesystem`, `fetch`, `github`, `git`,
+  `sqlite`, using env-var placeholders (no secrets). Discover/enable via
+  `mercury mcp <presets|status|enable>`.
+- **Gated web reader** (`web_read`): real HTTP fetch + HTML-to-main-content extraction behind the
+  existing SSRF guard and approval/policy/audit path; risk `moderate`, sensitive, untrusted output.
+- **Planner-executor workflow** (`planner-executor`): decomposes a task into several steps, executes
+  them in order feeding results forward, re-plans once on failure, then synthesises — with
+  configurable `minSteps`/`targetSteps`/`maxSteps` and a hard cap (config `workflows.planner`).
+  Emits `workflow.step` per step so progress is observable. Addresses workflows terminating too
+  quickly.
+
+### Changed
+- Help system: added a `learning` topic and documented the planner-executor template, MCP presets
+  and the `web_read`/`skill_compose` tools, with matching German translations for the new/updated
+  topics (and the previously-missing German UI nav/panel strings).
+- Bumped all packages to 1.1.1.
+
 ## [1.0.1] - 2026-11-20
 
 ### Fixed

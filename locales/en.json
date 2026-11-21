@@ -35,6 +35,7 @@
     "account": "Account & tokens",
     "verification": "Verification",
     "reliability": "Reliability",
+    "learning": "Learning",
     "proactive": "Proactive"
   },
   "chat": {
@@ -264,6 +265,27 @@
     "match": "match",
     "regression": "regression",
     "replay": "Replay"
+  },
+  "learning": {
+    "title": "Learning",
+    "unavailable": "learning subsystem unavailable",
+    "status": "Status",
+    "intro": "Mercury learns from completed runs: it injects hints from similar past successes, tunes model routing per difficulty bucket from observed success rates, and records failure playbooks. Everything is off by default and falls back gracefully when there is not enough data.",
+    "on": "learning ON",
+    "off": "off (safe)",
+    "routeStats": "Auto-tuned routing (per difficulty bucket / model)",
+    "routeIntro": "Observed success rates per difficulty bucket and model, fed back to the router. The router prefers a model only once there are enough samples; otherwise it falls back to economics.",
+    "bucket": "Bucket",
+    "model": "Model",
+    "lane": "Lane",
+    "avgCost": "Avg cost $",
+    "playbooks": "Failure playbooks",
+    "playbookIntro": "Recurring error signatures and the remediation that later worked, so the agent can avoid repeating known failures.",
+    "signature": "Signature",
+    "error": "Error",
+    "remediation": "Remediation",
+    "occurrences": "Seen",
+    "resolved": "Resolved"
   },
   "proactive": {
     "title": "Proactive",

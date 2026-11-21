@@ -53,6 +53,8 @@ import {
   SYSTEM_PRINCIPAL,
   Scheduler,
   SkillRegistry,
+  SkillComposer,
+  LearningService,
   Spawner,
   ToolExecutor,
   ToolRegistry,
@@ -179,6 +181,10 @@ export class Mercury {
   readonly approvals: ApprovalService;
   readonly memory: MemoryManager;
   readonly skills: SkillRegistry;
+  /** Skill composition: run skills+tools as a cached, recursion-guarded pipeline (Area 2a). */
+  readonly composer: SkillComposer;
+  /** Learning: experience hints, auto-tuned routing, failure playbooks from run history. */
+  readonly learning: LearningService;
   readonly checkpoints: CheckpointManager;
   readonly voice: VoiceService;
   readonly attachments: AttachmentStore;
@@ -273,7 +279,10 @@ export class Mercury {
     );
     this.decisions = new DecisionEngine([], this.bus, this.db);
     this.judgment = new Judgment(this.decisions, config);
-    this.router = new ModelRouter(config, this.providers, this.judgment);
+    // Learning subsystem: records run outcomes and feeds observed success rates back to the
+    // router. Constructed before the router so it can be wired in as the route learner.
+    this.learning = new LearningService(config, this.db, this.bus);
+    this.router = new ModelRouter(config, this.providers, this.judgment, this.learning);
     this.llm = new LLMService(config, this.providers, this.router, this.budgets, this.policy, this.bus, this.hooks, this.taskBudgets);
     this.decisionChain = decisionProviders(config, this.llm, this.providers.list().some((p) => p.id !== 'mock'));
     this.decisions.setProviders(this.decisionChain);
@@ -291,6 +300,8 @@ export class Mercury {
         { role: 'user', content: `Query: ${query}\n\n${text}` },
       ])).content;
     this.skills = new SkillRegistry(this.db, { bundled: join(this.assets, 'skills'), extra: config.skills.dirs, user: join(dataDir, 'skills') });
+    // Skill composition: runs skills+tools as a cached, recursion-guarded pipeline.
+    this.composer = new SkillComposer(config, this.skills);
     this.checkpoints = new CheckpointManager(dataDir);
     this.voice = new VoiceService(config);
     this.attachments = new AttachmentStore(config, this.db, this.voice, this.hooks);
@@ -342,7 +353,8 @@ export class Mercury {
     this.services = {
       config, logger: this.logger, llm: this.llm, memory: this.memory, skills: this.skills, decisions: this.decisions,
       judgment: this.judgment, jail: this.jail, checkpoints: this.checkpoints, attachments: this.attachments,
-      voice: this.voice, tools: this.tools, executor: this.executor, wiki: config.wiki.enabled ? this.wiki : undefined, extra: {},
+      voice: this.voice, tools: this.tools, executor: this.executor, wiki: config.wiki.enabled ? this.wiki : undefined,
+      learning: this.learning, composition: this.composer, extra: {},
     };
     this.agent = new Agent({
       config, db: this.db, bus: this.bus, hooks: this.hooks, llm: this.llm, tools: this.tools, executor: this.executor,
@@ -352,7 +364,7 @@ export class Mercury {
     });
     this.commands = new CommandProcessor(this.agent, this.help, this.checkpoints, this.approvals, this.reflector);
     this.spawner = new Spawner(config, this.agent);
-    this.workflows = new WorkflowEngine({ bundled: join(this.assets, 'workflows'), user: join(dataDir, 'workflows') }, this.spawner, this.judgment, this.llm, this.memory.blackboard, this.db, this.bus);
+    this.workflows = new WorkflowEngine({ bundled: join(this.assets, 'workflows'), user: join(dataDir, 'workflows') }, this.spawner, this.judgment, this.llm, this.memory.blackboard, this.db, this.bus, config);
     this.scheduler = new Scheduler(this.db, (s, signal) => this.runSchedule(s.userId, s.task, signal), this.bus, { tickMs: config.scheduler.tickMs, defaultRetries: config.scheduler.maxRetries });
     this.gateway = new Gateway({
       config, db: this.db, bus: this.bus, logger: this.logger, users: this.users, pairing: this.pairing, approvals: this.approvals,
@@ -464,6 +476,11 @@ export class Mercury {
     this.cleanups.push(registerPolyglotTools(this.tools, polyDirs, { onError: (e) => this.logger.warn('polyglot tool', { error: e }) }));
     await this.loadPlugins();
     if (opts.services === false) return;
+    // Learning: subscribe to run.end so outcomes are recorded automatically (off by default).
+    if (config.learning.enabled) {
+      this.learning.start();
+      this.cleanups.push(() => this.learning.stop());
+    }
     if (config.scheduler.enabled) this.scheduler.start();
     if (config.proactive.enabled) {
       this.proactive.start();

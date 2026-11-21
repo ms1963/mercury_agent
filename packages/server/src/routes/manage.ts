@@ -378,6 +378,34 @@ export function registerManageRoutes(app: FastifyInstance, { m, auth, sse }: Ctx
     return m.proactive.poll();
   });
 
+  // ---- learning: experience hints, auto-tuned routing stats, failure playbooks ------------------
+  app.get('/api/learning', async (req) => {
+    auth(req, 'audit.read');
+    const lc = m.config.learning;
+    return {
+      enabled: lc.enabled,
+      config: { hints: lc.hints.enabled, routing: lc.routing.enabled, playbooks: lc.playbooks.enabled },
+      routeStats: m.learning.routeStats(),
+      playbooks: m.learning.playbooks(100),
+    };
+  });
+  app.get('/api/learning/stats', async (req) => {
+    auth(req, 'audit.read');
+    const bucket = (req.query as Body).bucket as string | undefined;
+    return { stats: m.learning.routeStats(bucket) };
+  });
+  app.get('/api/learning/playbooks', async (req) => {
+    auth(req, 'audit.read');
+    const limit = (req.query as Body).limit;
+    return { playbooks: m.learning.playbooks(limit === undefined ? 100 : Number(limit)) };
+  });
+  app.get('/api/learning/hint', async (req) => {
+    const p = auth(req);
+    const task = (req.query as Body).task as string | undefined;
+    if (!task) throw new HttpError(400, 'task is required');
+    return { hint: m.learning.hintFor(task, p.userId) ?? null };
+  });
+
   // ---- help, i18n, settings ---------------------------------------------------------
   app.get('/api/help', async (req) => {
     const q = req.query as Body;

@@ -15,6 +15,7 @@ import { agentTools } from './builtin/agents.js';
 import { mediaTools } from './builtin/media.js';
 import { decisionTools } from './builtin/decisions.js';
 import { wikiTools } from './builtin/wiki.js';
+import { composeTools } from './builtin/compose.js';
 
 /** Every built-in tool, grouped by toolset via `tool.toolset`. */
 export const BUILTIN_TOOLS: AnyTool[] = [
@@ -30,6 +31,7 @@ export const BUILTIN_TOOLS: AnyTool[] = [
   ...mediaTools,
   ...decisionTools,
   ...wikiTools,
+  ...composeTools,
 ];
 
 export function registerBuiltinTools(registry: ToolRegistry): number {

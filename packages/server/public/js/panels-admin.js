@@ -299,6 +299,44 @@ export const renderReliability = (view) => panel(view, t('reliability.title', 'R
 });
 
 /**
+ * Learning from runs: experience hints distilled from past successful runs, auto-tuned routing
+ * stats fed back to the router per (difficulty bucket, model), and failure playbooks. Read-only
+ * — the learning service tunes itself from run history. OFF by default (config.learning.enabled).
+ */
+export const renderLearning = (view) => panel(view, t('learning.title', 'Learning'), async () => {
+  const data = await api('/api/learning').catch(() => null);
+  if (!data) return card(null, h('p.muted', {}, t('learning.unavailable', 'learning subsystem unavailable')));
+
+  const statusCard = card(t('learning.status', 'Status'),
+    h('p.small.muted', {}, t('learning.intro', 'Mercury learns from completed runs: it injects hints from similar past successes, tunes model routing per difficulty bucket from observed success rates, and records failure playbooks. Everything is off by default and falls back gracefully when there is not enough data.')),
+    h('p', {}, t('common.status') + ': ', badge(data.enabled, t('learning.on', 'learning ON'), t('learning.off', 'off (safe)')),
+      h('span.small', {}, ` · hints ${data.config.hints ? 'on' : 'off'} · routing ${data.config.routing ? 'on' : 'off'} · playbooks ${data.config.playbooks ? 'on' : 'off'}`)));
+
+  const statsCard = card(t('learning.routeStats', 'Auto-tuned routing (per difficulty bucket / model)'),
+    h('p.small.muted', {}, t('learning.routeIntro', 'Observed success rates per difficulty bucket and model, fed back to the router. The router prefers a model only once there are enough samples; otherwise it falls back to economics.')),
+    table(data.routeStats, [
+      [t('learning.bucket', 'Bucket'), (x) => h('code', {}, x.bucket)],
+      [t('learning.model', 'Model'), (x) => h('code', {}, x.model)],
+      [t('learning.lane', 'Lane'), (x) => h('span.small', {}, x.lane || '—')],
+      [t('reliability.runs', 'Runs'), (x) => x.runs],
+      [t('reliability.successRate', 'Success rate'), (x) => badge(x.successRate >= 0.5, `${Math.round(x.successRate * 100)}%`, `${Math.round(x.successRate * 100)}%`)],
+      [t('learning.avgCost', 'Avg cost $'), (x) => Number(x.avgCost).toFixed(5)],
+    ]));
+
+  const playbookCard = card(t('learning.playbooks', 'Failure playbooks'),
+    h('p.small.muted', {}, t('learning.playbookIntro', 'Recurring error signatures and the remediation that later worked, so the agent can avoid repeating known failures.')),
+    table(data.playbooks, [
+      [t('learning.signature', 'Signature'), (x) => h('code.small', {}, x.signature)],
+      [t('learning.error', 'Error'), (x) => h('span.small', {}, (x.errorSample || '').slice(0, 70))],
+      [t('learning.remediation', 'Remediation'), (x) => h('span.small', {}, (x.remediation || '—').slice(0, 90))],
+      [t('learning.occurrences', 'Seen'), (x) => x.occurrences],
+      [t('learning.resolved', 'Resolved'), (x) => x.successes],
+    ]));
+
+  return [statusCard, statsCard, playbookCard];
+});
+
+/**
  * Proactive (but not annoying): pending/reacted events, the deferred digest queue and the
  * notification rules that map events to actions and interrupt-vs-defer routing.
  */

@@ -50,6 +50,23 @@ export function htmlToText(html: string): string {
     .trim();
 }
 
+/**
+ * Extract the readable MAIN content of an HTML page: the page title plus the text of the most
+ * content-rich region (prefers <main>/<article>, else the <body>), with boilerplate (nav, header,
+ * footer, aside, forms) removed. Returns plain text via {@link htmlToText}.
+ */
+export function extractMainContent(html: string): { title: string; text: string } {
+  const title = (/<title[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1] ?? /<h1[^>]*>([\s\S]*?)<\/h1>/i.exec(html)?.[1] ?? '').trim();
+  // Strip obvious boilerplate regions before picking the main region.
+  const cleaned = html.replace(/<(nav|header|footer|aside|form)\b[\s\S]*?<\/\1>/gi, ' ');
+  const region =
+    /<main\b[^>]*>([\s\S]*?)<\/main>/i.exec(cleaned)?.[1] ??
+    /<article\b[^>]*>([\s\S]*?)<\/article>/i.exec(cleaned)?.[1] ??
+    /<body\b[^>]*>([\s\S]*?)<\/body>/i.exec(cleaned)?.[1] ??
+    cleaned;
+  return { title: htmlToText(title), text: htmlToText(region) };
+}
+
 /** Extract `[text](href)` style links from HTML. */
 export function extractLinks(html: string, base: string): Array<{ text: string; href: string }> {
   const out: Array<{ text: string; href: string }> = [];

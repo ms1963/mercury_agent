@@ -32,6 +32,30 @@ export interface RouteDecision {
   lane?: ModelProfile['lane'];
   /** Estimated quality need (0..1) for the task, from signals/heuristics. */
   qualityNeed?: number;
+  /** True when the final choice was adjusted by learned, observed-outcome statistics. */
+  adjustedByLearning?: boolean;
+}
+
+/** A learned-routing suggestion (model + human-readable reason). */
+export interface RouteSuggestion {
+  model: string;
+  reason: string;
+}
+
+/**
+ * Optional learned-routing hook. An implementation (e.g. LearningService) returns the model
+ * with the best OBSERVED success rate for a difficulty bucket among the given candidates, or
+ * null when there is not enough data — in which case the router keeps its own choice.
+ */
+export interface RouteLearner {
+  suggest(bucket: string, candidateModels: string[]): RouteSuggestion | null;
+}
+
+/** Coarse difficulty bucket for a quality-need estimate (0..1). Shared with the learning subsystem. */
+export function routeBucket(need: number): string {
+  if (need <= 0.35) return 'low';
+  if (need <= 0.6) return 'medium';
+  return 'high';
 }
 
 /**
@@ -106,7 +130,14 @@ export class ModelRouter {
     private config: MercuryConfig,
     private registry: ProviderRegistry,
     private judgment?: Judgment,
+    /** Optional learned-routing hook (observed-outcome stats); null → economics/weighted only. */
+    private learner?: RouteLearner,
   ) {}
+
+  /** Attach a learned-routing hook after construction (e.g. once the learning service exists). */
+  setLearner(learner: RouteLearner | undefined): void {
+    this.learner = learner;
+  }
 
   candidates(req: RouteRequest): ModelProfile[] {
     const needs = req.needs ?? {};
@@ -187,9 +218,23 @@ export class ModelRouter {
         reason = `decision engine (confidence ${pick.confidence?.toFixed(2)})`;
       }
     }
+
+    // Auto-tuned routing: prefer the model with the best OBSERVED success rate for this
+    // difficulty bucket among the real candidates. Falls back to the choice above when the
+    // learner has insufficient data (graceful, backward-compatible).
+    let adjustedByLearning = false;
+    if (this.learner) {
+      const suggestion = this.learner.suggest(routeBucket(need), realPool.map((p) => p.id));
+      if (suggestion && realPool.some((p) => p.id === suggestion.model)) {
+        chosen = suggestion.model;
+        reason = suggestion.reason;
+        adjustedByLearning = true;
+      }
+    }
+
     const fallbacks = [...scored.map((s) => s.model).filter((m) => m !== chosen), ...fallbackChain.filter((m) => m !== chosen)];
     const lane = pool.find((p) => p.id === chosen)?.lane;
-    return { model: chosen, reason, fallbacks: [...new Set(fallbacks)], scores: scored, lane, qualityNeed: need };
+    return { model: chosen, reason, fallbacks: [...new Set(fallbacks)], scores: scored, lane, qualityNeed: need, adjustedByLearning };
   }
 
   private isUsable(modelId: string, req: RouteRequest): boolean {

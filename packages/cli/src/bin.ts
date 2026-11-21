@@ -21,6 +21,7 @@ Usage: mercury <command> [options]
   model [provider/model]    Show or set the default model
   tools [list|toolsets|enable|disable <name>]
   skills [list|view|install <src>]
+  learn [stats [bucket]|hints <task>|playbooks]   What the agent learned from its runs (routing, hints, playbooks)
   schedule [list|add|pause|resume|delete|run]   e.g. schedule add --when "every day at 9am" Summarise news
   workflow [list|run <name> <input>]
   wiki [init|status|ingest <path|->|query "<q>"|lint [--delta] [--no-llm]]
@@ -31,7 +32,8 @@ Usage: mercury <command> [options]
                             Swap the STT/TTS stack in one step (openai, speaches,
                             whisper, openedai, kokoro, piper, edge-tts)
   gateway [status|start|pending|pair <CODE>]
-  mcp [list|serve]          List MCP client connections, or serve Mercury over MCP stdio
+  mcp [status|serve|presets|enable <preset> [--name n] [--connect]]
+                            MCP connections, serve Mercury over MCP stdio, or enable a curated preset
   user [list|add|passwd|role|delete]
   token [list|create <name> --scopes chat,mcp|revoke <id>]
   audit [list|verify] [--actor id] [--action token] [--since ISO] [--limit n] [--json]
@@ -126,6 +128,8 @@ async function main(argv: string[]): Promise<void> {
         return await cmd.toolsCmd(m, a);
       case 'skills':
         return await cmd.skillsCmd(m, a);
+      case 'learn':
+        return await cmd.learnCmd(m, a);
       case 'schedule':
         return await cmd.scheduleCmd(m, a);
       case 'wiki':
@@ -166,7 +170,7 @@ async function main(argv: string[]): Promise<void> {
           await serveStdio(m.mcpBackend(), principal);
           await new Promise(() => undefined);
         }
-        return console.log(JSON.stringify(m.mcp.status(), null, 2));
+        return await cmd.mcpCmd(m, a);
       case 'replay':
         for (const e of m.recorder.replay(a._[1] ?? '')) console.log(`${e.ts} ${e.type.padEnd(16)} ${JSON.stringify(e.data).slice(0, 160)}`);
         return;

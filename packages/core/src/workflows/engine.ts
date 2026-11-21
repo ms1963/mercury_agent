@@ -16,9 +16,11 @@ import type { Spawner, ParentInfo } from './spawner.js';
 import { blackboardTemplate, debateTemplate } from './templates/collaborative.js';
 import { coordinatorWorkerTemplate, mapReduceTemplate, routerTemplate, treeTemplate } from './templates/hierarchical.js';
 import { pipelineTemplate, roundRobinTemplate, singleTemplate } from './templates/linear.js';
+import { plannerExecutorTemplate } from './templates/planner.js';
 import type { WorkflowContext, WorkflowResult, WorkflowSpec, WorkflowStep, WorkflowTemplate } from './types.js';
+import type { MercuryConfig } from '../config/schema.js';
 
-export const BUILTIN_TEMPLATES: WorkflowTemplate[] = [singleTemplate, pipelineTemplate, roundRobinTemplate, coordinatorWorkerTemplate, treeTemplate, mapReduceTemplate, routerTemplate, blackboardTemplate, debateTemplate];
+export const BUILTIN_TEMPLATES: WorkflowTemplate[] = [singleTemplate, pipelineTemplate, roundRobinTemplate, coordinatorWorkerTemplate, treeTemplate, mapReduceTemplate, routerTemplate, blackboardTemplate, debateTemplate, plannerExecutorTemplate];
 
 export interface WorkflowRunOptions {
   principal: Principal;
@@ -39,6 +41,7 @@ export class WorkflowEngine {
     private blackboard: Blackboard,
     private db: Db,
     private bus: EventBus,
+    private config?: MercuryConfig,
   ) {
     for (const t of BUILTIN_TEMPLATES) this.registerTemplate(t);
     mkdirSync(dirs.user, { recursive: true });
@@ -108,6 +111,7 @@ export class WorkflowEngine {
       signal: controller.signal,
       judgment: this.judgment,
       blackboard: this.blackboard,
+      planner: this.config ? { ...this.config.workflows.planner } : undefined,
       steps,
       option: <T>(key: string, fallback: T) => (spec.options?.[key] as T | undefined) ?? fallback,
       emit: (type, data) => this.bus.emit({ type, runId, data }),
