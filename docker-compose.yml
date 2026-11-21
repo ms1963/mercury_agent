@@ -12,5 +12,24 @@ services:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
     volumes:
       - mercury-data:/data
+
+  # Voice-enabled image (offline whisper/piper baked in). Opt-in:
+  #   docker compose --profile voice up -d --build mercury-voice
+  mercury-voice:
+    profiles: ["voice"]
+    build:
+      context: .
+      dockerfile: Dockerfile.voice
+    image: mercury-agent:voice
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+    volumes:
+      - mercury-data:/data
+
 volumes:
   mercury-data:

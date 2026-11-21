@@ -44,6 +44,14 @@ Or run `./install.sh` (builds and `npm link`s a global `mercury` binary), or use
 docker compose up -d        # data persists in the mercury-data volume
 ```
 
+The default image is slim and does **not** bundle the offline voice engines. For in-container
+offline STT/TTS, build the voice-enabled image (ships `ffmpeg` + `whisper` + `piper`; larger, as
+it includes CPU PyTorch):
+
+```bash
+docker compose --profile voice up -d --build mercury-voice   # or: docker build -f Dockerfile.voice -t mercury-agent:voice .
+```
+
 Open the web UI. **The first account you register becomes admin.** Before Mercury can answer,
 configure **one** LLM provider (see [docs/PROVIDERS.md](docs/PROVIDERS.md)) — for example:
 
@@ -199,7 +207,7 @@ npx eslint .       # lint
 ```
 
 Configuration lives in `$MERCURY_HOME/config.yaml` (default `~/.mercury`). Use
-`mercury config get|set <key>` to manage it. Deployment files: `Dockerfile`, `docker-compose.yml`,
+`mercury config get|set <key>` to manage it. Deployment files: `Dockerfile`, `Dockerfile.voice` (offline voice baked in), `docker-compose.yml`,
 `deploy/mercury.service` (systemd), `install.sh`.
 
 ## License
