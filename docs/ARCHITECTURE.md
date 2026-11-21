@@ -253,8 +253,12 @@ the tool (or an explicit caller) is used.
   `extractMainContent`), optionally with the page's links. Unlike `web_fetch` (risk `safe`), it is
   risk-tagged `moderate`, marked `sensitive` and **always requests approval**, so opening an arbitrary
   URL goes through the same approval/policy/audit path as other sensitive actions; its output is
-  tainted. A headless-browser backend was deliberately deferred — the current implementation is HTTP
-  fetch + HTML extraction.
+  tainted. It has two interchangeable backends behind the one `extractMainContent` pipeline: the
+  default **HTTP** backend (one `safeFetch`, no JavaScript) and an opt-in **headless-browser** backend
+  (`render=true`, or `tools.web.render`) that renders the live DOM through `tools.browser.backend`
+  (playwright/cdp) for client-rendered pages, then extracts from it. The entry URL is SSRF-validated
+  with `assertSafeUrl` before any real-browser navigation, and when no browser backend is installed the
+  tool transparently degrades to the HTTP path (`renderPage` in `browser/backends.ts`).
 * **Skill composition tool** (`skill_compose`, toolset `skills`, risk `moderate`): drives the
   `SkillComposer` (§5.5) behind `ctx.services.composition`; returns an error (not a throw) when
   composition is disabled.

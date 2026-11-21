@@ -16,6 +16,9 @@ or `tools.polyglotDirs` becomes a tool. Arguments arrive as JSON on stdin; print
 header, footer, forms). It is risk `moderate`, marked sensitive, and runs behind the existing
 approval/policy engine and the SSRF guard — it refuses private/loopback addresses and anything
 policy denies, exactly like other sensitive network tools. Its output is treated as untrusted.
+By default it uses plain HTTP; pass `render=true` (or set `tools.web.render: true`) to render the
+page in a headless browser first — useful for JavaScript-heavy pages — after which the same
+extraction runs on the live DOM. When no browser backend is installed it falls back to HTTP.
 
 **Skill composition (`skill_compose`)**: runs a skill together with other skills and tools as a
 small composed plan, with results cached (TTL) and a recursion guard. Depth and step budgets come

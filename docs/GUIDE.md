@@ -972,10 +972,14 @@ In chat, `/tools` lists what is currently available. Over the API: `GET /api/too
 - **`web_*`** go through `safeFetch` (SSRF guard + size cap); search provider is `tools.web.searchProvider`
   (`duckduckgo` default — works with no key; `searxng` requires `searxngUrl`; `brave` requires
   `BRAVE_API_KEY`). The `mock` search provider and the mock-weather branch have been removed.
-- **`web_read`** (1.1.1) fetches a page via `safeFetch` and runs `extractMainContent` to return just the
-  readable article text (stripping nav/ads/boilerplate). It is `moderate` risk, `sensitive` and marked
-  `untrustedOutput`, so it **always needs approval** and its output stays spotlighted. The backend is
-  HTTP + HTML extraction only; a headless-browser backend was deliberately deferred for 1.1.1.
+- **`web_read`** (1.1.1) runs `extractMainContent` to return just the readable article text (stripping
+  nav/ads/boilerplate). It is `moderate` risk, `sensitive` and marked `untrustedOutput`, so it **always
+  needs approval** and its output stays spotlighted. It has two backends behind the one extraction
+  pipeline: the default **HTTP** backend (`safeFetch`, no JavaScript) and an opt-in **headless-browser**
+  backend — `render=true` on the call, or `tools.web.render: true` as the default — which renders the
+  live DOM through `tools.browser.backend` (playwright/cdp) for client-rendered pages. The entry URL is
+  SSRF-checked before any real-browser navigation, and the tool degrades to the HTTP path when no browser
+  backend is installed (reporting which backend ran in its `data.backend`).
 - **`image_generate`** uses `tools.image.provider` (`openai` default, or an OpenAI-compatible image
   provider / model). The `mock` SVG image provider has been removed; the `openai` default throws
   `OPENAI_API_KEY is not set` when unconfigured.
@@ -1609,7 +1613,8 @@ shown is the default applied when the key is omitted. Keys are grouped by their 
 | `tools.web.searxngUrl` | *(unset)* | SearXNG instance URL. |
 | `tools.web.allowPrivateNetworks` | `false` | SSRF guard: allow private ranges. |
 | `tools.web.maxBytes` | `2000000` | Max fetch size. |
-| `tools.browser.backend` | `'auto'` | Browser automation backend. |
+| `tools.web.render` | `false` | `web_read` default backend: `false` = HTTP + HTML extraction; `true` = render via `tools.browser.backend` first. A per-call `render` arg overrides it. |
+| `tools.browser.backend` | `'auto'` | Browser automation backend (`auto`/`playwright`/`cdp`/`fetch`); also the backend `web_read` renders through. |
 | `tools.browser.cdpUrl` | *(unset)* | Chrome DevTools Protocol URL. |
 | `tools.image.provider` | `'openai'` | Image generation provider (was `mock`; throws if `OPENAI_API_KEY` unset). |
 | `tools.image.model` | `'dall-e-3'` | Image model. |

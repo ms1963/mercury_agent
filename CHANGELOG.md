@@ -27,8 +27,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Curated MCP presets** (`packages/mcp/src/presets.ts`): `filesystem`, `fetch`, `github`, `git`,
   `sqlite`, using env-var placeholders (no secrets). Discover/enable via
   `mercury mcp <presets|status|enable>`.
-- **Gated web reader** (`web_read`): real HTTP fetch + HTML-to-main-content extraction behind the
-  existing SSRF guard and approval/policy/audit path; risk `moderate`, sensitive, untrusted output.
+- **Gated web reader** (`web_read`): HTML-to-main-content extraction behind the existing SSRF guard
+  and approval/policy/audit path; risk `moderate`, sensitive, untrusted output. Two interchangeable
+  backends share the one extraction pipeline — the default **HTTP** backend (no JavaScript) and an
+  opt-in **headless-browser** backend (`render=true`, or `tools.web.render`) that renders the live
+  DOM through `tools.browser.backend` (playwright/cdp) for client-rendered pages, SSRF-validating the
+  entry URL first and degrading to HTTP when no browser backend is installed.
 - **Planner-executor workflow** (`planner-executor`): decomposes a task into several steps, executes
   them in order feeding results forward, re-plans once on failure, then synthesises — with
   configurable `minSteps`/`targetSteps`/`maxSteps` and a hard cap (config `workflows.planner`).

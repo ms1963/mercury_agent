@@ -292,6 +292,10 @@ export const ConfigSchema = z.object({
           searxngUrl: z.string().optional(),
           allowPrivateNetworks: z.boolean().default(false),
           maxBytes: z.number().default(2_000_000),
+          // Default backend for web_read: false = plain HTTP + HTML extraction (safe, no deps).
+          // true = render through the headless-browser backend (tools.browser.backend) so
+          // JavaScript-heavy pages resolve before extraction. A per-call `render` arg overrides this.
+          render: z.boolean().default(false),
         })
         .prefault({}),
       browser: z.object({ backend: z.string().default('auto'), cdpUrl: z.string().optional() }).prefault({}),

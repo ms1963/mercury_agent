@@ -3,7 +3,8 @@
  * Every request goes through `safeFetch` (SSRF protection); all output is untrusted.
  */
 import { defineTool, safeFetch, type AnyTool, type ToolContext } from '@mercury/core';
-import { anyObj, extractLinks, extractMainContent, htmlToText, num, params, str, strEnum, truncate } from '../util.js';
+import { renderPage } from '../browser/backends.js';
+import { anyObj, bool, extractLinks, extractMainContent, htmlToText, num, params, str, strEnum, truncate } from '../util.js';
 
 export interface SearchHit {
   title: string;
@@ -191,28 +192,56 @@ export const weather = defineTool<{ location: string }>({
  * ALWAYS requests approval before it runs — so visiting an arbitrary URL goes through Mercury's
  * existing approval/policy/audit path, exactly like other sensitive actions. Output is untrusted
  * (tainted) web content. This is the "gated web/browser fetch tool".
+ *
+ * Two backends share the SAME extraction pipeline ({@link extractMainContent}):
+ *  - HTTP (default): one SSRF-guarded `safeFetch`, then extract from the raw HTML. No JS.
+ *  - Headless browser (`render` arg, or `tools.web.render`): render the page through the
+ *    configured `tools.browser.backend` (playwright/cdp) so client-rendered pages resolve
+ *    first, then extract from the live DOM. Degrades to the HTTP path when no real browser
+ *    backend is installed; the returned data reports which backend actually ran.
  */
-export const webRead = defineTool<{ url: string; include_links?: boolean; max_chars?: number }>({
+export const webRead = defineTool<{ url: string; include_links?: boolean; max_chars?: number; render?: boolean }>({
   name: 'web_read',
-  description: 'Open a web page (gated, requires approval) and return its readable main content — title and article text, boilerplate removed. Optionally includes the page links.',
+  description: 'Open a web page (gated, requires approval) and return its readable main content — title and article text, boilerplate removed. Set render=true to run a headless browser (executes JavaScript) for JS-heavy pages, otherwise plain HTTP is used. Optionally includes the page links.',
   toolset: 'web',
   risk: 'moderate',
   untrustedOutput: true,
   sensitive: true,
   needsApproval: (a) => `read web page ${a.url}`,
-  parameters: params({ url: str('Page URL to read'), include_links: { type: 'boolean', description: 'Also list the page links' }, max_chars: num('Max characters of content to return') }, ['url']),
+  parameters: params(
+    {
+      url: str('Page URL to read'),
+      include_links: { type: 'boolean', description: 'Also list the page links' },
+      max_chars: num('Max characters of content to return'),
+      render: bool('Render with a headless browser (executes JavaScript) before extracting — for JS-heavy pages. Defaults to tools.web.render.'),
+    },
+    ['url'],
+  ),
   async execute(a, ctx) {
+    const web = ctx.services.config.tools.web;
+    const cap = a.max_chars ?? 20_000;
+    // Headless-browser backend: render the live DOM, then run the same extraction pipeline.
+    if (a.render ?? web.render) {
+      const browser = ctx.services.config.tools.browser;
+      const r = await renderPage(a.url, { backend: browser.backend, cdpUrl: browser.cdpUrl, allowPrivate: web.allowPrivateNetworks });
+      const { title, text } = extractMainContent(r.html);
+      const links = a.include_links ? extractLinks(r.html, r.url).slice(0, 50) : [];
+      const linkBlock = links.length ? `\n\n## Links\n${links.map((l) => `- [${l.text}](${l.href})`).join('\n')}` : '';
+      const content = truncate(`# ${title || r.url}\n(source: ${r.url} — rendered via ${r.backend})\n\n${text}${linkBlock}`, cap);
+      return { content, data: { title, url: r.url, backend: r.backend, links } };
+    }
+    // Default HTTP backend (no JavaScript).
     const res = await safeFetch(a.url, { headers: { 'User-Agent': 'Mozilla/5.0 (Mercury agent)' } }, fetchOpts(ctx));
-    const body = await readCapped(res, ctx.services.config.tools.web.maxBytes);
+    const body = await readCapped(res, web.maxBytes);
     const type = res.headers.get('content-type') ?? '';
     if (!type.includes('html')) {
-      return { content: truncate(`HTTP ${res.status} ${type}\n\n${htmlToText(body)}`, a.max_chars ?? 20_000), isError: res.status >= 400 };
+      return { content: truncate(`HTTP ${res.status} ${type}\n\n${htmlToText(body)}`, cap), isError: res.status >= 400 };
     }
     const { title, text } = extractMainContent(body);
     const links = a.include_links ? extractLinks(body, a.url).slice(0, 50) : [];
     const linkBlock = links.length ? `\n\n## Links\n${links.map((l) => `- [${l.text}](${l.href})`).join('\n')}` : '';
-    const content = truncate(`# ${title || a.url}\n(source: ${a.url} — HTTP ${res.status})\n\n${text}${linkBlock}`, a.max_chars ?? 20_000);
-    return { content, isError: res.status >= 400, data: { title, url: a.url, status: res.status, links } };
+    const content = truncate(`# ${title || a.url}\n(source: ${a.url} — HTTP ${res.status})\n\n${text}${linkBlock}`, cap);
+    return { content, isError: res.status >= 400, data: { title, url: a.url, status: res.status, backend: 'http', links } };
   },
 });
 

@@ -5,7 +5,7 @@
  *  - fetch:      dependency-free fallback; fetches HTML, exposes links as clickable refs
  * Pages are presented to the model as a numbered "snapshot" of text + interactive elements.
  */
-import { safeFetch } from '@mercury/core';
+import { assertSafeUrl, safeFetch } from '@mercury/core';
 import { extractLinks, htmlToText, truncate } from '../util.js';
 
 export interface BrowserPage {
@@ -19,6 +19,8 @@ export interface BrowserSession {
   backend: string;
   navigate(url: string): Promise<BrowserPage>;
   snapshot(): Promise<BrowserPage>;
+  /** Full HTML of the current page — the JS-rendered DOM on a real-browser backend. */
+  html(): Promise<string>;
   click(ref: number): Promise<BrowserPage>;
   type(ref: number, text: string, submit?: boolean): Promise<BrowserPage>;
   screenshot(path: string): Promise<string>;
@@ -51,6 +53,11 @@ export class FetchBrowser implements BrowserSession {
 
   async snapshot(): Promise<BrowserPage> {
     return this.render();
+  }
+
+  async html(): Promise<string> {
+    if (!this.page) throw new Error('No page open. Call navigate first.');
+    return this.page.html;
   }
 
   async click(ref: number): Promise<BrowserPage> {
@@ -136,6 +143,10 @@ export class PlaywrightBrowser implements BrowserSession {
   snapshot(): Promise<BrowserPage> {
     return this.render();
   }
+  async html(): Promise<string> {
+    await this.page.waitForLoadState('domcontentloaded').catch(() => undefined);
+    return this.page.evaluate<string>('document.documentElement.outerHTML');
+  }
   async click(ref: number): Promise<BrowserPage> {
     await this.page.locator(`[data-mref="${ref}"]`).click();
     return this.render();
@@ -167,5 +178,38 @@ export async function createBrowser(backend: string, opts: { cdpUrl?: string; al
   } catch (err) {
     if (backend === 'playwright' || backend === 'cdp') throw new Error(`Browser backend "${backend}" unavailable: ${String(err)}`);
     return new FetchBrowser(opts.allowPrivate);
+  }
+}
+
+export interface RenderedPage {
+  url: string;
+  title: string;
+  html: string;
+  /** Backend that actually produced the HTML: 'playwright' | 'cdp' | 'fetch'. */
+  backend: string;
+}
+
+/**
+ * Render a page through a headless-browser backend and return its (JS-rendered) HTML.
+ *
+ * Used by the gated `web_read` tool for JavaScript-heavy pages. A short-lived session is
+ * created, used once and closed, so it never shares state with the interactive `browser_*`
+ * toolset. When `backend` resolves to `auto`/`playwright`/`cdp` but no real browser is
+ * available, {@link createBrowser} transparently degrades to the dependency-free `fetch`
+ * backend (plain HTTP + HTML extraction) — the returned `backend` field reports which ran.
+ *
+ * SSRF: the entry URL is validated with {@link assertSafeUrl} before any navigation, so a
+ * real-browser backend cannot be pointed at a private/loopback/metadata address unless
+ * `allowPrivate` is set. (The `fetch` backend additionally guards every redirect hop.)
+ */
+export async function renderPage(url: string, opts: { backend: string; cdpUrl?: string; allowPrivate?: boolean }): Promise<RenderedPage> {
+  await assertSafeUrl(url, { allowPrivate: opts.allowPrivate });
+  const session = await createBrowser(opts.backend, { cdpUrl: opts.cdpUrl, allowPrivate: opts.allowPrivate });
+  try {
+    const page = await session.navigate(url);
+    const html = await session.html();
+    return { url: page.url, title: page.title, html, backend: session.backend };
+  } finally {
+    await session.close();
   }
 }
