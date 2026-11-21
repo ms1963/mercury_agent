@@ -17,6 +17,8 @@ COPY workflows ./workflows
 COPY personalities ./personalities
 COPY tools ./tools
 ENV NODE_ENV=production MERCURY_HOME=/data
+# /data is written at runtime as the non-root `node` user, so it must own it.
+RUN mkdir -p /data && chown -R node:node /data
 VOLUME /data
 EXPOSE 3000
 USER node
