@@ -215,4 +215,47 @@ CREATE TABLE installed_bundles (
 );
 CREATE INDEX idx_installed_bundles_name ON installed_bundles(name, created_at);
 `,
+  /* 12: governed long-term memory — namespace dimension on facts + queryable audit ledger (Feature: memory) */ `
+ALTER TABLE facts ADD COLUMN namespace TEXT NOT NULL DEFAULT 'default';
+CREATE INDEX idx_facts_namespace ON facts(user_id, namespace, updated_at);
+CREATE TABLE memory_audit (
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, actor TEXT NOT NULL DEFAULT 'system',
+  action TEXT NOT NULL, namespace TEXT NOT NULL DEFAULT 'default', decision TEXT NOT NULL DEFAULT 'allow',
+  reason TEXT NOT NULL DEFAULT '', target TEXT, redactions INTEGER NOT NULL DEFAULT 0,
+  details TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL
+);
+CREATE INDEX idx_memory_audit_user ON memory_audit(user_id, created_at);
+CREATE INDEX idx_memory_audit_ns ON memory_audit(namespace, created_at);
+CREATE INDEX idx_memory_audit_action ON memory_audit(action, created_at);
+`,
+  /* 13: knowledge/RAG store — ingested, chunked, embedded sources with provenance (Feature: memory) */ `
+CREATE TABLE knowledge (
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, namespace TEXT NOT NULL DEFAULT 'default',
+  source_id TEXT NOT NULL, title TEXT NOT NULL DEFAULT '', uri TEXT NOT NULL DEFAULT '',
+  chunk_ref TEXT NOT NULL DEFAULT '', chunk_index INTEGER NOT NULL DEFAULT 0,
+  content TEXT NOT NULL, embedding TEXT, tags TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE INDEX idx_knowledge_user ON knowledge(user_id, namespace, created_at);
+CREATE INDEX idx_knowledge_source ON knowledge(user_id, namespace, source_id);
+CREATE VIRTUAL TABLE knowledge_fts USING fts5(content, chunk_id UNINDEXED, user_id UNINDEXED, namespace UNINDEXED);
+`,
+  /* 14: multi-agent orchestration — persisted team definitions (Feature: teams) */ `
+CREATE TABLE teams (
+  id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
+  strategy TEXT NOT NULL DEFAULT 'coordinator', members TEXT NOT NULL DEFAULT '[]',
+  options TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX idx_teams_name ON teams(name);
+`,
+  /* 15: multi-agent orchestration — team run records (definitions, delegation trace, aggregation) (Feature: teams) */ `
+CREATE TABLE team_runs (
+  id TEXT PRIMARY KEY, team_id TEXT NOT NULL DEFAULT '', team_name TEXT NOT NULL DEFAULT '',
+  task TEXT NOT NULL, strategy TEXT NOT NULL DEFAULT 'coordinator', status TEXT NOT NULL DEFAULT 'completed',
+  output TEXT NOT NULL DEFAULT '', members INTEGER NOT NULL DEFAULT 0, succeeded INTEGER NOT NULL DEFAULT 0,
+  failed INTEGER NOT NULL DEFAULT 0, cost REAL NOT NULL DEFAULT 0, trace TEXT NOT NULL DEFAULT '[]',
+  error TEXT, started_at TEXT NOT NULL, ended_at TEXT NOT NULL
+);
+CREATE INDEX idx_team_runs_team ON team_runs(team_id, started_at);
+`,
 ];

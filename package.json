@@ -1,11 +1,13 @@
 {
   "name": "mercury-agent",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "private": true,
   "description": "Mercury - an extensible, self-hosted agentic AI platform (TypeScript)",
   "type": "module",
   "license": "MIT",
-  "engines": { "node": ">=22.5.0" },
+  "engines": {
+    "node": ">=22.5.0"
+  },
   "workspaces": [
     "packages/core",
     "packages/tools",
@@ -15,7 +17,9 @@
     "packages/server",
     "packages/cli"
   ],
-  "bin": { "mercury": "packages/cli/dist/bin.js" },
+  "bin": {
+    "mercury": "packages/cli/dist/bin.js"
+  },
   "scripts": {
     "build": "tsc -b packages/cli packages/server",
     "postbuild": "chmod +x packages/cli/dist/bin.js",

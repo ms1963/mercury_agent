@@ -585,3 +585,94 @@ export async function bundleCmd(m: Mercury, a: Args): Promise<void> {
     'usage: mercury bundle <list | export <name> [--version v] [--sections a,b,c] [--out file] | inspect <file> | install <file>> [--json]',
   );
 }
+
+export async function memoryCmd(m: Mercury, a: Args): Promise<void> {
+  const sub = a._[1] ?? 'recall';
+  const json = !!flag(a, 'json');
+  const p = m.principalFor(flag(a, 'user'));
+  const ns = flag(a, 'ns');
+  switch (sub) {
+    case 'remember': {
+      const text = need(a._[2], 'mercury memory remember <text> [--ns name] [--tags a,b]');
+      const r = await m.memory.remember(p.userId, text, { namespace: ns, tags: flag(a, 'tags')?.split(',').map((s) => s.trim()).filter(Boolean), source: 'cli', principal: p });
+      return out(json ? r : `remembered ${r.id} (ns=${r.namespace})`, json);
+    }
+    case 'recall': {
+      const q = need(a._[2], 'mercury memory recall <query> [--ns name] [--k N]');
+      const facts = await m.memory.recall(p.userId, q, flag(a, 'k') ? Number(flag(a, 'k')) : 5, undefined, { namespace: ns, principal: p });
+      return out(json ? facts : facts.map((f) => `${f.id}  ${f.content}`).join('\n') || '(no matches)', json);
+    }
+    case 'forget': {
+      const id = need(a._[2], 'mercury memory forget <id|text> [--ns name]');
+      return out({ removed: await m.memory.forget(p.userId, id, { namespace: ns, principal: p }) }, json);
+    }
+    case 'ns':
+      return out(json ? m.memory.namespaces(p.userId) : m.memory.namespaces(p.userId).map((n) => `${n.namespace.padEnd(24)} ${n.count}`).join('\n') || '(none)', json);
+    case 'knowledge': {
+      const op = a._[2];
+      if (op === 'add') {
+        const content = need(a._[3], 'mercury memory knowledge add <content> [--title t] [--uri u] [--ns name]');
+        const r = await m.memory.addKnowledge(p.userId, { title: flag(a, 'title'), uri: flag(a, 'uri'), content }, { namespace: ns, principal: p });
+        return out(json ? r : `ingested source ${r.sourceId} (${r.chunks} chunks)`, json);
+      }
+      if (op === 'search') {
+        const q = need(a._[3], 'mercury memory knowledge search <query> [--k N] [--ns name]');
+        const chunks = await m.memory.searchKnowledge(p.userId, q, flag(a, 'k') ? Number(flag(a, 'k')) : undefined, { namespace: ns });
+        return out(json ? chunks : chunks.map((c) => `[${c.title || c.sourceId}#${c.chunkIndex}] ${c.content.slice(0, 160)}`).join('\n\n') || '(no matches)', json);
+      }
+      throw new Error('usage: mercury memory knowledge <add <content> | search <query>> [--ns name] [--json]');
+    }
+    case 'audit': {
+      const res = m.memory.auditLog({ userId: p.userId, namespace: ns, action: flag(a, 'action') as never, decision: flag(a, 'decision') as never, limit: flag(a, 'limit') ? Number(flag(a, 'limit')) : 50 });
+      return out(json ? res : res.entries.map((e) => `${e.createdAt}  ${e.action.padEnd(10)} ${e.decision.padEnd(7)} ns=${e.namespace} ${e.reason}`).join('\n') || '(no audit entries)', json);
+    }
+    default:
+      throw new Error('usage: mercury memory <remember <text> | recall <query> | forget <id> | ns | knowledge add|search | audit> [--ns name] [--json]');
+  }
+}
+
+export async function teamCmd(m: Mercury, a: Args): Promise<void> {
+  const sub = a._[1] ?? 'list';
+  const json = !!flag(a, 'json');
+  if (!m.config.teams.enabled) {
+    out('Teams are disabled. Enable them with `teams.enabled: true` in your config.');
+    return;
+  }
+  const p = m.principalFor(flag(a, 'user'));
+  switch (sub) {
+    case 'list': {
+      const teams = m.teams.list();
+      return out(json ? teams : teams.map((t) => `${t.name.padEnd(24)} ${t.strategy.padEnd(12)} members=${t.members.length}`).join('\n') || '(no teams)', json);
+    }
+    case 'create': {
+      const name = need(a._[2], 'mercury team create <name> --members "role1:goal1;role2:goal2" [--strategy coordinator|pipeline|debate]');
+      const members = (flag(a, 'members') ?? '').split(';').map((s) => s.trim()).filter(Boolean).map((spec) => {
+        const [role, task] = spec.split(':');
+        return { name: (role ?? 'member').trim(), role: (role ?? 'member').trim(), task: (task ?? '').trim() || undefined };
+      });
+      if (!members.length) throw new Error('provide --members "role1:goal1;role2:goal2"');
+      const def = m.teams.define(p, { name, description: flag(a, 'desc'), strategy: flag(a, 'strategy') as never, members });
+      return out(json ? def : `created team "${def.name}" (${def.strategy}, ${def.members.length} members)`, json);
+    }
+    case 'show': {
+      const t = m.teams.get(need(a._[2], 'mercury team show <name|id>'));
+      if (!t) throw new Error('unknown team');
+      return out(t, true);
+    }
+    case 'delete':
+      return out({ removed: m.teams.delete(p, need(a._[2], 'mercury team delete <name|id>')) }, json);
+    case 'run': {
+      const id = need(a._[2], 'mercury team run <name|id> <task> [--budget N] [--approve]');
+      const task = need(a._[3], 'mercury team run <name|id> <task>');
+      const rec = await m.teams.run(p, id, task, { approve: !!a.flags.approve, budget: flag(a, 'budget') ? Number(flag(a, 'budget')) : undefined });
+      if (json) return out(rec, true);
+      return out([`team "${rec.teamName}" run ${rec.id}: ${rec.status} (cost=${rec.cost})`, ...rec.trace.map((s) => `  ${s.member.padEnd(20)} ${s.status.padEnd(9)} ${String(s.output).slice(0, 120)}`), '', rec.output].join('\n'));
+    }
+    case 'runs': {
+      const runs = m.teams.listRuns(flag(a, 'team'));
+      return out(json ? runs : runs.map((r) => `${r.id}  ${r.teamName.padEnd(20)} ${r.status.padEnd(9)} ${r.startedAt}`).join('\n') || '(no runs)', json);
+    }
+    default:
+      throw new Error('usage: mercury team <list | create <name> --members ... | show <id> | delete <id> | run <id> <task> | runs> [--json]');
+  }
+}

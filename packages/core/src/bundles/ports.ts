@@ -19,21 +19,26 @@
 export const BUNDLE_FORMAT_VERSION = 1;
 
 /** The configuration sections a bundle can carry. */
-export type BundleSection = 'skills' | 'workflows' | 'personality' | 'policy' | 'mcp';
+export type BundleSection = 'skills' | 'workflows' | 'personality' | 'policy' | 'mcp' | 'memory';
 
 /** All sections, in canonical order. */
-export const BUNDLE_SECTIONS: BundleSection[] = ['skills', 'workflows', 'personality', 'policy', 'mcp'];
+export const BUNDLE_SECTIONS: BundleSection[] = ['skills', 'workflows', 'personality', 'policy', 'mcp', 'memory'];
 
 /** Sections whose installation is governed (routed through approval unless explicitly auto-approved). */
 export const GOVERNED_SECTIONS: BundleSection[] = ['policy', 'mcp'];
 
-/** The dotted config path each section is read from / written to. */
+/**
+ * The dotted config path each section is read from / written to. The `memory` section carries the
+ * (ungoverned) `memory` config block — governance/retention/namespaces/knowledge settings — so a
+ * pack can ship a memory policy; ingested knowledge DOCUMENTS are never bundled.
+ */
 export const SECTION_CONFIG_PATH: Record<BundleSection, string> = {
   skills: 'skills',
   workflows: 'workflows',
   personality: 'agent.personality',
   policy: 'security.policies',
   mcp: 'mcp.servers',
+  memory: 'memory',
 };
 
 export interface BundleManifest {
@@ -59,6 +64,7 @@ export interface BundleContents {
   personality?: unknown;
   policy?: unknown;
   mcp?: unknown;
+  memory?: unknown;
 }
 
 /** A complete, signed bundle artifact. */

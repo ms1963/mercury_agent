@@ -75,6 +75,8 @@ export type Action =
   | 'model.use'
   | 'memory.read'
   | 'memory.write'
+  | 'teams.manage'
+  | 'teams.run'
   | 'skills.manage'
   | 'schedule.manage'
   | 'tools.manage'
@@ -95,6 +97,8 @@ const SCOPE_FOR: Record<Action, string> = {
   'model.use': 'chat',
   'memory.read': 'memory',
   'memory.write': 'memory',
+  'teams.manage': 'admin',
+  'teams.run': 'workflow',
   'skills.manage': 'skills',
   'schedule.manage': 'schedule',
   'tools.manage': 'admin',
@@ -107,7 +111,7 @@ const SCOPE_FOR: Record<Action, string> = {
   debug: 'agent',
 };
 
-const ADMIN_ONLY = new Set<Action>(['tools.manage', 'config.manage', 'users.manage', 'budgets.manage', 'gateway.manage', 'audit.read']);
+const ADMIN_ONLY = new Set<Action>(['tools.manage', 'config.manage', 'users.manage', 'budgets.manage', 'gateway.manage', 'audit.read', 'teams.manage']);
 const RISK_ORDER = { safe: 0, moderate: 1, dangerous: 2 } as const;
 
 /** Glob match supporting `*` wildcards (e.g. "mcp__github__*"). */

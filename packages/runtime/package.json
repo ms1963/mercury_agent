@@ -1,9 +1,19 @@
 {
   "name": "@mercury/runtime",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
-  "dependencies": {"@mercury/core": "1.3.0", "@mercury/tools": "1.3.0", "@mercury/mcp": "1.3.0", "@mercury/gateway": "1.3.0"}
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@mercury/core": "^1.4.0",
+    "@mercury/tools": "^1.4.0",
+    "@mercury/mcp": "^1.4.0",
+    "@mercury/gateway": "^1.4.0"
+  }
 }

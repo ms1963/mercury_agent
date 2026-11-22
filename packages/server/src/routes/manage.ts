@@ -80,6 +80,60 @@ export function registerManageRoutes(app: FastifyInstance, { m, auth, sse }: Ctx
     m.memory.curated.write(p.userId, which, String((req.body as Body).content ?? ''));
     return { ok: true };
   });
+  app.get('/api/memory/namespaces', async (req) => {
+    const p = auth(req, 'memory.read');
+    return { namespaces: m.memory.namespaces(p.userId) };
+  });
+  app.get('/api/memory/audit', async (req) => {
+    const p = auth(req, 'memory.read');
+    const q = req.query as Body;
+    return m.memory.auditLog({
+      userId: p.userId,
+      namespace: q.namespace as string | undefined,
+      action: q.action as never,
+      decision: q.decision as never,
+      limit: q.limit ? Number(q.limit) : undefined,
+      offset: q.offset ? Number(q.offset) : undefined,
+    });
+  });
+  app.get('/api/memory/knowledge', async (req) => {
+    const p = auth(req, 'memory.read');
+    const q = req.query as Body;
+    const query = q.q as string | undefined;
+    if (query) return { chunks: await m.memory.searchKnowledge(p.userId, query, q.k ? Number(q.k) : undefined, { namespace: q.namespace as string | undefined }) };
+    return { sources: m.memory.knowledge.sources(p.userId, q.namespace as string | undefined) };
+  });
+  app.post('/api/memory/knowledge', async (req) => {
+    const p = auth(req, 'memory.write');
+    const b = req.body as Body;
+    return await m.memory.addKnowledge(p.userId, { title: b.title as string | undefined, uri: b.uri as string | undefined, content: String(b.content ?? ''), tags: b.tags as string[] | undefined }, { namespace: b.namespace as string | undefined, principal: p });
+  });
+
+  // ---- teams ----------------------------------------------------------------
+  app.get('/api/teams', async (req) => (auth(req, 'teams.manage'), { teams: m.teams.list() }));
+  app.post('/api/teams', async (req) => {
+    const p = auth(req, 'teams.manage');
+    return m.teams.define(p, req.body as never);
+  });
+  app.get('/api/teams/runs', async (req) => (auth(req, 'teams.run'), { runs: m.teams.listRuns((req.query as Body).team as string | undefined) }));
+  app.get('/api/teams/runs/:id', async (req) => {
+    auth(req, 'teams.run');
+    const r = m.teams.getRun(param(req));
+    if (!r) throw new HttpError(404, 'run not found');
+    return r;
+  });
+  app.get('/api/teams/:id', async (req) => {
+    auth(req, 'teams.manage');
+    const t = m.teams.get(param(req));
+    if (!t) throw new HttpError(404, 'team not found');
+    return t;
+  });
+  app.delete('/api/teams/:id', async (req) => { const p = auth(req, 'teams.manage'); return { removed: m.teams.delete(p, param(req)) }; });
+  app.post('/api/teams/:id/run', async (req) => {
+    const p = auth(req, 'teams.run');
+    const b = req.body as Body;
+    return await m.teams.run(p, param(req), String(b.task ?? ''), { approve: b.approve as boolean | undefined, budget: b.budget ? Number(b.budget) : undefined });
+  });
 
   // ---- workflows ------------------------------------------------------------
   app.get('/api/workflows', async (req) => (auth(req), { workflows: m.workflows.list(), templates: m.workflows.listTemplates() }));

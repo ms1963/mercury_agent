@@ -84,6 +84,8 @@ import {
   WebhookSource,
   VoiceService,
   WorkflowEngine,
+  TeamsService,
+  SqliteTeamStore,
   assetsDir,
   attachMetrics,
   createLogger,
@@ -235,6 +237,7 @@ export class Mercury {
   readonly i18n: I18n;
   readonly spawner: Spawner;
   readonly workflows: WorkflowEngine;
+  readonly teams: TeamsService;
   readonly scheduler: Scheduler;
   readonly mcp: McpClientManager;
   readonly gateway: Gateway;
@@ -324,7 +327,7 @@ export class Mercury {
     this.chaos = new ChaosController(config, this.bus);
     this.executor = new ToolExecutor(config, this.tools, this.policy, this.bus, this.judgment, this.hooks, this.audit, this.codePolicies, this.grants, this.taint, this.chaos);
     this.approvals = new ApprovalService(this.bus);
-    this.memory = new MemoryManager(config, this.db, new HashEmbedding(config.memory.embeddings.dims), this.bus, this.hooks);
+    this.memory = new MemoryManager(config, this.db, new HashEmbedding(config.memory.embeddings.dims), this.bus, this.hooks, this.policy, this.audit);
     this.memory.summarizer = async (userId, query, text) =>
       (await this.llm.complete(this.users.principalFor(this.users.get(userId)), [
         { role: 'system', content: 'Summarise the following past conversation excerpts relevant to the query in a few sentences.' },
@@ -492,6 +495,24 @@ export class Mercury {
 
     this.spawner = new Spawner(config, this.agent);
     this.workflows = new WorkflowEngine({ bundled: join(this.assets, 'workflows'), user: join(dataDir, 'workflows') }, this.spawner, this.judgment, this.llm, this.memory.blackboard, this.db, this.bus, config);
+    this.teams = new TeamsService(new SqliteTeamStore(this.db), config, {
+      delegate: async (input) => {
+        const res = await this.spawner.spawn(
+          { principal: input.principal, runId: input.runId, depth: input.depth, platform: 'teams', signal: input.signal },
+          { goal: input.task, context: input.context, role: input.member.role, name: input.member.name, model: input.member.model, pattern: input.member.pattern, toolsets: input.member.toolsets },
+        );
+        return { output: res.output, cost: res.usage.cost, status: res.status, error: res.error, runId: res.runId };
+      },
+      policy: this.policy,
+      audit: this.audit,
+      bus: this.bus,
+      blackboard: this.memory.blackboard,
+      synthesizer: async (system, user) =>
+        (await this.llm.complete(SYSTEM_PRINCIPAL, [
+          { role: 'system', content: system },
+          { role: 'user', content: user },
+        ], { budgetOverride: true })).content,
+    });
     this.scheduler = new Scheduler(this.db, (s, signal) => this.runSchedule(s.userId, s.task, signal), this.bus, { tickMs: config.scheduler.tickMs, defaultRetries: config.scheduler.maxRetries });
     this.gateway = new Gateway({
       config, db: this.db, bus: this.bus, logger: this.logger, users: this.users, pairing: this.pairing, approvals: this.approvals,

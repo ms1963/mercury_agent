@@ -256,6 +256,65 @@ export const ConfigSchema = z.object({
           baseUrl: z.string().optional(),
         })
         .prefault({}),
+      /**
+       * Governed long-term memory: route remember/recall/forget through policy + PII handling,
+       * retention bounds and a queryable audit ledger. Backward-compatible and non-intrusive by
+       * default — governance is `off`, so existing memory behaviour is unchanged until enabled.
+       */
+      governance: z
+        .object({
+          /**
+           * Governance mode. `off` → no policy/PII/audit gating (legacy behaviour).
+           * `soft` → PII is redacted (not blocked) and every op is audited, but writes/reads are
+           * never denied. `strict` → policy is enforced (permission denials raised) and, when
+           * `pii.block` is set, PII-bearing writes are rejected.
+           */
+          mode: z.enum(['off', 'soft', 'strict']).default('off'),
+          /** Also enforce the auth PolicyEngine (memory.read / memory.write) on governed ops. */
+          enforcePolicy: z.boolean().default(false),
+          pii: z
+            .object({
+              /** Detect & handle PII (email, phone, SSN, credit-card, IP) in written content. */
+              detect: z.boolean().default(true),
+              /** Replace detected PII with placeholders instead of storing it verbatim. */
+              redact: z.boolean().default(true),
+              /** Reject a write that contains PII (strict mode only). Overrides redaction. */
+              block: z.boolean().default(false),
+            })
+            .prefault({}),
+        })
+        .prefault({}),
+      /** Retention bounds enforced on write (pruning) per user + namespace. */
+      retention: z
+        .object({
+          /** Delete governed facts older than this many days (0 = keep forever). */
+          ttlDays: z.number().default(0),
+          /** Keep at most this many facts per user+namespace, pruning oldest (0 = unlimited). */
+          maxItemsPerNamespace: z.number().default(0),
+        })
+        .prefault({}),
+      /** Namespacing on top of per-user scope. */
+      namespaces: z
+        .object({
+          /** Namespace applied when a caller does not specify one. */
+          default: z.string().default('default'),
+          /** When set, reject writes to a namespace not in this allow-list (strict mode). */
+          allowed: z.array(z.string()).default([]),
+        })
+        .prefault({}),
+      /** Knowledge / RAG over ingested sources, recalled with provenance. */
+      knowledge: z
+        .object({
+          /** Enable the knowledge store (ingest/search) and grounding of buildContext(). */
+          enabled: z.boolean().default(false),
+          /** Target characters per chunk when ingesting a document. */
+          chunkChars: z.number().default(900),
+          /** Character overlap between consecutive chunks. */
+          chunkOverlap: z.number().default(120),
+          /** Number of knowledge hits to recall / ground into context. */
+          recallK: z.number().default(4),
+        })
+        .prefault({}),
     })
     .prefault({}),
 
@@ -783,6 +842,28 @@ export const ConfigSchema = z.object({
       autoApprovePolicy: z.boolean().default(false),
       /** Apply bundled MCP presets/servers immediately instead of queuing them for approval. */
       autoApproveMcp: z.boolean().default(false),
+    })
+    .prefault({}),
+
+  /**
+   * Multi-agent orchestration ("teams"): a named, persisted config of several roles/agents plus an
+   * orchestration strategy (coordinator→workers, pipeline, or debate/vote) runnable on one task. The
+   * team delegates subtasks (reusing the workflow spawner + blackboard), aggregates results, degrades
+   * gracefully on member failure, and is governed (per-run budget ceiling, optional approval, policy)
+   * and auditable. OFF by default (opt-in, backward-compatible).
+   */
+  teams: z
+    .object({
+      /** Master switch for team define/run (facade, CLI and endpoints). */
+      enabled: z.boolean().default(false),
+      /** Maximum number of members a team definition may contain. */
+      maxMembers: z.number().default(8),
+      /** Default orchestration strategy when a definition does not set one. */
+      defaultStrategy: z.enum(['coordinator', 'pipeline', 'debate']).default('coordinator'),
+      /** Hard per-run cost ceiling (USD). 0 = unlimited. A run halts when the ceiling is reached. */
+      budget: z.number().default(0),
+      /** Require an explicit approval flag before a team run executes (governance gate). */
+      requireApproval: z.boolean().default(false),
     })
     .prefault({}),
 

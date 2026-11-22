@@ -7,6 +7,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-22
+
+### Added
+- **Governed long-term memory & knowledge layer.** The existing memory subsystem is now policy-governed, PII-aware, retention-bounded, namespaced, and auditable. Writes and reads can be routed through the policy engine (`memory.governance.enforcePolicy`), PII is detected and either redacted or blocked (`memory.governance.pii.*`), facts are scoped to namespaces on top of the per-user scope, and retention limits (`memory.retention.ttlDays`, `memory.retention.maxItemsPerNamespace`) prune automatically. Every governed decision is recorded in a new queryable `memory_audit` ledger (in addition to the global audit bus). A new knowledge/RAG store ingests documents, chunks and embeds them, and recalls with full provenance via hybrid FTS+vector search; knowledge grounds `buildContext()` when `memory.knowledge.enabled`. Memory config is now a shareable bundle section, and evals can quantify memory lift. Governance is OFF/soft by default and all existing memory signatures remain backward-compatible.
+- **Multi-agent orchestration (teams).** A new `teams` core module composes named, persisted teams of roles/agents with a strategy (coordinator→workers, pipeline, or debate). Teams delegate subtasks by reusing the spawner and blackboard, aggregate the results, and degrade gracefully when a member fails (one member failing never crashes the run). Runs are governed (per-run budget ceiling, optional approval gate, policy checks) and fully auditable; team definitions and run records are persisted. Disabled by default (`teams.enabled: false`).
+- CLI: `mercury memory <remember|recall|forget|ns|knowledge add|knowledge search|audit>` and `mercury team <list|create|show|delete|run|runs>`.
+- REST: auth-gated `/api/memory/{namespaces,audit,knowledge}` and `/api/teams/*` endpoints.
+- Admin web panels for the knowledge/governance view and for teams.
+- EN + DE i18n strings and EN + DE help topics for both features.
+
+
 ## [1.3.0] - 2026-11-21
 
 ### Added

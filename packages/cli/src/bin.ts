@@ -31,6 +31,10 @@ Usage: mercury <command> [options]
   addin [list|scaffold <name>]   Manage declarative add-ins (tools/personalities/permissions)
   bundle [list|export <name>|inspect <file>|install <file>]
                             Export/install a signed, versioned agent bundle ("Mercury pack")
+  memory [remember <text>|recall <query>|forget <id>|ns|knowledge add|knowledge search|audit]
+                            Governed long-term memory & knowledge layer
+  team [list|create <name>|show <id>|delete <id>|run <id> <task>|runs]
+                            Multi-agent orchestration (teams)
   perms [list|show <personality>]   Inspect per-agent/personality permission profiles
   config [path|get <key>|set <key> <value>]
   voice [presets|show|use <stt|tts> <preset>]
@@ -154,6 +158,10 @@ async function main(argv: string[]): Promise<void> {
         return await cmd.addinCmd(m, a);
       case 'bundle':
         return await cmd.bundleCmd(m, a);
+      case 'memory':
+        return await cmd.memoryCmd(m, a);
+      case 'team':
+        return await cmd.teamCmd(m, a);
       case 'perms':
         return await cmd.permsCmd(m, a);
       case 'config':
