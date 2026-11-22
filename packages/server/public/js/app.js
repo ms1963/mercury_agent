@@ -2,16 +2,16 @@
 import { api, h, loadLocale, safe, setToken, state, t, translate } from './core.js';
 import { renderChat } from './chat.js';
 import { renderMemory, renderRuns, renderSessions, renderSkills, renderTools, renderWorkflows } from './panels-work.js';
-import { renderAccount, renderBundles, renderDebug, renderDistill, renderEvals, renderGovernance, renderHelp, renderIntegrations, renderLearning, renderModels, renderProactive, renderReflections, renderReliability, renderReplay, renderScheduler, renderUsers, renderVerification, stopDebug } from './panels-admin.js';
+import { renderAccount, renderBundles, renderDebug, renderDistill, renderEvals, renderGovernance, renderHelp, renderIntegrations, renderLearning, renderModels, renderProactive, renderReflections, renderReliability, renderReplay, renderScheduler, renderTeams, renderUsers, renderVerification, stopDebug } from './panels-admin.js';
 
 const PANELS = {
   chat: renderChat, sessions: renderSessions, runs: renderRuns, workflows: renderWorkflows, memory: renderMemory, skills: renderSkills,
   tools: renderTools, scheduler: renderScheduler, integrations: renderIntegrations, models: renderModels,
   verification: renderVerification, reliability: renderReliability, learning: renderLearning, distill: renderDistill, replay: renderReplay, proactive: renderProactive,
-  evals: renderEvals, bundles: renderBundles,
+  evals: renderEvals, bundles: renderBundles, teams: renderTeams,
   governance: renderGovernance, users: renderUsers, debug: renderDebug, reflections: renderReflections, help: renderHelp, account: renderAccount,
 };
-const ADMIN_ONLY = new Set(['users', 'governance', 'verification', 'reliability', 'learning', 'distill', 'replay', 'proactive', 'evals', 'bundles']);
+const ADMIN_ONLY = new Set(['users', 'governance', 'verification', 'reliability', 'learning', 'distill', 'replay', 'proactive', 'evals', 'bundles', 'teams']);
 const $ = (id) => document.getElementById(id);
 
 function go(name) {

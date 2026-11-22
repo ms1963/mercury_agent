@@ -1479,6 +1479,59 @@ Over HTTP: `GET/POST /api/bundles/*` (auth-gated). The web UI **Agent Bundles** 
 offers export/download and install/upload. Configure under `bundles` (see Appendix B) and the
 [`bundles` help](help/bundles.md).
 
+## 12.11 Governed long-term memory & knowledge (1.4.0)
+
+The memory subsystem is now **policy-governed, PII-aware, retention-bounded, namespaced and
+auditable**, plus a knowledge/RAG store with provenance. Everything is **off/soft by default** and
+backward-compatible.
+
+```bash
+mercury memory remember "Ship v1.4.0 on Nov 22" --ns releases
+mercury memory recall "release date" --ns releases
+mercury memory ns                                  # namespaces with counts
+mercury memory knowledge add "$(cat handbook.md)" --title Handbook
+mercury memory knowledge search "how do teams work"
+mercury memory audit --decision redact            # governed decision ledger
+```
+
+- **Namespaces** add a dimension on top of the per-user scope; retention (`memory.retention.*`) prunes
+  by TTL and max-items-per-namespace.
+- **PII** is detected and either redacted (default) or blocked (`memory.governance.pii.*`); set
+  `memory.governance.enforcePolicy` to route reads/writes through the policy engine.
+- **Audit** — every governed decision lands in the queryable `memory_audit` ledger (`mercury memory
+  audit`, `GET /api/memory/audit`) and the global audit bus.
+- **Knowledge/RAG** — ingest documents (chunk + embed) and recall with provenance via hybrid
+  FTS+vector search; when `memory.knowledge.enabled`, knowledge grounds the agent's context. Memory
+  config is a shareable **bundle section**, and evals can measure the memory lift.
+
+Programmatically via the `mercury.memory` facade (new methods `namespaces`, `auditLog`,
+`addKnowledge`, `searchKnowledge`); state is stored by DB **migrations #12–#13**. Configure under
+`memory` (see Appendix B) and the [`memory` help](help/memory.md).
+
+## 12.12 Multi-agent orchestration — teams (1.4.0)
+
+Compose role-specialised agents into one governed, budget-aware run. **Off by default**
+(`teams.enabled: true`).
+
+```bash
+mercury team create researchers \
+  --members "lead:plan the research;writer:draft the report" --strategy coordinator
+mercury team run researchers "Summarise the latest release" --budget 2
+mercury team runs                                  # recent run records
+mercury team show researchers
+```
+
+- **Strategies** — `coordinator` (plan → parallel workers → synthesise), `pipeline` (sequential, output
+  chained) or `debate` (all answer → synthesise/pick).
+- **Governed** — runs check `teams.run` policy, honour an optional approval gate and a per-run
+  **budget ceiling** (members skipped once hit); `teams.manage` (admin) governs create/delete.
+- **Resilient** — a failing member becomes an `error` step (run status `partial`) instead of crashing
+  the whole run. Definitions and run records are persisted and auditable.
+
+Programmatically via the `mercury.teams` facade; state is stored by DB **migrations #14–#15**.
+Over HTTP: `GET/POST /api/teams/*` (auth-gated). The web UI **Teams** panel (admin-only) creates and
+runs teams. Configure under `teams` (see Appendix B) and the [`teams` help](help/teams.md).
+
 ---
 
 ## Appendix A — Full CLI reference
@@ -1695,6 +1748,34 @@ shown is the default applied when the key is omitted. Keys are grouped by their 
 | `bundles.requireSignature` | `true` | Reject a bundle whose signature is missing or does not verify (tamper/compat guard). |
 | `bundles.autoApprovePolicy` | `false` | Apply bundled policy-as-code rules immediately instead of queuing for approval. |
 | `bundles.autoApproveMcp` | `false` | Apply bundled MCP presets/servers immediately instead of queuing for approval. |
+
+### `memory` governance & knowledge (1.4.0)
+
+| Key | Default | Meaning |
+|---|---|---|
+| `memory.governance.mode` | `off` | `off` \| `soft` \| `strict`. `strict` enforces namespace allow-lists and PII blocking. |
+| `memory.governance.enforcePolicy` | `false` | Route `remember`/`recall`/`forget` through the policy engine (`memory.read`/`memory.write`). |
+| `memory.governance.pii.detect` | `true` | Detect PII (email, card, SSN, IP, phone) on write. |
+| `memory.governance.pii.redact` | `true` | Replace detected PII with placeholders before storing. |
+| `memory.governance.pii.block` | `false` | Reject writes that contain PII (instead of redacting). |
+| `memory.retention.ttlDays` | `0` | Prune facts older than N days (0 = keep forever). |
+| `memory.retention.maxItemsPerNamespace` | `0` | Max facts kept per namespace; oldest pruned (0 = unbounded). |
+| `memory.namespaces.default` | `default` | Namespace used when none is given. |
+| `memory.namespaces.allowed` | `[]` | When set (strict), only these namespaces are accepted. |
+| `memory.knowledge.enabled` | `false` | Enable the knowledge/RAG store and ground `buildContext()` with it. |
+| `memory.knowledge.chunkChars` | `900` | Target characters per knowledge chunk. |
+| `memory.knowledge.chunkOverlap` | `120` | Character overlap between consecutive chunks. |
+| `memory.knowledge.recallK` | `4` | Default number of knowledge chunks recalled. |
+
+### `teams` (1.4.0)
+
+| Key | Default | Meaning |
+|---|---|---|
+| `teams.enabled` | `false` | Master switch for the teams module, facade, CLI and endpoints. |
+| `teams.maxMembers` | `8` | Maximum members allowed in a team definition. |
+| `teams.defaultStrategy` | `coordinator` | `coordinator` \| `pipeline` \| `debate` when a team omits a strategy. |
+| `teams.budget` | `0` | Per-run total cost ceiling (0 = no ceiling); members are skipped once hit. |
+| `teams.requireApproval` | `false` | Gate every team run behind an approval. |
 
 ### `reflection`
 

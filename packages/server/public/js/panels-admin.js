@@ -761,3 +761,68 @@ export const renderBundles = (view) => panel(view, t('bundles.title', 'Agent Bun
 
   return [statusCard, exportCard, installCard, installedCard];
 });
+
+export const renderTeams = (view) => panel(view, t('teams.title', 'Teams'), async (reload) => {
+  const data = await api('/api/teams').catch(() => null);
+  if (!data) return card(null, h('p.muted', {}, t('teams.unavailable', 'teams subsystem unavailable')));
+  const teams = data.teams || [];
+  const runs = (await api('/api/teams/runs').catch(() => ({ runs: [] }))).runs || [];
+
+  const statusCard = card(t('teams.status', 'Status'),
+    h('p.small.muted', {}, t('teams.intro', 'Compose role-specialised agents into governed, budget-aware runs with a coordinator, pipeline or debate strategy.')));
+
+  // ---- create ----
+  const ci = {
+    name: field(t('teams.name', 'team name'), { className: 'grow' }),
+    strategy: h('select', {}, ...['coordinator', 'pipeline', 'debate'].map((s) => h('option', { value: s }, s))),
+    members: field(t('teams.members', 'members: role1:goal1; role2:goal2'), { className: 'grow' }),
+  };
+  const createCard = isAdmin() ? card(t('teams.create', 'Create team'),
+    h('div.row', {}, ci.name, ci.strategy),
+    h('div.row', {}, ci.members),
+    h('div.row', {}, h('button.primary', { onclick: safe(async () => {
+      if (!ci.name.value) return toast(t('teams.needName', 'name is required'), true);
+      const members = ci.members.value.split(';').map((s) => s.trim()).filter(Boolean).map((spec) => {
+        const [role, task] = spec.split(':');
+        return { name: (role || 'member').trim(), role: (role || 'member').trim(), task: (task || '').trim() || undefined };
+      });
+      await api('/api/teams', { body: { name: ci.name.value, strategy: ci.strategy.value, members } });
+      toast(t('teams.created', 'Team created'));
+      await reload();
+    }) }, t('teams.createBtn', 'Create')))) : null;
+
+  // ---- run ----
+  const runOut = h('div');
+  const ri = { team: field(t('teams.name', 'team name or id')), task: field(t('teams.task', 'task'), { className: 'grow' }), budget: field(t('teams.budget', 'budget (optional)')) };
+  const runCard = card(t('teams.run', 'Run a team'),
+    h('div.row', {}, ri.team, ri.budget),
+    h('div.row', {}, ri.task),
+    h('div.row', {}, h('button.primary', { onclick: safe(async () => {
+      if (!ri.team.value || !ri.task.value) return toast(t('teams.needRun', 'team and task are required'), true);
+      const rec = await api(`/api/teams/${encodeURIComponent(ri.team.value)}/run`, { body: { task: ri.task.value, budget: ri.budget.value ? Number(ri.budget.value) : undefined, approve: true } });
+      runOut.replaceChildren(card(t('teams.result', 'Run result'),
+        h('p', {}, t('common.status') + ': ', badge(rec.status === 'completed', rec.status, rec.status), ` · cost=${rec.cost}`),
+        json(rec.trace),
+        h('pre.small', {}, rec.output)));
+      await reload();
+    }) }, t('teams.runBtn', 'Run'))),
+    runOut);
+
+  const teamsCard = card(t('teams.title', 'Teams'),
+    teams.length ? table(teams, [
+      [t('teams.name', 'Name'), (x) => h('code', {}, x.name)],
+      [t('teams.strategy', 'Strategy'), (x) => x.strategy],
+      [t('teams.members', 'Members'), (x) => (x.members || []).length],
+      ['', (x) => isAdmin() ? h('button', { onclick: safe(async () => (await api(`/api/teams/${encodeURIComponent(x.id)}`, { method: 'DELETE' }), toast(t('teams.deleted', 'Deleted')), reload())) }, t('teams.delete', 'Delete')) : null],
+    ]) : h('p.muted', {}, t('teams.none', 'No teams defined yet.')));
+
+  const runsCard = card(t('teams.runs', 'Recent runs'),
+    runs.length ? table(runs, [
+      [t('teams.name', 'Team'), (x) => x.teamName],
+      [t('common.status'), (x) => badge(x.status === 'completed', x.status, x.status)],
+      [t('teams.budget', 'Cost'), (x) => x.cost],
+      ['Time', (x) => when(x.startedAt)],
+    ]) : h('p.muted', {}, t('teams.noRuns', 'No runs yet.')));
+
+  return [statusCard, createCard, runCard, teamsCard, runsCard];
+});

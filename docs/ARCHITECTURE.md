@@ -95,7 +95,7 @@ mercury/
 │  │  └─ src/
 │  │     types/  config/  db/  events/  logging/  security/  auth/  budgets/
 │  │     llm/  router/  decision/  agent/  agent/patterns/  memory/  skills/ (+composer)
-│  │     learning/  distill/  timetravel/  evals/  bundles/  reflection/  tools/ (registry+executor)  workflows/  scheduler/
+│  │     learning/  distill/  timetravel/  evals/  bundles/  teams/  reflection/  tools/ (registry+executor)  workflows/  scheduler/
 │  │     attachments/  voice/  plugins/  checkpoints/  i18n/  help/  extensions/
 │  ├─ tools/       @mercury/tools    — 50+ built-in tools, toolsets, polyglot runner,
 │  │                                    execute_code sandbox, terminal & browser backends
@@ -524,6 +524,48 @@ Persistence is **migration #11**: `installed_bundles` (digest-keyed, with pendin
 Exposed as the `mercury.bundles` facade (`export`, `exportToFile`, `inspect`, `install`,
 `approvePending`, `list`), the CLI `mercury bundle export|inspect|install`, the REST endpoints under
 `GET/POST /api/bundles/*` (auth-gated), and the admin **Agent Bundles** panel. Config `bundles`.
+
+### 5.23 Governed long-term memory & knowledge (`core/src/memory`)
+Extends the existing memory subsystem (§5.4) into a governed, auditable knowledge layer while keeping
+every existing signature backward-compatible (governance is **off/soft by default**).
+
+* **Governance** — `memory/governance.ts` provides `scanPii(text)` (regex detectors for email, credit
+  card, SSN, IP and phone, returning redacted text + matches) and the queryable `MemoryAuditStore`
+  (table `memory_audit`). `MemoryManager.remember/recall/forget` route through policy (when
+  `memory.governance.enforcePolicy`), detect & **redact or block** PII per `memory.governance.pii.*`,
+  enforce **namespace allow-lists** (strict mode), and record every decision (`allow`/`deny`/`redact`)
+  to both the `memory_audit` ledger and the global audit bus.
+* **Namespaces & retention** — facts carry a `namespace` dimension on top of per-user scope;
+  `memory.retention.{ttlDays,maxItemsPerNamespace}` prune on write. `namespaces(userId)` and
+  `count/prune` live in `memory/facts.ts`.
+* **Knowledge / RAG** — `memory/knowledge.ts` (`chunkText`, `KnowledgeStore`) ingests documents
+  (chunk → embed), stores them in the `knowledge` table + `knowledge_fts` FTS5 index, and recalls
+  chunks with **provenance** via hybrid FTS+vector RRF. When `memory.knowledge.enabled`, knowledge
+  grounds `buildContext()`. `memory/lift.ts` (`measureMemoryLift`) quantifies memory's eval lift.
+* Memory config is an **ungoverned bundle section** (`memory`). Persistence is **migrations #12–#13**
+  (`facts.namespace`, `memory_audit`, `knowledge`, `knowledge_fts`). Exposed as the existing
+  `mercury.memory` facade (new methods `namespaces`, `auditLog`, `addKnowledge`, `searchKnowledge`),
+  CLI `mercury memory remember|recall|forget|ns|knowledge add|knowledge search|audit`, REST
+  `/api/memory/{namespaces,audit,knowledge}` (auth-gated), and the **Memory & Knowledge** panel.
+
+### 5.24 Multi-agent orchestration — teams (`core/src/teams`)
+A new core module that composes role-specialised agents into one governed run, reusing the spawner
+(§5.7) and blackboard. `TeamsService` (`teams/service.ts`, behind the `TeamStore` port over
+`teams/store.ts`; ports in `teams/ports.ts`). **Off by default** (`teams.enabled = false`).
+
+* **Definitions & strategies** — a team is a named, persisted set of `members` (role, optional
+  model/pattern/toolsets, task template) plus a `strategy`: **coordinator** (member[0] plans, workers
+  run in parallel, outputs synthesised), **pipeline** (sequential, output chained), or **debate**
+  (all answer, then synthesise/pick).
+* **Governed & resilient** — `run()` checks `teams.run` policy, honours an optional approval gate and a
+  **per-run budget ceiling** (further members recorded as `skipped` once hit), and wraps every member
+  call in try/catch so one failing member becomes an `error` step (status `partial`) instead of
+  crashing the run. Successful outputs are posted to the blackboard. Delegation is injected (the
+  runtime wires a `TeamDelegate` over `Spawner.spawn` and a `TeamSynthesizer` over the LLM).
+* `teams.manage` (admin) governs create/delete; `teams.run` governs runs. Persistence is
+  **migrations #14–#15** (`teams`, `team_runs`). Exposed as the `mercury.teams` facade, CLI
+  `mercury team list|create|show|delete|run|runs`, REST `GET/POST /api/teams/*` (auth-gated), and the
+  admin **Teams** panel. Config `teams`.
 
 ---
 

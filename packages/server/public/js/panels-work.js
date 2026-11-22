@@ -81,7 +81,34 @@ export async function renderMemory(view) {
         h('div.row', {}, add, h('button.primary', { onclick: safe(async () => add.value && (await api('/api/memory', { body: { content: add.value } }), load())) }, t('memory.add'))),
         table(r.facts, [['Fact', (f) => f.content ?? f.text], ['Kind', (f) => f.kind], ['Score', (f) => (f.score !== undefined ? Number(f.score).toFixed(2) : '')], ['', (f) => h('button.danger', { onclick: safe(async () => (await api(`/api/memory/${f.id}`, { method: 'DELETE' }), load())) }, '×')]])),
       h('div.grid2', {}, editor('memory', t('memory.agentNotes')), editor('user', t('memory.userNotes'))),
+      knowledgeCard(),
+      auditCard(),
       h('div.card', {}, h('h3', {}, t('memory.profile')), json(r.profile), h('p.small.muted', {}, `Providers: ${r.providers.join(', ')}`)));
+  };
+  // ---- knowledge/RAG (v1.4.0) ----
+  const knowledgeCard = () => {
+    const kq = field(t('memory.searchKnowledge', 'search knowledge'), { className: 'grow' });
+    const kc = h('textarea', { rows: 4, placeholder: t('memory.knowledge', 'knowledge content to ingest') });
+    const kt = field(t('common.name'));
+    const out = h('div');
+    return h('div.card', {}, h('h3', {}, t('memory.knowledge', 'Knowledge')),
+      h('div.row', {}, kt, h('button.primary', { onclick: safe(async () => kc.value && (await api('/api/memory/knowledge', { body: { title: kt.value || undefined, content: kc.value } }), toast(t('common.saved')), kc.value = '')) }, t('memory.addKnowledge', 'Add'))),
+      kc,
+      h('div.row', {}, kq, h('button', { onclick: safe(async () => {
+        const res = await api(`/api/memory/knowledge?q=${encodeURIComponent(kq.value)}`);
+        out.replaceChildren(table(res.chunks || [], [[t('memory.provenance', 'Source'), (c) => h('code.small', {}, `${c.title || c.sourceId}#${c.chunkIndex}`)], ['Score', (c) => (c.score !== undefined ? Number(c.score).toFixed(2) : '')], ['Text', (c) => h('span.small', {}, String(c.content).slice(0, 160))]]));
+      }) }, t('common.search'))),
+      out);
+  };
+  // ---- audit ledger (v1.4.0) ----
+  const auditCard = () => {
+    const out = h('div');
+    return h('div.card', {}, h('h3', {}, t('memory.audit', 'Audit log')),
+      h('button', { onclick: safe(async () => {
+        const res = await api('/api/memory/audit?limit=50');
+        out.replaceChildren(table(res.entries || [], [['Time', (e) => when(e.createdAt)], ['Action', (e) => e.action], ['Decision', (e) => badge(e.decision === 'allow', e.decision, e.decision)], ['NS', (e) => e.namespace], ['Reason', (e) => h('span.small', {}, e.reason)]]));
+      }) }, t('common.refresh', 'Load')),
+      out);
   };
   q.onkeydown = (e) => e.key === 'Enter' && safe(load)();
   view.append(h('h2', {}, t('memory.title')), h('div.row', {}, q, refreshBtn(load)), body);

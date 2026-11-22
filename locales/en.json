@@ -40,7 +40,8 @@
     "proactive": "Proactive",
     "replay": "Run Replay",
     "evals": "Evaluations",
-    "bundles": "Agent Bundles"
+    "bundles": "Agent Bundles",
+    "teams": "Teams"
   },
   "chat": {
     "placeholder": "Message Mercury… (Enter to send, Shift+Enter for newline, /help for commands)",
@@ -111,7 +112,16 @@
     "profile": "User model",
     "add": "Remember",
     "agentNotes": "Agent notes (MEMORY.md)",
-    "userNotes": "About you (USER.md)"
+    "userNotes": "About you (USER.md)",
+    "namespaces": "Namespaces",
+    "knowledge": "Knowledge",
+    "audit": "Audit log",
+    "governance": "Governance",
+    "addKnowledge": "Add knowledge",
+    "searchKnowledge": "Search knowledge",
+    "provenance": "Provenance",
+    "redacted": "PII redacted",
+    "blocked": "Blocked by policy"
   },
   "skills": {
     "title": "Skills",
@@ -480,5 +490,21 @@
     "approve": "Approve",
     "approved": "Governed sections approved",
     "noneInstalled": "No bundles installed yet."
+  },
+  "teams": {
+    "title": "Teams",
+    "unavailable": "teams subsystem unavailable",
+    "intro": "Compose role-specialised agents into governed, budget-aware runs with a coordinator, pipeline or debate strategy.",
+    "disabled": "Teams are disabled. Enable teams.enabled in your config.",
+    "create": "Create team",
+    "run": "Run",
+    "delete": "Delete",
+    "members": "Members",
+    "strategy": "Strategy",
+    "runs": "Runs",
+    "budget": "Budget",
+    "status": "Status",
+    "name": "Name",
+    "task": "Task"
   }
 }

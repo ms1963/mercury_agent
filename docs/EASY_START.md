@@ -339,3 +339,19 @@ the main [README](../README.md) links the full guides.
 
 *You're done.* Pick a brain, type `mercury chat`, and start asking. Everything runs on your own
 computer, on your terms.
+
+---
+
+## 10. Two power features to try next (optional)
+
+- **Remember things & add your own knowledge.** `mercury memory remember "..."` stores a fact;
+  `mercury memory knowledge add "<text>" --title Notes` teaches Mercury a document it can quote back
+  with sources. It stays private on your machine, and you can keep facts separate per project with
+  `--ns <name>`.
+- **Build a little team of agents.** Turn on `teams.enabled: true` in your config, then
+  `mercury team create research --members "lead:plan;writer:draft"` and
+  `mercury team run research "Summarise this week"`. Mercury splits the work across the members and
+  combines the result — and if one member trips up, the run keeps going.
+
+Both are also available in the web UI (**Memory & Knowledge** and **Teams** panels). See the
+[`memory`](help/memory.md) and [`teams`](help/teams.md) help topics for more.

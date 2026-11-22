@@ -2,7 +2,7 @@
 
 # ☿ The Mercury Agent Handbook
 
-### The complete, end-to-end handbook for users, administrators and developers — Mercury Agent v1.3.0
+### The complete, end-to-end handbook for users, administrators and developers — Mercury Agent v1.4.0
 
 ---
 
@@ -525,7 +525,7 @@ Useful `chat` flags: `--model <id>` (override the model for this one turn), `--s
 > account (that makes you the admin), pick a provider in **Settings**, and type into the Chat box.
 > That's it — everything else in this handbook is optional depth.
 
-## 3.2 The web UI at a glance (19 panels)
+## 3.2 The web UI at a glance (21 panels)
 
 The web UI is a single no-build page served by `mercury serve`. It has **dark/light themes** and **English/German** locales, and nineteen panels — each panel is explored in the part shown:
 
@@ -1228,6 +1228,55 @@ mercury bundle list                          # what's installed
 Facade `mercury.bundles`, CLI `mercury bundle …`, REST `GET/POST /api/bundles/*` (auth-gated), web
 **Agent Bundles** panel (export/download, install/upload, list). See
 [docs/help/bundles.md](help/bundles.md).
+
+## 7.8 Governed long-term memory & knowledge (1.4.0)
+
+The memory subsystem (Part 4) grows up into a **governed knowledge layer**: policy-governed,
+PII-aware, retention-bounded, **namespaced** and **auditable**, plus a knowledge/RAG store that recalls
+with **provenance**. All of it is **off/soft by default** and backward-compatible.
+
+```bash
+mercury memory remember "Ship v1.4.0 on Nov 22" --ns releases
+mercury memory recall "release date" --ns releases
+mercury memory knowledge add "$(cat notes.md)" --title Notes
+mercury memory knowledge search "how do teams work"
+mercury memory audit --decision redact
+```
+
+- **Namespaces** partition memory on top of the per-user scope; **retention** prunes by TTL and
+  max-items-per-namespace (`memory.retention.*`).
+- **PII** is detected and **redacted or blocked** (`memory.governance.pii.*`); set
+  `memory.governance.enforcePolicy` to route reads/writes through the policy engine.
+- **Audit** — every governed decision (allow / deny / redact) is recorded in the queryable
+  `memory_audit` ledger as well as the global audit bus.
+- **Knowledge/RAG** — documents are chunked, embedded and recalled with provenance via hybrid
+  FTS+vector search; when `memory.knowledge.enabled`, knowledge grounds the agent's context. Memory is
+  a shareable **bundle section** and evals can measure its lift.
+
+Facade `mercury.memory` (new `namespaces`, `auditLog`, `addKnowledge`, `searchKnowledge`), CLI
+`mercury memory ...`, REST `/api/memory/{namespaces,audit,knowledge}` (auth-gated), web **Memory &
+Knowledge** panel. See [docs/help/memory.md](help/memory.md).
+
+## 7.9 Multi-agent orchestration — teams (1.4.0)
+
+A **team** composes several role-specialised agents into one governed run, reusing the same spawner and
+blackboard as workflows. **Off by default** (`teams.enabled`).
+
+```bash
+mercury team create researchers --members "lead:plan;writer:draft" --strategy coordinator
+mercury team run researchers "Summarise the latest release" --budget 2
+mercury team runs
+```
+
+- **Strategies** — `coordinator` (plan → parallel workers → synthesise), `pipeline` (sequential) or
+  `debate` (all answer → synthesise/pick).
+- **Governed** — runs check `teams.run` policy, honour an approval gate and a per-run **budget
+  ceiling** (members skipped once hit); `teams.manage` (admin) governs create/delete.
+- **Resilient** — one failing member becomes an `error` step (status `partial`) and never crashes the
+  run; definitions and run records are persisted and auditable.
+
+Facade `mercury.teams`, CLI `mercury team ...`, REST `GET/POST /api/teams/*` (auth-gated), web
+**Teams** panel. See [docs/help/teams.md](help/teams.md).
 
 ---
 

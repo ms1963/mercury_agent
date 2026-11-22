@@ -40,7 +40,8 @@
     "help": "Hilfe",
     "account": "Konto & Tokens",
     "evals": "Evaluierungen",
-    "bundles": "Agenten-Bundles"
+    "bundles": "Agenten-Bundles",
+    "teams": "Teams"
   },
   "chat": {
     "placeholder": "Nachricht an Mercury… (Enter senden, Umschalt+Enter neue Zeile, /help für Befehle)",
@@ -111,7 +112,16 @@
     "profile": "Benutzermodell",
     "add": "Merken",
     "agentNotes": "Agentennotizen (MEMORY.md)",
-    "userNotes": "Über dich (USER.md)"
+    "userNotes": "Über dich (USER.md)",
+    "namespaces": "Namensräume",
+    "knowledge": "Wissen",
+    "audit": "Audit-Protokoll",
+    "governance": "Steuerung",
+    "addKnowledge": "Wissen hinzufügen",
+    "searchKnowledge": "Wissen durchsuchen",
+    "provenance": "Herkunft",
+    "redacted": "PII maskiert",
+    "blocked": "Durch Richtlinie blockiert"
   },
   "skills": {
     "title": "Skills",
@@ -444,5 +454,21 @@
     "editInput": "Bearbeitete Eingabe (leer = Original wiederverwenden)",
     "rerun": "Ab Schritt neu ausführen",
     "forked": "Lauf abgezweigt"
+  },
+  "teams": {
+    "title": "Teams",
+    "unavailable": "Teams-Subsystem nicht verfügbar",
+    "intro": "Fasse rollenspezialisierte Agenten zu gesteuerten, budgetbewussten Läufen mit Koordinator-, Pipeline- oder Debate-Strategie zusammen.",
+    "disabled": "Teams sind deaktiviert. Aktiviere teams.enabled in der Konfiguration.",
+    "create": "Team anlegen",
+    "run": "Ausführen",
+    "delete": "Löschen",
+    "members": "Mitglieder",
+    "strategy": "Strategie",
+    "runs": "Läufe",
+    "budget": "Budget",
+    "status": "Status",
+    "name": "Name",
+    "task": "Aufgabe"
   }
 }
