@@ -114,7 +114,7 @@ const SCOPE_FOR: Record<Action, string> = {
 const ADMIN_ONLY = new Set<Action>(['tools.manage', 'config.manage', 'users.manage', 'budgets.manage', 'gateway.manage', 'audit.read', 'teams.manage']);
 const RISK_ORDER = { safe: 0, moderate: 1, dangerous: 2 } as const;
 
-/** Glob match supporting `*` wildcards (e.g. "mcp__github__*"). */
+/** Glob match supporting `*` wildcards (e.g. "mcp_github_*"). */
 export function globMatch(pattern: string, value: string): boolean {
   if (pattern === '*') return true;
   const re = new RegExp(`^${pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`);

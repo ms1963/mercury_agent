@@ -7,6 +7,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+- Ownership checks on run-scoped endpoints (stop, feedback, replay, time-travel, state, events, trace, debug resume), approvals (owner or admin; admin-only approvals for host execution by non-admins), team runs, task budgets, schedules and verification records.
+- Pairing approval requires `gateway.manage`; already linked identities are only moved with `relink`.
+- Password change requires the current password and revokes earlier JWTs; disabling/demoting a user revokes their JWTs; last-admin guard; per-account login lockout (10 failures / 15 min → 429); API tokens expire after `auth.apiTokenMaxTtlDays` (default 365); atomic first-admin bootstrap.
+- Host-execution gate (`tools.hostAccess.nonAdmin`, default `approve` = admin approval), scrubbed command environment (`tools.terminal.envPassthrough`), data-dir jail, extra command-risk patterns, ssh option-injection guard, hardened docker run flags, process-group kill on timeout/stop.
+- SSRF guard covers RFC 6890 and IPv6-embedded IPv4, pins DNS, and re-validates redirects.
+- WhatsApp/Facebook webhooks fail closed without `appSecret` (`allowUnsigned` for local testing); webchat requires long random visitor ids.
+- HTTP hardening: CSP/XFO/nosniff headers, `no-store` for API/metrics/webhooks, attachments served as downloads unless inert media, generic 5xx bodies, `/health` reports the real version, `/metrics` gated (`observability.metricsToken`, loopback or admin).
+- Proactive actions are tainted; reserved `__name__` schedules; auto playbooks are per user; automatic skill creation/refinement only for admin runs; spawner limits can only be tightened; MCP `readOnlyHint` honoured only for trusted servers; safe git sources for skill installs; add-in paths resolved with realpath; random local admin password; keyed (HMAC) audit chain (`audit.key`); budget rules for user `system` cap auxiliary calls.
+- Deployment: systemd unit sandboxing, nginx no longer adds a shared-cache directive, docker-compose binds 127.0.0.1.
+
+### Changed (behaviour)
+- Non-admin `terminal`/`process_start`/`execute_code` calls now need an admin's approval (set `tools.hostAccess.nonAdmin: allow` for the previous behaviour).
+- `POST /api/schedules` without `when`/`task` returns 400 instead of 500.
+
 ## [1.4.0] - 2026-11-22
 
 ### Added

@@ -21,15 +21,39 @@ controls that exist and what they do and do **not** protect against.
   deny-lists union, `maxToolRisk` takes the minimum, allow-lists are intersected. A profile can only
   **further-restrict**, never escalate, so binding a locked-down profile to a personality is safe even
   if the profile is attacker-supplied. See [PERMISSIONS.md](PERMISSIONS.md).
-- **MCP endpoint** (`/mcp`): requires a bearer token with the `mcp` scope and, for every
+- **MCP endpoint** (`/mcp`): requires a bearer token with the `mcp` scope (checked as the policy
+  action `mcp.access`) and, for every
   tool, the matching scope (`agent`, `workflow`, `memory`, `skills`, `schedule`). Built-in tools are
   exposed as `mercury_<name>` only with the `tools` scope.
 - **Rate limiting**: per-client fixed window (`server.rateLimit`, default 300 requests / minute),
   backed by SQLite (`rate_limits` table) so counters persist across restarts and are shared across
   the process (single-host; not cross-replica).
-- **Webhooks**: adapter webhooks verify platform signatures (e.g. HMAC-SHA256 for the generic
-  webhook adapter, Slack signing secret). Requests that fail verification get a 401. Telegram
-  uses long polling, so it needs no inbound webhook.
+- **Webhooks**: adapter webhooks verify platform signatures (HMAC-SHA256 for the generic webhook
+  adapter, `x-hub-signature-256` for WhatsApp/Facebook, Slack signing secret). Requests that fail
+  verification get a 401. WhatsApp/Facebook **fail closed**: without `appSecret` every POST is
+  refused with 401 unless the adapter sets `allowUnsigned: true` (local testing only). The webchat
+  widget has no signature; its visitor id must be a random 16-128 character id and is the only
+  secret for polling replies. Telegram uses long polling, so it needs no inbound webhook.
+- **Accounts**: changing a password needs the current password and revokes all JWTs issued
+  before the change (a fresh token is returned). Disabling a user, demoting them or changing their
+  role revokes their JWTs; the last admin cannot be demoted, disabled or deleted. After 10 failed
+  logins within 15 minutes an account is locked for 15 minutes (HTTP 429), independent of the
+  per-IP rate limit. The first registered user becomes admin; this decision is made atomically in
+  the INSERT.
+- **API tokens** expire after at most `auth.apiTokenMaxTtlDays` (default 365, `0` = no limit) and
+  cannot mint other tokens or change passwords. `?token=` query authentication is accepted only on
+  the SSE endpoint `/api/events`.
+- **Ownership**: run-scoped endpoints (`/api/runs/:id/*`, feedback, stop, replay, time-travel,
+  events/trace, debug resume), approvals, team runs, task budgets, schedules and verification
+  records are visible only to their owner and admins (other users get 404). Schedule names/tasks of
+  the form `__name__` are reserved for internal jobs (non-admins get 403).
+- **`/metrics`** is served to a direct loopback request (no `X-Forwarded-*` headers), a bearer equal
+  to `observability.metricsToken`, or an admin token; everything else gets 401.
+- **HTTP headers**: CSP, `X-Frame-Options`, `X-Content-Type-Options: nosniff` and, for `/api`,
+  `/mcp`, `/metrics` and webhooks, `Cache-Control: no-store`. Uploaded attachments that are not
+  inert media (HTML, SVG, ...) are served as `Content-Disposition: attachment`. 5xx responses carry
+  a generic message; details go to the server log. Set `server.trustProxy` only behind a proxy you
+  control.
 
 ## Prompt-injection defence (layered)
 
@@ -84,32 +108,62 @@ backward-compatible — new keys default to safe values).
 
 - **Path jail** (`tools.jail.roots`): file tools are confined to the configured roots plus the
   workspace. `tools.jail.allowOutside: true` turns this off.
-- **Dangerous commands**: shell commands are classified (`security/commands.ts`). `rm -rf /`, disk
-  formatting, fork bombs, `curl | sh`, `sudo` and credential-file access are flagged
-  `dangerous` and always need approval.
-- **SSRF guard**: web tools use `safeFetch`, which resolves hosts and blocks private, loopback and
-  link-local addresses unless `tools.web.allowPrivateNetworks` is true. It also caps response size.
+- **Host execution** (`terminal`, `process_start`, `execute_code`) runs on the host and bypasses the
+  path jail. For non-admin users every such call needs an **admin's** approval, in every approval
+  mode including `auto` (`tools.hostAccess.nonAdmin`: `approve` (default), `deny`, or `allow` for the
+  old behaviour). Commands run with a scrubbed environment (PATH/HOME/LANG...); provider keys and
+  `MERCURY_*` secrets are not inherited unless listed in `tools.terminal.envPassthrough` (`'*'` =
+  everything). On timeout or stop the whole process group is killed (docker: the container is
+  removed). Mercury's data directory (database, `secret.key`, `audit.key`, config) is off-limits to
+  file tools except the workspace inside it.
+- **Command classification** (`security/commands.ts`) is a **heuristic denylist, not a sandbox**.
+  `rm -rf /`, disk formatting, fork bombs, `curl | sh`, `sudo`, credential files, Mercury's own
+  secrets and `/proc/*/environ` are `dangerous`; inline interpreter code (`python -c`, `sh -c`,
+  `eval`), decoded payloads (`base64 -d`), environment dumps and `find -exec/-delete` are at least
+  `moderate`. Obfuscated variants can still be rated `safe`, so use `approvals.mode: manual` or the
+  docker backend when the model must not run arbitrary commands.
+- **SSRF guard**: web tools use `safeFetch`, which resolves hosts and blocks all RFC 6890
+  special-purpose ranges (private, loopback, link-local, CGNAT, benchmark, multicast, reserved) and
+  IPv6 forms that embed IPv4 (`::ffff:`, NAT64 `64:ff9b::`, 6to4 `2002::`) unless
+  `tools.web.allowPrivateNetworks` is true. The connection is pinned to the validated address (no
+  DNS-rebinding window) and every redirect hop is re-validated. It also caps response size.
 - **Terminal backends**: `local` (default) runs as the Mercury OS user. For isolation use the
-  `docker` backend (`tools.terminal.backend`), or run Mercury itself in Docker / under the hardened
-  systemd unit in `deploy/mercury.service`.
-- **Budgets**: per-user/model token and cost limits (`budgets.rules`) stop runaway loops.
+  `docker` backend (`tools.terminal.backend`; containers run with `no-new-privileges`, pid/memory/CPU
+  limits), or run Mercury itself in Docker / under the systemd unit in `deploy/mercury.service`
+  (`NoNewPrivileges`, `ProtectSystem=strict`, `PrivateTmp`, write access only to `~/.mercury` and
+  the project dir). Note: `execute_code` always runs on the host, even with the docker backend.
+- **Budgets**: per-user/model token and cost limits (`budgets.rules`) stop runaway loops. Auxiliary
+  calls made as the system principal (wiki, team synthesis, critic, classifiers, MCP sampling) are
+  charged to user `system` and are not covered by user or `*` rules; add a rule with
+  `user: system` to cap them.
+- **Self-improvement**: automatic skill creation/refinement from reflections only happens for runs
+  of admins; auto-derived failure playbooks quote a user's output and are shown only to that user.
+  Proactive actions built from event text are marked as untrusted (tainted) and receive the event
+  text spotlighted as data. Skill git installs accept only `https://`, `ssh://` and `git@` sources
+  (no `ext::`/`file://`, no option injection, no submodules).
 - **Add-In loading** (`core/src/addins`): declarative add-ins discovered under `<dataDir>/addins/`
-  are loaded by path — the loader rejects any entry whose resolved path escapes the add-ins root
-  (`../` traversal), skips malformed manifests, and records a warning instead of failing. Loaded tools
+  are loaded by path — the loader rejects any entry whose real path (symlinks resolved) escapes
+  the add-in dir, skips malformed manifests, and records a warning instead of failing. Loaded tools
   still pass through the same risk/approval gating as built-ins; a permission profile shipped by an
   add-in can only further-restrict (see above).
 
 ## Chat platforms (gateway)
 
 - Unknown chat users get a **pairing code**. Nothing reaches the agent until an admin approves it
-  (`mercury gateway pair <CODE>` or the web UI). Approving links the chat identity to a Mercury user.
+  (`mercury gateway pair <CODE>` or the web UI; the API route requires `gateway.manage`). Approving
+  links the chat identity to a Mercury user; an identity already linked to another user is only
+  moved with an explicit `relink`.
 - Messages from paired users run with that user's permissions. Gateway triage can send messages to
   human review when decision confidence is below `decision.thresholds.triageReview`.
 
 ## Audit and observability
 
 - The **audit log** is hash-chained: each entry includes the hash of the previous one, so tampering
-  is detectable (`verify()` in `security/audit.ts`; SQL triggers forbid UPDATE/DELETE). It records
+  is detectable (`verify()` in `security/audit.ts`; SQL triggers forbid UPDATE/DELETE). New entries
+  are chained with HMAC-SHA256 under a key in `<dataDir>/audit.key` (or `MERCURY_AUDIT_KEY`), so
+  someone who can write the database but not read the key cannot recompute a valid chain; once a
+  keyed entry exists, later unkeyed entries fail verification. Keep `audit.key` (and back it up
+  separately from the database) — without it existing keyed entries cannot be verified. It records
   user registration, updates (role changes) and deletion (`user.register` / `user.update` /
   `user.delete`, recorded at the service layer so CLI admin actions are captured too), config changes,
   successful and failed logins

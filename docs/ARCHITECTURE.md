@@ -248,7 +248,7 @@ the tool (or an explicit caller) is used.
   hooks → audit (replayable via `buildTrace`). See 5.13 and [SECURITY.md](SECURITY.md).
 * Toolsets can be enabled/disabled globally and per platform (`cli`, `web`, `telegram`, …).
 * Polyglot tools: any executable with a `tool.json` manifest speaking JSON over stdio.
-* MCP client tools are namespaced `mcp__<server>__<tool>` and filtered per server.
+* MCP client tools are namespaced `mcp_<server>_<tool>` and filtered per server.
 * **Gated web reader** (`web_read`, toolset `web`): fetches a page through the SSRF-guarded
   `safeFetch` and returns the *readable main content* (title + article text, boilerplate stripped by
   `extractMainContent`), optionally with the page's links. Unlike `web_fetch` (risk `safe`), it is

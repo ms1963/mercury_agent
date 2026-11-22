@@ -32,7 +32,7 @@ user may do; it can **never** grant something the user is not already allowed.
 | `allowedWorkflows` | **intersection** | as above |
 
 Allow-list intersection keeps only entries each side also permits. Plain names behave as a
-set intersection; glob patterns (e.g. `mcp__github__*`) are kept when matched by the other
+set intersection; glob patterns (e.g. `mcp_github_*`) are kept when matched by the other
 side. The result is therefore never wider than either input list.
 
 Passing no profile returns the user policy unchanged (fully backward compatible). **Admins
