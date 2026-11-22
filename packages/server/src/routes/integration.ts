@@ -10,9 +10,9 @@ export function registerIntegrationRoutes(app: FastifyInstance, { m, auth }: Ctx
   const metricsAllowed = (req: FastifyRequest): boolean => {
     const bearer = /^Bearer\s+(.+)$/i.exec(req.headers.authorization ?? '')?.[1]?.trim();
     const token = m.config.observability.metricsToken;
-    if (token) {
-      const a = Buffer.from(bearer ?? ''), b = Buffer.from(token);
-      return a.length === b.length && timingSafeEqual(a, b);
+    if (token && bearer) {
+      const a = Buffer.from(bearer), b = Buffer.from(token);
+      if (a.length === b.length && timingSafeEqual(a, b)) return true;
     }
     // Direct loopback scrape (a reverse proxy on the same host adds X-Forwarded-* and is not trusted here).
     const proxied = Object.keys(req.headers).some((h) => h.startsWith('x-forwarded') || h === 'forwarded' || h === 'x-real-ip');

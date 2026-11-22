@@ -137,8 +137,8 @@ export class SshBackend implements TerminalBackend {
   name = 'ssh';
   constructor(private host: string, private user?: string, private keyPath?: string) {
     // A host/user beginning with "-" would be parsed by ssh as an option (e.g. -oProxyCommand=…).
-    if (host.startsWith('-') || user?.startsWith('-') || !/^[\w.:\-\[\]]+$/.test(host)) throw new Error(`invalid ssh host: ${host}`);
-    if (user !== undefined && !/^[\w.\-]+$/.test(user)) throw new Error(`invalid ssh user: ${user}`);
+    if (host.startsWith('-') || user?.startsWith('-') || !/^[\w.:[\]-]+$/.test(host)) throw new Error(`invalid ssh host: ${host}`);
+    if (user !== undefined && !/^[\w.-]+$/.test(user)) throw new Error(`invalid ssh user: ${user}`);
   }
   argv(command: string): string[] {
     const target = this.user ? `${this.user}@${this.host}` : this.host;

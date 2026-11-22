@@ -196,6 +196,7 @@ export function registerManageRoutes(app: FastifyInstance, { m, auth, sse }: Ctx
     const b = (req.body ?? {}) as Body;
     // '__…__' names/tasks are reserved for runtime-internal jobs (e.g. the proactive digest sentinel).
     if (p.role !== 'admin' && [b.name, b.task].some((v) => typeof v === 'string' && /^__\w+__$/.test(v.trim()))) throw new HttpError(403, 'reserved schedule name/task');
+    if (typeof b.when !== 'string' || !b.when.trim() || typeof b.task !== 'string' || !b.task.trim()) throw new HttpError(400, '"when" and "task" are required strings');
     return m.scheduler.create(p.userId, req.body as never);
   });
   app.patch('/api/schedules/:id', async (req) => {

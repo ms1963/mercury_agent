@@ -136,8 +136,14 @@ export class SqliteTeamStore implements TeamStore {
   listRuns(teamId?: string, limit = 100, userId?: string): TeamRunRecord[] {
     const where: string[] = [];
     const args: Array<string | number> = [];
-    if (teamId) (where.push('team_id = ?'), args.push(teamId));
-    if (userId) (where.push('user_id = ?'), args.push(userId));
+    if (teamId) {
+      where.push('team_id = ?');
+      args.push(teamId);
+    }
+    if (userId) {
+      where.push('user_id = ?');
+      args.push(userId);
+    }
     const sql = `SELECT * FROM team_runs ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY started_at DESC LIMIT ?`;
     return this.db.all<TeamRunRow>(sql, ...args, limit).map(toRun);
   }
