@@ -1,5 +1,5 @@
 /** Chat panel: streaming replies, tool/subagent chips, approvals, attachments, mic, audio playback, feedback. */
-import { api, h, markdown, safe, state, stream, t, toast } from './core.js';
+import { api, esc, h, markdown, safe, state, stream, t, toast } from './core.js';
 
 const chat = { sessionId: localStorage.getItem('mercury.session') || undefined, attachments: [], running: null, recorder: null };
 
@@ -87,11 +87,11 @@ async function send(ui, text) {
         if (d.usage) b.meta.append(h('span', {}, `${d.model ?? ''} · ${d.pattern ?? ''} · ${d.usage.inputTokens + d.usage.outputTokens} tok · $${(d.usage.cost ?? 0).toFixed(4)}`));
         b.meta.append(playButton(d.output || out));
         if (d.runId) b.meta.append(...feedbackButtons(d.runId));
-      } else if (type === 'error') b.body.innerHTML = `<span class="error">${t('common.error')}: ${d.error}</span>`;
+      } else if (type === 'error') b.body.innerHTML = `<span class="error">${esc(t('common.error'))}: ${esc(d.error)}</span>`;
       ui.messages.scrollTop = ui.messages.scrollHeight;
     }, controller.signal);
   } catch (err) {
-    if (err.name !== 'AbortError') b.body.innerHTML = `<span class="error">${err.message}</span>`;
+    if (err.name !== 'AbortError') b.body.innerHTML = `<span class="error">${esc(err.message)}</span>`;
   } finally {
     chat.running = null;
     ui.setBusy(false);

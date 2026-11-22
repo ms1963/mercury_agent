@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import type { FastifyInstance } from 'fastify';
 import { SCOPES, type Attachment, type MercuryEvent } from '@mercury/core';
-import { HttpError, type Ctx } from '../http.js';
+import { HttpError, publicError, type Ctx } from '../http.js';
 
 type Body = Record<string, unknown>;
 const str = (v: unknown, name: string): string => {
@@ -13,8 +13,32 @@ const str = (v: unknown, name: string): string => {
 /** Events forwarded to the chat stream for the runs a request started (incl. subagents). */
 const STREAM_EVENTS = new Set(['run.start', 'run.end', 'tool.call', 'tool.result', 'tool.denied', 'approval.request', 'approval.resolved', 'subagent.spawn', 'subagent.end', 'decision', 'guardrail', 'thought', 'debug.paused']);
 
+/** Product version reported by /health (read once from the server package manifest). */
+const VERSION = (() => {
+  try {
+    return (JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version?: string }).version ?? 'unknown';
+  } catch {
+    return 'unknown';
+  }
+})();
+
+/** Attachment MIME types that are safe to render inline in the browser (no active content). */
+const INLINE_MIME = /^(image\/(png|jpe?g|gif|webp|bmp)|audio\/[\w.+-]+|video\/(mp4|webm|ogg)|application\/pdf)$/i;
+
 export function registerCoreRoutes(app: FastifyInstance, { m, auth, sse }: Ctx): void {
-  app.get('/health', async () => ({ ok: true, version: '0.2.0', uptimeSec: Math.round((Date.now() - m.startedAt.getTime()) / 1000) }));
+  /**
+   * Ownership guard for run-scoped endpoints: the caller must own the run (or be an admin).
+   * The owner comes from the runs table, falling back to the time-travel trace metadata.
+   * Fails closed with 404 so run ids of other users are not even confirmed to exist.
+   */
+  const assertRunOwner = (p: { userId: string; role: string }, runId: string): void => {
+    if (p.role === 'admin') return;
+    const row = m.db.get<{ user_id: string | null }>('SELECT user_id FROM runs WHERE id = ?', runId);
+    const owner = row?.user_id ?? m.traces.getTrace(runId)?.meta?.userId;
+    if (!owner || owner !== p.userId) throw new HttpError(404, 'run not found');
+  };
+
+  app.get('/health', async () => ({ ok: true, version: VERSION, uptimeSec: Math.round((Date.now() - m.startedAt.getTime()) / 1000) }));
 
   // ---- auth ---------------------------------------------------------------
   app.get('/api/auth/status', async () => ({ users: m.users.count(), allowRegistration: m.config.auth.allowRegistration || m.users.count() === 0 }));
@@ -35,7 +59,12 @@ export function registerCoreRoutes(app: FastifyInstance, { m, auth, sse }: Ctx):
   app.patch('/api/auth/me', async (req) => {
     const p = auth(req);
     const b = req.body as Body;
-    if (typeof b.password === 'string') m.users.setPassword(p.userId, b.password);
+    if (typeof b.password === 'string') {
+      // Changing the password requires proof of the current one (stolen session/JWT ≠ account takeover).
+      if (p.kind === 'api_client') throw new HttpError(403, 'API tokens cannot change the password');
+      if (typeof b.currentPassword !== 'string' || !m.users.verifyPassword(p.userId, b.currentPassword)) throw new HttpError(403, 'current password is incorrect');
+      m.users.setPassword(p.userId, b.password);
+    }
     return m.users.update(p.userId, { displayName: b.displayName as string | undefined, locale: b.locale as string | undefined });
   });
 
@@ -106,16 +135,22 @@ export function registerCoreRoutes(app: FastifyInstance, { m, auth, sse }: Ctx):
       const r = await m.commands.handle({ ...opts, signal: controller.signal, onDelta: (text: string) => stream.send('delta', { text }) });
       stream.send('done', { output: r.output, sessionId: r.sessionId, command: r.command, runId: r.run?.runId, status: r.run?.status, usage: r.run?.usage, model: r.run?.model, pattern: r.run?.pattern, data: r.data });
     } catch (err) {
-      stream.send('error', { error: (err as Error).message });
+      req.log.error({ err }, 'chat stream failed');
+      stream.send('error', { error: publicError(err, 'the request failed; see server logs') });
     } finally {
       off();
       stream.end();
     }
   });
-  app.post('/api/runs/:id/stop', async (req) => ({ stopped: m.agent.stop((req.params as Body).id as string) }));
+  app.post('/api/runs/:id/stop', async (req) => {
+    const p = auth(req, 'chat');
+    // Non-admins can only stop their own runs (the agent filters by user id).
+    return { stopped: m.agent.stop((req.params as Body).id as string, p.role === 'admin' ? undefined : p.userId) };
+  });
   app.post('/api/runs/:id/feedback', async (req) => {
-    auth(req);
+    const p = auth(req);
     const runId = (req.params as Body).id as string;
+    assertRunOwner(p, runId);
     const positive = Boolean((req.body as Body).positive);
     const updated = m.reflector.feedback(runId, positive);
     // Self-distilling skills: a 👍 marks this run as a winning path worth distilling.
@@ -134,16 +169,18 @@ export function registerCoreRoutes(app: FastifyInstance, { m, auth, sse }: Ctx):
   // Full ordered trace for a run (steps + metadata + fork lineage). Distinct from the plain
   // audit-trail /api/runs/:id/trace — this view carries time-travel metadata and fork lineage.
   app.get('/api/runs/:id/timetravel', async (req) => {
-    auth(req);
+    const p = auth(req);
     if (!m.config.replay.enabled) throw new HttpError(404, 'run replay is disabled');
+    assertRunOwner(p, (req.params as Body).id as string);
     const trace = m.traces.getTrace((req.params as Body).id as string);
     if (!trace) throw new HttpError(404, 'no trace for this run');
     return trace;
   });
   // Reconstructed accumulated state at a given step (scrub/time-travel inspection).
   app.get('/api/runs/:id/state', async (req) => {
-    auth(req);
+    const p = auth(req);
     if (!m.config.replay.enabled) throw new HttpError(404, 'run replay is disabled');
+    assertRunOwner(p, (req.params as Body).id as string);
     const step = Number((req.query as Body).step ?? 0) || 0;
     const state = m.traces.getStateAt((req.params as Body).id as string, step);
     if (!state) throw new HttpError(404, 'no trace for this run');
@@ -157,8 +194,9 @@ export function registerCoreRoutes(app: FastifyInstance, { m, auth, sse }: Ctx):
   });
   // Fork a run from a chosen step with edited inputs → a new linked run (recomputes downstream).
   app.post('/api/runs/:id/replay', async (req) => {
-    const p = auth(req);
+    const p = auth(req, 'chat');
     if (!m.config.replay.enabled) throw new HttpError(404, 'run replay is disabled');
+    assertRunOwner(p, (req.params as Body).id as string);
     const b = req.body as Body;
     const result = await m.traces.replayFrom((req.params as Body).id as string, {
       fromStep: b.fromStep !== undefined ? Number(b.fromStep) : undefined,
@@ -209,7 +247,15 @@ export function registerCoreRoutes(app: FastifyInstance, { m, auth, sse }: Ctx):
     const p = auth(req);
     const att = m.attachments.get((req.params as Body).id as string);
     if (!att?.path || (m.attachments.owner(att.id) !== p.userId && p.role !== 'admin')) throw new HttpError(404, 'not found');
-    return reply.type(att.mime).send(readFileSync(att.path));
+    // Only passive media renders inline; everything else (HTML, SVG, JS, …) is forced to download
+    // as an opaque byte stream so an uploaded file can never execute script in the app origin.
+    const inline = INLINE_MIME.test(att.mime);
+    const fname = encodeURIComponent(att.name ?? 'attachment');
+    return reply
+      .type(inline ? att.mime : 'application/octet-stream')
+      .header('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${fname}`)
+      .header('Content-Security-Policy', "default-src 'none'; sandbox")
+      .send(readFileSync(att.path));
   });
   app.post('/api/voice/speak', async (req, reply) => {
     auth(req, 'chat');
@@ -229,7 +275,8 @@ export function registerCoreRoutes(app: FastifyInstance, { m, auth, sse }: Ctx):
     return { approvals: m.approvals.list(p.role === 'admin' ? undefined : p.userId) };
   });
   app.post('/api/approvals/:id', async (req) => {
-    auth(req);
-    return { ok: m.approvals.resolve((req.params as Body).id as string, Boolean((req.body as Body).approved)) };
+    const p = auth(req);
+    // Only the user who owns the pending call (or an admin) may resolve it.
+    return { ok: m.approvals.resolveAs((req.params as Body).id as string, Boolean((req.body as Body).approved), p) };
   });
 }

@@ -101,8 +101,8 @@ export class TeamsService {
   getRun(id: string): TeamRunRecord | undefined {
     return this.store.getRun(id);
   }
-  listRuns(teamId?: string, limit?: number): TeamRunRecord[] {
-    return this.store.listRuns(teamId, limit);
+  listRuns(teamId?: string, limit?: number, userId?: string): TeamRunRecord[] {
+    return this.store.listRuns(teamId, limit, userId);
   }
 
   /** Run a team on a task. Returns the persisted run record (never throws for a member failure). */
@@ -172,6 +172,7 @@ export class TeamsService {
       error: status === 'error' ? 'all members failed' : state.budgetHit ? 'budget ceiling reached' : undefined,
       startedAt,
       endedAt: nowIso(),
+      userId: principal.userId,
     });
     this.opts.audit?.record(principal.username, 'team.run', def.name, { status, cost: state.cost, succeeded, failed });
     this.opts.bus?.emit({ type: 'team.run', userId: principal.userId, data: { team: def.name, status, cost: state.cost, succeeded, failed } });

@@ -20,12 +20,14 @@ export class WebChatAdapter extends BaseAdapter {
   async handleWebhook(req: WebhookRequest): Promise<WebhookResponse> {
     if (req.method === 'GET') {
       const visitor = req.query.visitor ?? '';
+      // The visitor id is the only secret for polling replies: require a long, unguessable id.
+      if (!/^[\w-]{16,128}$/.test(visitor)) return { status: 400, body: 'visitor must be a random id of 16-128 chars' };
       const messages = this.outbox.get(visitor) ?? [];
       this.outbox.delete(visitor);
       return { status: 200, body: { messages } };
     }
     const body = JSON.parse(req.body || '{}') as { visitor?: string; text?: string; name?: string };
-    if (!body.visitor || !/^[\w-]{6,64}$/.test(body.visitor) || !body.text) return { status: 400, body: 'visitor (6-64 chars) and text are required' };
+    if (!body.visitor || !/^[\w-]{16,128}$/.test(body.visitor) || !body.text) return { status: 400, body: 'visitor (random id, 16-128 chars) and text are required' };
     void this.receive({ userId: body.visitor, chatId: body.visitor, text: body.text.slice(0, 8000), displayName: body.name });
     return { status: 202, body: { accepted: true } };
   }

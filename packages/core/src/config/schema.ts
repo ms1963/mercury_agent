@@ -86,6 +86,9 @@ export const ConfigSchema = z.object({
       publicUrl: z.string().optional(),
       rateLimit: z.object({ windowMs: z.number().default(60_000), max: z.number().default(300) }).prefault({}),
       maxBodyBytes: z.number().default(30 * 1024 * 1024),
+      /** Trust X-Forwarded-* headers (only behind a reverse proxy you control). Default off so
+       *  clients cannot spoof their IP to evade the rate limiter. */
+      trustProxy: z.union([z.boolean(), z.string(), z.number()]).default(false),
     })
     .prefault({}),
 

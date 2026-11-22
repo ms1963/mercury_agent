@@ -112,10 +112,14 @@ export class Agent {
 
   constructor(readonly deps: AgentDeps) {}
 
-  /** Abort a running turn by run id or session id. Returns the number of runs stopped. */
-  stop(idOrSession: string): number {
+  /**
+   * Abort a running turn by run id or session id. Returns the number of runs stopped.
+   * When `userId` is given only that user's runs are affected (non-admin callers).
+   */
+  stop(idOrSession: string, userId?: string): number {
     let n = 0;
     for (const [runId, r] of this.active) {
+      if (userId !== undefined && r.userId !== userId) continue;
       if (runId === idOrSession || r.sessionId === idOrSession) {
         r.controller.abort();
         this.deps.approvals.cancelRun(runId);

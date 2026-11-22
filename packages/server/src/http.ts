@@ -38,8 +38,32 @@ export class HttpError extends Error {
   }
 }
 
+/**
+ * Message that is safe to show a client for `err`: domain errors (status < 500, e.g. HttpError /
+ * MercuryError) keep their message; anything else (internal failures, provider/library errors,
+ * file paths, stack-ish detail) is replaced by a generic text and should be logged server-side.
+ */
+export function publicError(err: unknown, fallback = 'internal error; see server logs'): string {
+  const status = (err as { status?: unknown })?.status;
+  return typeof status === 'number' && status < 500 && err instanceof Error ? err.message : fallback;
+}
+
+/** Content-Security-Policy for the bundled single-page app (no inline scripts, same-origin only). */
+export const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "media-src 'self' blob:",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join('; ');
+
 export async function createServer(m: Mercury): Promise<FastifyInstance> {
-  const app = Fastify({ logger: false, bodyLimit: m.config.server.maxBodyBytes, trustProxy: true });
+  const app = Fastify({ logger: false, bodyLimit: m.config.server.maxBodyBytes, trustProxy: m.config.server.trustProxy as boolean });
   const limiter = new RateLimiter(m.db, m.config.server.rateLimit.max, m.config.server.rateLimit.windowMs);
 
   // Keep raw text for JSON/form bodies (webhook signatures); binary uploads arrive as Buffers.
@@ -61,18 +85,30 @@ export async function createServer(m: Mercury): Promise<FastifyInstance> {
     if (req.url.startsWith('/api/') && !limiter.hit(req.ip)) return reply.code(429).send({ error: 'rate limit exceeded' });
     reply.header('x-content-type-options', 'nosniff');
     reply.header('referrer-policy', 'no-referrer');
+    reply.header('x-frame-options', 'DENY');
+    reply.header('content-security-policy', CSP);
+    reply.header('cross-origin-opener-policy', 'same-origin');
+    // API responses carry user data and tokens → never cache them.
+    if (req.url.startsWith('/api/') || req.url.startsWith('/mcp')) reply.header('cache-control', 'no-store');
   });
 
   app.setErrorHandler((err: Error & { status?: number; statusCode?: number; code?: string; helpTopic?: string }, _req, reply) => {
     const status = err.status ?? err.statusCode ?? 500;
-    if (status >= 500) m.logger.warn('request failed', { error: err.message });
+    if (status >= 500) {
+      // Internal detail (paths, SQL, provider responses) stays in the server log.
+      m.logger.warn('request failed', { error: err.message });
+      return void reply.code(status).send({ error: 'internal error; see server logs', code: 'internal' });
+    }
     void reply.code(status).send({ error: err.message, code: err.code, help: err.helpTopic });
   });
 
   const ctx: Ctx = {
     m,
     auth(req, action) {
-      const header = req.headers.authorization ?? (req.query as Record<string, string>).token;
+      // `?token=` is only honoured for the SSE event stream (EventSource cannot send headers);
+      // everywhere else it would leak credentials into logs, history and Referer headers.
+      const isEventStream = req.method === 'GET' && req.url.split('?')[0] === '/api/events';
+      const header = req.headers.authorization ?? (isEventStream ? (req.query as Record<string, string>).token : undefined);
       const p = req.principal ?? m.users.authenticate(header);
       if (!p) throw new HttpError(401, 'authentication required');
       req.principal = p;

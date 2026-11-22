@@ -133,7 +133,7 @@ export class CommandProcessor {
       const n = mem.truncateFrom(o.sessionId, lastUser.seq);
       return `Removed ${n} message(s).`;
     });
-    add('stop', '/stop', 'Stop the running turn in this session', async (_args, o) => `Stopped ${a.stop(o.sessionId)} run(s).`);
+    add('stop', '/stop', 'Stop the running turn in this session', async (_args, o) => `Stopped ${a.stop(o.sessionId, o.principal.role === 'admin' ? undefined : o.principal.userId)} run(s).`);
     add('compress', '/compress', 'Summarise older messages to free context', async (_args, o) => {
       const r = await a.compressSession(o.principal, o.sessionId);
       return r.before === r.after ? 'Nothing to compress yet.' : `Compressed ${r.before} → ${r.after} messages.`;
@@ -150,8 +150,8 @@ export class CommandProcessor {
       const r = this.checkpoints.rollback(args || undefined, o.sessionId);
       return r.restored.length ? `Restored ${r.restored.length} file(s):\n${r.restored.join('\n')}` : 'No checkpoint to roll back.';
     });
-    add('approve', '/approve <id>', 'Approve a pending tool call', async (args) => (this.approvals.resolve(args, true) ? 'Approved.' : `No pending approval ${args}.`));
-    add('deny', '/deny <id>', 'Deny a pending tool call', async (args) => (this.approvals.resolve(args, false) ? 'Denied.' : `No pending approval ${args}.`));
+    add('approve', '/approve <id>', 'Approve a pending tool call', async (args, o) => (this.approvals.resolveAs(args, true, o.principal) ? 'Approved.' : `No pending approval ${args}.`));
+    add('deny', '/deny <id>', 'Deny a pending tool call', async (args, o) => (this.approvals.resolveAs(args, false, o.principal) ? 'Denied.' : `No pending approval ${args}.`));
     add('approvals', '/approvals', 'List pending approvals', async (_a, o) => this.approvals.list(o.principal.userId).map((p) => `${p.id}  ${p.title}  ${p.detail.split('\n')[0]}`).join('\n') || 'No pending approvals.');
     add('memory', '/memory [query]', 'Show curated memory or search memories', async (args, o) => {
       if (!args) return `${d.memory.curated.read(o.principal.userId, 'memory') || '(MEMORY.md empty)'}\n${d.memory.curated.read(o.principal.userId, 'user') || '(USER.md empty)'}`;

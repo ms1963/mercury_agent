@@ -6,12 +6,18 @@
 import type { FastifyInstance } from 'fastify';
 import { installSkills, insights, redactDeep, setConfigValue, buildTrace, type MercuryEvent } from '@mercury/core';
 import { directToolContext } from '@mercury/runtime';
-import { HttpError, type Ctx } from '../http.js';
+import { HttpError, publicError, type Ctx } from '../http.js';
 
 type Body = Record<string, unknown>;
 const param = (req: { params: unknown }, k = 'id') => (req.params as Body)[k] as string;
 
 export function registerManageRoutes(app: FastifyInstance, { m, auth, sse }: Ctx): void {
+  /** True when `p` may see run-scoped data for `runId` (admin, or the run's owner). */
+  const ownsRun = (p: { userId: string; role: string }, runId: string): boolean => {
+    if (p.role === 'admin') return true;
+    const row = m.db.get<{ user_id: string | null }>('SELECT user_id FROM runs WHERE id = ?', runId);
+    return !!row && row.user_id === p.userId;
+  };
   // ---- tools & MCP --------------------------------------------------------
   app.get('/api/tools', async (req) => {
     auth(req);
@@ -46,12 +52,16 @@ export function registerManageRoutes(app: FastifyInstance, { m, auth, sse }: Ctx
   app.post('/api/skills', async (req) => {
     const p = auth(req, 'skills.manage');
     const b = req.body as Body;
-    if (b.source) return { installed: installSkills(m.skills, String(b.source)) };
+    // Installing third-party skill packs changes the prompt context of every user → admin only.
+    if (b.source) return (auth(req, 'tools.manage'), { installed: installSkills(m.skills, String(b.source)) });
     return m.skills.create({ name: String(b.name), description: String(b.description ?? ''), body: String(b.body ?? ''), tags: b.tags as string[] | undefined, author: p.username }).meta;
   });
   app.put('/api/skills/:name', async (req) => {
-    auth(req, 'skills.manage');
+    const p = auth(req, 'skills.manage');
     const b = req.body as Body;
+    // Skills are shared: only their author (or an admin) may rewrite them.
+    const existing = m.skills.get(param(req, 'name'));
+    if (existing && p.role !== 'admin' && existing.meta.author !== p.username) throw new HttpError(403, 'only the skill author or an admin may edit this skill');
     return m.skills.update(param(req, 'name'), { body: b.body as string | undefined, description: b.description as string | undefined }).meta;
   });
 
@@ -115,11 +125,15 @@ export function registerManageRoutes(app: FastifyInstance, { m, auth, sse }: Ctx
     const p = auth(req, 'teams.manage');
     return m.teams.define(p, req.body as never);
   });
-  app.get('/api/teams/runs', async (req) => (auth(req, 'teams.run'), { runs: m.teams.listRuns((req.query as Body).team as string | undefined) }));
+  app.get('/api/teams/runs', async (req) => {
+    const p = auth(req, 'teams.run');
+    // Non-admins only see the team runs they started.
+    return { runs: m.teams.listRuns((req.query as Body).team as string | undefined, undefined, p.role === 'admin' ? undefined : p.userId) };
+  });
   app.get('/api/teams/runs/:id', async (req) => {
-    auth(req, 'teams.run');
+    const p = auth(req, 'teams.run');
     const r = m.teams.getRun(param(req));
-    if (!r) throw new HttpError(404, 'run not found');
+    if (!r || (p.role !== 'admin' && r.userId !== p.userId)) throw new HttpError(404, 'run not found');
     return r;
   });
   app.get('/api/teams/:id', async (req) => {
@@ -137,19 +151,27 @@ export function registerManageRoutes(app: FastifyInstance, { m, auth, sse }: Ctx
 
   // ---- workflows ------------------------------------------------------------
   app.get('/api/workflows', async (req) => (auth(req), { workflows: m.workflows.list(), templates: m.workflows.listTemplates() }));
-  app.post('/api/workflows', async (req) => (auth(req, 'workflow.run'), m.workflows.save(req.body as never)));
+  app.post('/api/workflows', async (req) => {
+    const p = auth(req, 'workflow.run');
+    const name = String((req.body as Body)?.name ?? '');
+    // Workflows are shared: overwriting an existing (or bundled) one requires an admin.
+    if (name && m.workflows.get(name) && p.role !== 'admin') throw new HttpError(403, `workflow "${name}" already exists; only an admin may overwrite it`);
+    return m.workflows.save(req.body as never);
+  });
   app.post('/api/workflows/:name/run', async (req, reply) => {
     const p = auth(req, 'workflow.run');
     const b = req.body as Body;
     const stream = sse(req, reply);
     const off = m.bus.on('*', (e: MercuryEvent) => {
-      if (e.userId === p.userId || e.type.startsWith('workflow.')) stream.send('event', e);
+      // Only this user's events (workflow events without a user id are global progress markers).
+      if (e.userId === p.userId || (e.type.startsWith('workflow.') && !e.userId)) stream.send('event', e);
     });
     try {
       const r = await m.workflows.run(param(req, 'name'), String(b.input ?? ''), { principal: p, platform: 'web' });
       stream.send('done', r);
     } catch (err) {
-      stream.send('error', { error: (err as Error).message });
+      req.log.error({ err }, 'workflow run failed');
+      stream.send('error', { error: publicError(err, 'the workflow failed; see server logs') });
     } finally {
       off();
       stream.end();
@@ -187,7 +209,12 @@ export function registerManageRoutes(app: FastifyInstance, { m, auth, sse }: Ctx
         throw new HttpError(400, 'unknown action');
     }
   });
-  app.get('/api/schedules/:id/history', async (req) => (sched(req), { runs: m.scheduler.history(param(req)) }));
+  app.get('/api/schedules/:id/history', async (req) => {
+    const { owner } = sched(req);
+    const s = m.scheduler.get(param(req));
+    if (!s || (owner && s.userId !== owner)) throw new HttpError(404, 'schedule not found');
+    return { runs: m.scheduler.history(param(req)) };
+  });
 
   // ---- gateway ----------------------------------------------------------------
   app.get('/api/gateway', async (req) => {
@@ -196,12 +223,12 @@ export function registerManageRoutes(app: FastifyInstance, { m, auth, sse }: Ctx
     return { enabled: m.config.gateway.enabled, adapters: m.gateway.status(), pairing: admin ? m.pairing.listPending() : [], review: admin ? m.gateway.reviewQueue() : [], identities: m.users.listIdentities(p.userId) };
   });
   app.post('/api/gateway/pair/:code', async (req) => {
-    const p = auth(req);
+    // Pairing grants an outside chat identity a full user principal → admin only (docs/SECURITY.md).
+    const p = auth(req, 'gateway.manage');
     const b = req.body as Body;
-    if (b.reject) return (auth(req, 'gateway.manage'), m.pairing.reject(param(req, 'code'), p.userId), { ok: true });
-    // Users link codes to themselves; admins may link to any user.
-    const target = p.role === 'admin' && b.userId ? String(b.userId) : p.userId;
-    return m.pairing.approve(param(req, 'code'), target, p.userId);
+    if (b.reject) return (m.pairing.reject(param(req, 'code'), p.userId), { ok: true });
+    const target = b.userId ? String(b.userId) : p.userId;
+    return m.pairing.approve(param(req, 'code'), target, p.userId, { relink: b.relink === true });
   });
   app.post('/api/gateway/review/:id', async (req) => {
     auth(req, 'gateway.manage');
@@ -224,14 +251,15 @@ export function registerManageRoutes(app: FastifyInstance, { m, auth, sse }: Ctx
 
   // ---- per-task economics: hard budgets + running cost-vs-value estimate --------
   app.get('/api/tasks', async (req) => {
-    auth(req);
-    const tasks = m.taskBudgets.all().map((t) => ({ ...t, costVsValue: m.taskBudgets.costVsValue(t.taskId) }));
+    const p = auth(req);
+    // Task ids are run ids: non-admins only see the economics of their own runs.
+    const tasks = m.taskBudgets.all().filter((t) => ownsRun(p, t.taskId)).map((t) => ({ ...t, costVsValue: m.taskBudgets.costVsValue(t.taskId) }));
     return { config: m.config.budgets.perTask, economics: m.config.router.economics, active: tasks.filter((t) => t.state === 'active'), tasks };
   });
   app.get('/api/tasks/:id', async (req) => {
-    auth(req);
+    const p = auth(req);
     const budget = m.taskBudgets.get(param(req));
-    if (!budget) throw new HttpError(404, 'task not found');
+    if (!budget || !ownsRun(p, budget.taskId)) throw new HttpError(404, 'task not found');
     return { budget, costVsValue: m.taskBudgets.costVsValue(param(req)) };
   });
 
@@ -241,12 +269,14 @@ export function registerManageRoutes(app: FastifyInstance, { m, auth, sse }: Ctx
     return { reflections: m.reflector.list(p.role === 'admin' ? undefined : p.userId) };
   });
   app.get('/api/decisions', async (req) => {
-    auth(req);
+    const p = auth(req);
     const purpose = (req.query as Body).purpose as string | undefined;
-    return { chain: m.decisions.chain(), recent: m.decisions.recent(100, purpose), calibration: m.decisions.calibration(purpose), thresholds: m.config.decision.thresholds };
+    // Decision history spans all users' runs → only admins see the individual records.
+    return { chain: m.decisions.chain(), recent: p.role === 'admin' ? m.decisions.recent(100, purpose) : [], calibration: m.decisions.calibration(purpose), thresholds: m.config.decision.thresholds };
   });
   app.post('/api/decisions/try', async (req) => {
-    auth(req);
+    // The playground can call the LLM decision provider as SYSTEM (budget-exempt) → admin only.
+    auth(req, 'config.manage');
     const b = req.body as Body;
     return m.decisions.decide({ state: b.state ?? '', questions: b.questions as never, purpose: 'playground' });
   });
@@ -352,6 +382,14 @@ export function registerManageRoutes(app: FastifyInstance, { m, auth, sse }: Ctx
     const p = auth(req);
     const b = req.body as Body;
     if (!Array.isArray(b.checks)) throw new HttpError(400, 'checks (array) is required');
+    if (p.role !== 'admin') {
+      // `test` checks run shell commands on the host, assertions touch the filesystem/network and
+      // the critic spends SYSTEM LLM budget → only pure `schema` checks are available to non-admins.
+      const bad = (b.checks as Array<{ type?: unknown }>).filter((c) => !c || c.type !== 'schema');
+      if (bad.length) throw new HttpError(403, 'only admins may run test, assertion or critic checks');
+      if (b.runId && !ownsRun(p, String(b.runId))) throw new HttpError(404, 'run not found');
+      if (b.taskId && !ownsRun(p, String(b.taskId))) throw new HttpError(404, 'task not found');
+    }
     return m.verifier.verify({
       taskId: b.taskId ? String(b.taskId) : undefined,
       runId: b.runId ? String(b.runId) : undefined,

@@ -119,7 +119,7 @@ export const badge = (on, yes = 'on', no = 'off') => h(`span.badge.${on ? 'on' :
 export const json = (v) => h('pre', {}, typeof v === 'string' ? v : JSON.stringify(v, null, 2));
 export const when = (iso) => (iso ? new Date(iso).toLocaleString() : '');
 
-const esc = (s) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 /** Minimal, safe Markdown: code blocks, inline code, bold, italics, links, lists, paragraphs. */
 export function markdown(src) {

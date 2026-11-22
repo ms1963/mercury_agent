@@ -102,11 +102,15 @@ export class UserService {
    *  user is treated as the actor (e.g. editing their own profile). */
   update(id: string, patch: Partial<Pick<User, 'role' | 'displayName' | 'locale' | 'disabled' | 'policy'>>, actor?: string): User {
     const u = this.get(id);
+    const losesAdmin = u.role === 'admin' && !u.disabled && ((patch.role !== undefined && patch.role !== 'admin') || patch.disabled === true);
+    if (losesAdmin && this.activeAdminCount() <= 1) throw new MercuryError('Cannot demote or disable the last active admin', 'last_admin', 'auth', 409);
     this.db.run(
       'UPDATE users SET role=?, display_name=?, locale=?, disabled=?, policy=? WHERE id=?',
       patch.role ?? u.role, patch.displayName ?? u.displayName, patch.locale ?? u.locale,
       patch.disabled ?? u.disabled, toJson(patch.policy ?? u.policy), id,
     );
+    // Disabling a user or changing their role invalidates every session JWT issued before.
+    if ((patch.disabled !== undefined && patch.disabled !== u.disabled) || (patch.role !== undefined && patch.role !== u.role)) this.bumpTokenVersion(id);
     const updated = this.get(id);
     const changed = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
     this.audit?.record(actor ?? id, 'user.update', id, changed);
@@ -116,10 +120,33 @@ export class UserService {
   setPassword(id: string, password: string): void {
     if (password.length < 8) throw new MercuryError('Password must be at least 8 characters', 'weak_password', 'auth');
     this.db.run('UPDATE users SET password_hash=? WHERE id=?', hashPassword(password), id);
+    // A password change revokes all previously issued session JWTs.
+    this.bumpTokenVersion(id);
+  }
+
+  /** Check a user's current password (used to authorise password changes). */
+  verifyPassword(id: string, password: string): boolean {
+    const row = this.db.get<{ password_hash: string }>('SELECT password_hash FROM users WHERE id=?', id);
+    return !!row && verifyPassword(password, row.password_hash);
+  }
+
+  /** Number of enabled admin accounts (last-admin protection). */
+  activeAdminCount(): number {
+    return this.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM users WHERE role='admin' AND disabled=0")?.n ?? 0;
+  }
+
+  /** Revoke all session JWTs of a user by bumping their token version. */
+  bumpTokenVersion(id: string): void {
+    this.db.run('UPDATE users SET token_version = token_version + 1 WHERE id=?', id);
+  }
+
+  private tokenVersion(id: string): number {
+    return this.db.get<{ token_version: number }>('SELECT token_version FROM users WHERE id=?', id)?.token_version ?? 0;
   }
 
   delete(id: string, actor?: string): void {
-    const row = this.db.get<UserRow>('SELECT username FROM users WHERE id=?', id);
+    const row = this.db.get<UserRow>('SELECT username, role, disabled FROM users WHERE id=?', id);
+    if (row && row.role === 'admin' && !row.disabled && this.activeAdminCount() <= 1) throw new MercuryError('Cannot delete the last active admin', 'last_admin', 'auth', 409);
     this.db.run('DELETE FROM users WHERE id=?', id);
     if (row) this.audit?.record(actor ?? id, 'user.delete', id, { username: row.username });
   }
@@ -141,7 +168,7 @@ export class UserService {
   }
 
   issueJwt(user: User): string {
-    return signJwt({ sub: user.id, role: user.role, username: user.username }, this.secret, this.tokenTtlHours * 3600);
+    return signJwt({ sub: user.id, role: user.role, username: user.username, tv: this.tokenVersion(user.id) }, this.secret, this.tokenTtlHours * 3600);
   }
 
   createToken(userId: string, name: string, scopes: string[] = ['*'], ttlDays?: number, actor?: string): { token: string; info: ApiToken } {
@@ -195,6 +222,8 @@ export class UserService {
     try {
       const user = this.get(payload.sub);
       if (user.disabled) return null;
+      // Reject JWTs minted before the last password change / disable / role change.
+      if ((typeof payload.tv === 'number' ? payload.tv : 0) !== this.tokenVersion(user.id)) return null;
       return { userId: user.id, username: user.username, role: user.role, kind: 'user', scopes: ['*'] };
     } catch {
       return null;

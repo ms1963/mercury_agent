@@ -81,6 +81,8 @@ export interface TeamRunRecord {
   error?: string;
   startedAt: string;
   endedAt: string;
+  /** User who started the run (ownership for non-admin listing). */
+  userId?: string;
 }
 
 /** Persistence port for team definitions + run records. */
@@ -93,7 +95,8 @@ export interface TeamStore {
 
   recordRun(r: Omit<TeamRunRecord, 'id'>): TeamRunRecord;
   getRun(id: string): TeamRunRecord | undefined;
-  listRuns(teamId?: string, limit?: number): TeamRunRecord[];
+  /** List runs, optionally filtered by team and/or owning user. */
+  listRuns(teamId?: string, limit?: number, userId?: string): TeamRunRecord[];
 }
 
 /** Input to delegate one member's subtask (the runtime wires this to the workflow spawner). */

@@ -41,7 +41,11 @@ export class WhatsAppAdapter extends BaseAdapter {
       return ok ? { status: 200, body: req.query['hub.challenge'] ?? '', contentType: 'text/plain' } : { status: 403, body: 'forbidden' };
     }
     const secret = this.opt('appSecret', 'WHATSAPP_APP_SECRET');
-    if (secret && !verifyHmacSignature(secret, req.body, req.headers['x-hub-signature-256'])) return { status: 401, body: 'invalid signature' };
+    // Fail closed: without an app secret, inbound POSTs cannot be authenticated. Set
+    // `allowUnsigned: true` only for local testing.
+    if (!secret) {
+      if (this.config.allowUnsigned !== true && this.opt('allowUnsigned') !== 'true') return { status: 401, body: 'webhook signature verification is not configured (appSecret missing)' };
+    } else if (!verifyHmacSignature(secret, req.body, req.headers['x-hub-signature-256'])) return { status: 401, body: 'invalid signature' };
     const payload = JSON.parse(req.body) as WaPayload;
     for (const change of payload.entry?.flatMap((e) => e.changes ?? []) ?? []) {
       const name = change.value?.contacts?.[0]?.profile?.name;

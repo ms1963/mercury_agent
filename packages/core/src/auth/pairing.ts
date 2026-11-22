@@ -51,10 +51,20 @@ export class PairingService {
   }
 
   /** Approve a code for `userId`, linking the chat identity. `actor` is who performed the approval. */
-  approve(code: string, userId: string, actor?: string): PairingRequest {
+  approve(code: string, userId: string, actor?: string, opts: { relink?: boolean } = {}): PairingRequest {
     const req = this.get(code);
     if (!req || req.status !== 'pending') throw new MercuryError('Unknown or already used pairing code', 'pairing_invalid', 'gateway', 404);
     if (req.expiresAt < nowIso()) throw new MercuryError('Pairing code expired', 'pairing_expired', 'gateway', 410);
+    // Never silently move an identity that is already linked to another user (SC-20).
+    let linked: { id: string } | undefined;
+    try {
+      linked = this.users.findIdentity(req.platform, req.externalId);
+    } catch {
+      linked = undefined; // dangling identity of a deleted user → safe to re-link
+    }
+    if (linked && linked.id !== userId && !opts.relink) {
+      throw new MercuryError(`This ${req.platform} identity is already linked to another user; approve with relink to move it`, 'pairing_linked', 'gateway', 409);
+    }
     this.users.linkIdentity(req.platform, req.externalId, userId, req.displayName);
     this.db.run("UPDATE pairing_codes SET status='approved', user_id=? WHERE code=?", userId, req.code);
     this.audit?.record(actor ?? userId, 'pairing.approve', req.code, { platform: req.platform, externalId: req.externalId, linkedUserId: userId });

@@ -54,6 +54,22 @@ export class ApprovalService {
     return true;
   }
 
+  /**
+   * Resolve on behalf of an authenticated actor. Only the user whose run requested the
+   * approval (or an admin) may decide it; anything else behaves like an unknown id.
+   */
+  resolveAs(id: string, approved: boolean, actor: { userId: string; role: string }): boolean {
+    const p = this.pending.get(id);
+    if (!p) return false;
+    if (p.req.userId !== actor.userId && actor.role !== 'admin') return false;
+    return this.resolve(id, approved, actor.userId);
+  }
+
+  /** Owner of a pending approval (undefined when unknown). */
+  ownerOf(id: string): string | undefined {
+    return this.pending.get(id)?.req.userId;
+  }
+
   list(userId?: string): PendingApproval[] {
     return [...this.pending.values()].map((p) => p.req).filter((r) => !userId || r.userId === userId);
   }

@@ -177,7 +177,7 @@ export class Gateway {
     // Approval replies from chat.
     const ap = /^\/(approve|deny)\s+(\S+)/i.exec(msg.text.trim());
     if (ap) {
-      const ok = this.deps.approvals.resolve(ap[2]!, ap[1]!.toLowerCase() === 'approve');
+      const ok = this.deps.approvals.resolveAs(ap[2]!, ap[1]!.toLowerCase() === 'approve', principal);
       return this.reply(msg, ok ? `Request ${ap[1]!.toLowerCase()}d.` : 'No pending approval with that id.');
     }
 

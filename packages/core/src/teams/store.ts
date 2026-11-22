@@ -44,6 +44,7 @@ interface TeamRunRow {
   error: string | null;
   started_at: string;
   ended_at: string;
+  user_id?: string | null;
 }
 
 const toTeam = (r: TeamRow): TeamDefinition => ({
@@ -73,6 +74,7 @@ const toRun = (r: TeamRunRow): TeamRunRecord => ({
   error: r.error ?? undefined,
   startedAt: r.started_at,
   endedAt: r.ended_at,
+  userId: r.user_id ?? undefined,
 });
 
 export class SqliteTeamStore implements TeamStore {
@@ -119,9 +121,9 @@ export class SqliteTeamStore implements TeamStore {
   recordRun(r: Omit<TeamRunRecord, 'id'>): TeamRunRecord {
     const id = newId('trun');
     this.db.run(
-      `INSERT INTO team_runs (id, team_id, team_name, task, strategy, status, output, members, succeeded, failed, cost, trace, error, started_at, ended_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      id, r.teamId, r.teamName, r.task, r.strategy, r.status, r.output, r.members, r.succeeded, r.failed, r.cost, toJson(r.trace), r.error ?? null, r.startedAt, r.endedAt,
+      `INSERT INTO team_runs (id, team_id, team_name, task, strategy, status, output, members, succeeded, failed, cost, trace, error, started_at, ended_at, user_id)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      id, r.teamId, r.teamName, r.task, r.strategy, r.status, r.output, r.members, r.succeeded, r.failed, r.cost, toJson(r.trace), r.error ?? null, r.startedAt, r.endedAt, r.userId ?? null,
     );
     return this.getRun(id)!;
   }
@@ -131,10 +133,12 @@ export class SqliteTeamStore implements TeamStore {
     return r ? toRun(r) : undefined;
   }
 
-  listRuns(teamId?: string, limit = 100): TeamRunRecord[] {
-    const rows = teamId
-      ? this.db.all<TeamRunRow>('SELECT * FROM team_runs WHERE team_id = ? ORDER BY started_at DESC LIMIT ?', teamId, limit)
-      : this.db.all<TeamRunRow>('SELECT * FROM team_runs ORDER BY started_at DESC LIMIT ?', limit);
-    return rows.map(toRun);
+  listRuns(teamId?: string, limit = 100, userId?: string): TeamRunRecord[] {
+    const where: string[] = [];
+    const args: Array<string | number> = [];
+    if (teamId) (where.push('team_id = ?'), args.push(teamId));
+    if (userId) (where.push('user_id = ?'), args.push(userId));
+    const sql = `SELECT * FROM team_runs ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY started_at DESC LIMIT ?`;
+    return this.db.all<TeamRunRow>(sql, ...args, limit).map(toRun);
   }
 }
