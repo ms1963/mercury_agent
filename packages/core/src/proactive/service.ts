@@ -14,6 +14,7 @@ import { fromJson, toJson } from '../db/db.js';
 import type { EventBus } from '../events/bus.js';
 import { newId, nowIso } from '../types/common.js';
 import { scorePriority } from './priority.js';
+import { spotlight } from '../security/injection.js';
 import type { EventSource } from './sources.js';
 
 export interface ProactiveEventInput {
@@ -57,7 +58,7 @@ export interface ProactiveDeps {
   /** Deliver a notification (single event or digest) to the configured target. */
   deliver?: (text: string, event?: ProactiveEvent) => Promise<void>;
   /** Run an agent action for a matched interrupt (the rule's `action`, interpolated). */
-  runAction?: (task: string, event: ProactiveEvent) => Promise<void>;
+  runAction?: (task: string, event: ProactiveEvent, meta?: { tainted: boolean; data?: string }) => Promise<void>;
 }
 
 type Rule = MercuryConfig['proactive']['rules'][number];
@@ -136,8 +137,13 @@ export class ProactiveService {
     if (decision === 'interrupt') {
       await this.deps.deliver?.(`[${ev.source}/${ev.kind}] ${ev.title ?? ''}${ev.body ? `\n${ev.body}` : ''}`.trim(), ev).catch(() => undefined);
       if (rule?.action) {
-        const task = rule.action.replace(/\{\{title\}\}/g, ev.title ?? '').replace(/\{\{body\}\}/g, ev.body ?? '');
-        await this.deps.runAction?.(task, ev).catch(() => undefined);
+        // Event title/body come from third parties (mail, webhooks): mark the run tainted so sensitive
+        // tools need approval instead of running on injected text, and hand the raw values to the
+        // runtime spotlighted as data. (Function replacers: no `$&`-style pattern expansion.)
+        const tainted = /\{\{(title|body)\}\}/.test(rule.action);
+        const task = rule.action.replace(/\{\{title\}\}/g, () => ev.title ?? '').replace(/\{\{body\}\}/g, () => ev.body ?? '');
+        const data = tainted ? spotlight([ev.title, ev.body].filter(Boolean).join('\n'), `proactive:${ev.source}`) : undefined;
+        await this.deps.runAction?.(task, ev, { tainted, data }).catch(() => undefined);
       }
     }
     return ev;

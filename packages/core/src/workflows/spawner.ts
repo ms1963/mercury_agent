@@ -40,7 +40,9 @@ export class Spawner {
   constructor(private config: MercuryConfig, private agent: Agent) {}
 
   limits(parent: ParentInfo): { maxSubagents: number; maxDepth: number; maxRuns?: number } {
-    return { maxSubagents: parent.maxSubagents ?? this.config.agent.maxSubagents, maxDepth: parent.maxDepth ?? this.config.agent.maxDepth, maxRuns: parent.maxRuns };
+    // A workflow spec may tighten the configured limits but never loosen them.
+    const clamp = (spec: number | undefined, cap: number) => (spec === undefined ? cap : Math.min(spec, cap));
+    return { maxSubagents: clamp(parent.maxSubagents, this.config.agent.maxSubagents), maxDepth: clamp(parent.maxDepth, this.config.agent.maxDepth), maxRuns: parent.maxRuns };
   }
 
   canSpawn(parent: ParentInfo): boolean {

@@ -81,6 +81,8 @@ export interface RunOptions {
   onDelta?: DeltaHandler;
   /** Trust of the input itself: 'user' for authenticated users, 'untrusted' for mail/webhooks/strangers. */
   trust?: TrustLevel;
+  /** The input embeds third-party data (already spotlighted): treat the run as tainted from the first tool call. */
+  tainted?: boolean;
   /** Do not persist to a session (subagents, workflow workers). */
   ephemeral?: boolean;
   systemExtra?: string;
@@ -167,7 +169,7 @@ export class Agent {
     await d.hooks.run('run_start', { runId, sessionId, principal: opts.principal, input: opts.input, platform });
 
     const workdir = opts.workdir ?? d.config.tools.jail.roots[0] ?? process.cwd();
-    const security = { untrustedSeen: opts.trust === 'untrusted', userRequest: opts.input };
+    const security = { untrustedSeen: opts.trust === 'untrusted' || opts.tainted === true, userRequest: opts.input };
     const toolCtx: ToolContext = {
       principal: opts.principal,
       runId,

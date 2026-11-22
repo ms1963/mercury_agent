@@ -235,7 +235,8 @@ export class LearningService implements RouteLearner {
     }
     if (!best) return;
     const remediation = `A similar task previously failed. A later attempt succeeded using the "${pattern ?? 'react'}" pattern. What worked: ${output.slice(0, 400).trim()}`;
-    this.db.run('UPDATE learning_playbooks SET remediation = ?, successes = successes + 1, updated_at = ? WHERE id = ?', remediation, nowIso(), best.row.id);
+    // The remediation quotes this user's output: record the owner so it is never surfaced to other users.
+    this.db.run('UPDATE learning_playbooks SET remediation = ?, user_id = ?, successes = successes + 1, updated_at = ? WHERE id = ?', remediation, userId, nowIso(), best.row.id);
   }
 
   /** Explicitly set a remediation for a signature (CLI / API). */
@@ -243,7 +244,8 @@ export class LearningService implements RouteLearner {
     const sig = this.playbook(signature) ? signature : errorSignature(signature);
     const row = this.db.get<{ id: string }>('SELECT id FROM learning_playbooks WHERE signature = ?', sig);
     if (!row) return undefined;
-    this.db.run('UPDATE learning_playbooks SET remediation = ?, updated_at = ? WHERE id = ?', remediation, nowIso(), row.id);
+    // Operator-curated remediation: shared with everyone.
+    this.db.run('UPDATE learning_playbooks SET remediation = ?, user_id = NULL, updated_at = ? WHERE id = ?', remediation, nowIso(), row.id);
     return this.playbook(sig);
   }
 
@@ -294,7 +296,7 @@ export class LearningService implements RouteLearner {
       }
     }
 
-    const pb = this.playbookForTask(task);
+    const pb = this.playbookForTask(task, userId);
     if (pb?.remediation) parts.push(`Known pitfall for similar tasks: ${pb.remediation}`);
 
     if (!parts.length) return undefined;
@@ -304,10 +306,13 @@ export class LearningService implements RouteLearner {
   // ---- playbook retrieval (1c) -----------------------------------------------------------
 
   /** Find a playbook (with a remediation, enough occurrences) relevant to a new task. */
-  playbookForTask(task: string): Playbook | undefined {
+  playbookForTask(task: string, userId?: string): Playbook | undefined {
     if (!this.config.learning.playbooks.enabled) return undefined;
     const { minOccurrences, minSimilarity } = this.config.learning.playbooks;
-    const rows = this.db.all<Record<string, unknown>>('SELECT * FROM learning_playbooks WHERE remediation IS NOT NULL AND occurrences >= ? ORDER BY updated_at DESC LIMIT 100', minOccurrences);
+    // With a user: shared (operator-set) remediations plus the user's own auto-derived ones only.
+    const rows = userId
+      ? this.db.all<Record<string, unknown>>('SELECT * FROM learning_playbooks WHERE remediation IS NOT NULL AND occurrences >= ? AND (user_id IS NULL OR user_id = ?) ORDER BY updated_at DESC LIMIT 100', minOccurrences, userId)
+      : this.db.all<Record<string, unknown>>('SELECT * FROM learning_playbooks WHERE remediation IS NOT NULL AND occurrences >= ? ORDER BY updated_at DESC LIMIT 100', minOccurrences);
     const taskTok = tokens(task);
     let best: { row: (typeof rows)[number]; sim: number } | undefined;
     for (const row of rows) {

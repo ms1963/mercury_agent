@@ -70,12 +70,15 @@ export class Reflector {
 
       if (this.config.reflection.lessons) await this.extractLessons(input, r);
 
+      // Skills are global: only runs by an admin (interactive or system) may rewrite or create them,
+      // so one user's (possibly injected) run cannot plant instructions into everyone's prompts.
+      const mayEditSkills = input.principal.role === 'admin';
       for (const name of input.skillsUsed) {
         this.skills.recordUse(name, ok);
-        if (!ok) await this.refineSkill(name, input).then((done) => done && r.skillsRefined.push(name));
+        if (!ok && mayEditSkills) await this.refineSkill(name, input).then((done) => done && r.skillsRefined.push(name));
       }
 
-      if (this.config.skills.autoCreate && ok && input.toolNames.length >= this.config.skills.minToolCallsForSkill) {
+      if (mayEditSkills && this.config.skills.autoCreate && ok && input.toolNames.length >= this.config.skills.minToolCallsForSkill) {
         r.skillCreated = await this.maybeCreateSkill(input);
       }
     } catch (err) {

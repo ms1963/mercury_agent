@@ -105,7 +105,8 @@ export class McpClientManager {
 
   private wrapTool(server: string, cfg: McpServerConfig, client: Client, t: { name: string; description?: string; inputSchema: unknown; annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean } }): AnyTool {
     const destructive = t.annotations?.destructiveHint === true;
-    const readOnly = t.annotations?.readOnlyHint === true;
+    // Annotations are self-declared by the server: only a trusted server can downgrade risk to 'safe'.
+    const readOnly = t.annotations?.readOnlyHint === true && cfg.trust === 'trusted';
     return {
       name: mcpToolName(server, t.name),
       description: `[MCP ${server}] ${t.description ?? t.name}`,

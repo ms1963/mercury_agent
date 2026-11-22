@@ -1,5 +1,5 @@
 /** Panels: scheduler, integrations, models/router/budgets/Jev, users, observability/debug, reflections, help, account. */
-import { api, badge, h, json, markdown, safe, state, t, table, toast, when } from './core.js';
+import { api, badge, h, json, markdown, safe, setToken, state, t, table, toast, when } from './core.js';
 
 const field = (placeholder, attrs = {}) => h('input', { placeholder, ...attrs });
 const card = (title, ...children) => h('div.card', {}, title ? h('h3', {}, title) : null, ...children);
@@ -193,9 +193,17 @@ export const renderAccount = (view) => panel(view, t('account.title'), async (re
   const name = field(t('common.name'));
   const scopes = h('div.row', {}, tk.scopes.map((s) => h('label.small', {}, h('input', { type: 'checkbox', value: s, checked: s === 'chat' }), ` ${s}`)));
   const shown = h('div');
-  const pw = field(t('auth.password'), { type: 'password' });
+  const cur = field(t('auth.currentPassword', 'Current password'), { type: 'password', autocomplete: 'current-password' });
+  const pw = field(t('auth.newPassword', 'New password'), { type: 'password', autocomplete: 'new-password' });
+  const changePw = safe(async () => {
+    if (!pw.value) return;
+    const r = await api('/api/auth/me', { method: 'PATCH', body: { password: pw.value, currentPassword: cur.value } });
+    if (r && r.token) setToken(r.token);
+    cur.value = ''; pw.value = '';
+    toast(t('common.saved'));
+  });
   return [
-    card(me.user.username, h('p', {}, `${t('users.role')}: ${me.user.role}`), h('div.row', {}, pw, h('button', { onclick: safe(async () => pw.value && (await api('/api/auth/me', { method: 'PATCH', body: { password: pw.value } }), toast(t('common.saved')))) }, t('common.save')))),
+    card(me.user.username, h('p', {}, `${t('users.role')}: ${me.user.role}`), h('div.row', {}, cur, pw, h('button', { onclick: changePw }, t('common.save')))),
     card(t('account.tokens'), table(tk.tokens, [[t('common.name'), (x) => x.name], [t('account.scopes'), (x) => (x.scopes || []).join(', ')], ['Created', (x) => when(x.createdAt)], ['Expires', (x) => when(x.expiresAt)], [t('common.status'), (x) => badge(!x.revoked, 'active', 'revoked')],
       ['', (x) => h('button.danger', { onclick: safe(async () => (await api(`/api/tokens/${x.id}`, { method: 'DELETE' }), reload())) }, '×')]]),
       h('h4', {}, t('account.newToken')), h('div.row', {}, name, h('button.primary', { onclick: safe(async () => {

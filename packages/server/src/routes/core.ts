@@ -65,7 +65,9 @@ export function registerCoreRoutes(app: FastifyInstance, { m, auth, sse }: Ctx):
       if (typeof b.currentPassword !== 'string' || !m.users.verifyPassword(p.userId, b.currentPassword)) throw new HttpError(403, 'current password is incorrect');
       m.users.setPassword(p.userId, b.password);
     }
-    return m.users.update(p.userId, { displayName: b.displayName as string | undefined, locale: b.locale as string | undefined });
+    const user = m.users.update(p.userId, { displayName: b.displayName as string | undefined, locale: b.locale as string | undefined });
+    // Changing the password revokes every outstanding JWT; hand the caller a fresh one so its own session survives.
+    return typeof b.password === 'string' ? { ...user, token: m.users.issueJwt(user) } : user;
   });
 
   // ---- API tokens ---------------------------------------------------------

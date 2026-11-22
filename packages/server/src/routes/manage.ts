@@ -184,8 +184,19 @@ export function registerManageRoutes(app: FastifyInstance, { m, auth, sse }: Ctx
     return { p, owner: p.role === 'admin' ? undefined : p.userId };
   };
   app.get('/api/schedules', async (req) => ({ schedules: m.scheduler.list(sched(req).owner) }));
-  app.post('/api/schedules', async (req) => m.scheduler.create(sched(req).p.userId, req.body as never));
-  app.patch('/api/schedules/:id', async (req) => m.scheduler.update(param(req), req.body as never, sched(req).owner));
+  app.post('/api/schedules', async (req) => {
+    const { p } = sched(req);
+    const b = (req.body ?? {}) as Body;
+    // '__…__' names/tasks are reserved for runtime-internal jobs (e.g. the proactive digest sentinel).
+    if (p.role !== 'admin' && [b.name, b.task].some((v) => typeof v === 'string' && /^__\w+__$/.test(v.trim()))) throw new HttpError(403, 'reserved schedule name/task');
+    return m.scheduler.create(p.userId, req.body as never);
+  });
+  app.patch('/api/schedules/:id', async (req) => {
+    const { p, owner } = sched(req);
+    const b = (req.body ?? {}) as Body;
+    if (p.role !== 'admin' && [b.name, b.task].some((v) => typeof v === 'string' && /^__\w+__$/.test(v.trim()))) throw new HttpError(403, 'reserved schedule name/task');
+    return m.scheduler.update(param(req), req.body as never, owner);
+  });
   app.delete('/api/schedules/:id', async (req) => (m.scheduler.delete(param(req), sched(req).owner), { ok: true }));
   app.post('/api/schedules/:id/:action', async (req) => {
     const { owner } = sched(req);

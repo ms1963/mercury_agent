@@ -14,7 +14,9 @@
     "firstUser": "Noch keine Benutzer — das erste Konto wird Administrator.",
     "switchToRegister": "Kein Konto? Registrieren",
     "switchToLogin": "Schon ein Konto? Anmelden",
-    "failed": "Anmeldung fehlgeschlagen"
+    "failed": "Anmeldung fehlgeschlagen",
+    "currentPassword": "Aktuelles Passwort",
+    "newPassword": "Neues Passwort"
   },
   "nav": {
     "chat": "Chat",

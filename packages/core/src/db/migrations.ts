@@ -258,9 +258,10 @@ CREATE TABLE team_runs (
 );
 CREATE INDEX idx_team_runs_team ON team_runs(team_id, started_at);
 `,
-  /* 16: security hardening — JWT revocation (token_version) and team-run ownership */ `
+  /* 16: security hardening — JWT revocation (token_version), team-run and auto-playbook ownership */ `
 ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE team_runs ADD COLUMN user_id TEXT;
 CREATE INDEX idx_team_runs_user ON team_runs(user_id, started_at);
+ALTER TABLE learning_playbooks ADD COLUMN user_id TEXT;
 `,
 ];

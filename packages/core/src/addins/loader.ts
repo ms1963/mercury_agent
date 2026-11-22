@@ -28,8 +28,8 @@
  * the legacy `dataDir/personalities`, `dataDir/tools` and `dataDir/plugins` scans
  * keep working exactly as before.
  */
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { basename, join, resolve } from 'node:path';
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { basename, isAbsolute, join, relative, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import type { Personality } from '../agent/personalities.js';
@@ -46,6 +46,19 @@ const PolicySchema = z
     maxToolRisk: z.enum(['safe', 'moderate', 'dangerous']).optional(),
   })
   .strict();
+
+/** True when `p` (after resolving symlinks of existing components) is `dir` itself or inside it. */
+function insideDir(dir: string, p: string): boolean {
+  const real = (x: string) => {
+    try {
+      return realpathSync(x);
+    } catch {
+      return resolve(x);
+    }
+  };
+  const rel = relative(real(dir), real(p));
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+}
 
 export const AddinManifestSchema = z
   .object({
@@ -114,7 +127,7 @@ export function loadAddin(dir: string, warnings: string[]): LoadedAddin | null {
   const personalities: Personality[] = [];
   for (const rel of manifest.personalities) {
     const file = resolve(dir, rel);
-    if (!file.startsWith(resolve(dir))) {
+    if (!insideDir(dir, file)) {
       warnings.push(`addin "${manifest.name}": personality path "${rel}" escapes the add-in dir — skipped`);
       continue;
     }
@@ -132,7 +145,7 @@ export function loadAddin(dir: string, warnings: string[]): LoadedAddin | null {
   const toolDirs: string[] = [];
   for (const rel of manifest.tools) {
     const tdir = resolve(dir, rel);
-    if (!tdir.startsWith(resolve(dir))) {
+    if (!insideDir(dir, tdir)) {
       warnings.push(`addin "${manifest.name}": tool path "${rel}" escapes the add-in dir — skipped`);
       continue;
     }
