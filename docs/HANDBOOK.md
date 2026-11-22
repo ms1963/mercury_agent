@@ -23,9 +23,9 @@ There is **one spine** (the red thread below) and **three on-ramps** onto it. Ev
 
 | You are… | Your goal | Start at | Read deeply | Skim |
 |---|---|---|---|---|
-| **A user (layman)** | Chat with a capable assistant, give it tasks, let it remember you | Part 0 → Part 1 → Part 2 → Part 3 | Parts 3, 5, 6 (chatting, memory, schedules) | Parts 8–10 |
-| **An administrator** | Run Mercury for a team safely and keep it healthy | Part 1 → Part 8 → Part 9 | Parts 1, 7, 8, 9 (install, integrations, govern, observe) | Part 10 |
-| **A developer** | Add tools, adapters, providers, patterns; embed Mercury | Part 0 → Part 4 → Part 10 | Parts 4, 5, 10 + the appendices | Parts 3, 6 |
+| **A user (layman)** | Chat with a capable assistant, give it tasks, let it remember you | Part 0 → Part 1 → Part 2 → Part 3 | Parts 3, 5, 6 (chatting, memory, schedules) | Parts 8–11 |
+| **An administrator** | Run Mercury for a team safely and keep it healthy | Part 1 → Part 8 → Part 9 → Part 11 | Parts 1, 7, 8, 9, 11 (install, integrations, govern, observe, trust) | Part 10 |
+| **A developer** | Add tools, adapters, providers, patterns; embed Mercury | Part 0 → Part 4 → Part 10 | Parts 4, 5, 10, 11 + the appendices | Parts 3, 6 |
 
 Throughout, boxes marked **👤 For users**, **🛠 For admins** and **🧑‍💻 For developers** call out the role-specific detail, so you can read the whole book or follow just your lane.
 
@@ -45,8 +45,9 @@ Everything in this handbook hangs off one story. Mercury is not a chatbot you ty
 8. **Put it on a leash** *(Personalities, Permissions, Budgets, Security)* — govern what each agent may do, as whom, with what spend, under what guardrails.
 9. **Give yourself x-ray vision** *(Observability & Debugging)* — every run is a traceable event stream you can watch, pause, replay and diagnose.
 10. **Let it evolve** *(Extending Mercury)* — add your own tools, adapters, providers and patterns.
+11. **Make it trustworthy** *(The trust stack)* — economics, governance, verification, reliability and proactivity, so you can hand it real work and real credentials.
 
-The trust in "trustworthy" is earned in movements 8 and 9; the autonomy in "autonomous" is granted in movements 4, 6 and 7; the "colleague" is built in movements 3 and 5. The whole book is just these ten movements, told in order and in depth.
+The trust in "trustworthy" is earned in movements 8, 9 and 11; the autonomy in "autonomous" is granted in movements 4, 6 and 7; the "colleague" is built in movements 3 and 5. The whole book is just these eleven movements, told in order and in depth.
 
 ---
 
@@ -63,6 +64,7 @@ The trust in "trustworthy" is earned in movements 8 and 9; the autonomy in "auto
 - **Part 8 — Put it on a leash: personalities, permissions, budgets & security**
 - **Part 9 — X-ray vision: observability, debugging & eliminating issues**
 - **Part 10 — Let it evolve: extending Mercury as a developer**
+- **Part 11 — The trust stack: economics, governance, verification, reliability & proactivity**
 - **Appendices** — CLI quick reference, configuration quick reference, troubleshooting, glossary, the documentation map
 
 ---
