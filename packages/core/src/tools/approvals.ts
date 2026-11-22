@@ -62,6 +62,7 @@ export class ApprovalService {
     const p = this.pending.get(id);
     if (!p) return false;
     if (p.req.userId !== actor.userId && actor.role !== 'admin') return false;
+    if (p.req.requireAdmin && actor.role !== 'admin') return false;
     return this.resolve(id, approved, actor.userId);
   }
 

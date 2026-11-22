@@ -5,6 +5,7 @@
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { newId } from '@mercury/core';
+import { safeEnv } from './backends.js';
 
 export interface ManagedProcess {
   id: string;
@@ -23,7 +24,7 @@ export class ProcessManager {
   private procs = new Map<string, ManagedProcess>();
 
   start(userId: string, argv: string[], cwd: string, command: string): ManagedProcess {
-    const child = spawn(argv[0]!, argv.slice(1), { cwd, stdio: ['ignore', 'pipe', 'pipe'], detached: false });
+    const child = spawn(argv[0]!, argv.slice(1), { cwd, env: safeEnv(), stdio: ['ignore', 'pipe', 'pipe'], detached: false });
     const p: ManagedProcess = { id: newId('proc'), userId, command, startedAt: new Date().toISOString(), exitCode: null, running: true, output: '', child };
     const append = (d: Buffer) => (p.output = (p.output + d.toString()).slice(-MAX_BUFFER));
     child.stdout?.on('data', append);

@@ -21,6 +21,9 @@ export type HookName =
 
 export const HOOK_NAMES: HookName[] = ['run_start', 'run_end', 'before_llm_call', 'after_llm_call', 'before_tool_call', 'after_tool_call', 'message_received', 'message_sent', 'output', 'memory_write', 'attachment_scan', 'error'];
 
+/** Hooks whose handlers can veto an action; an exception in one of them blocks the action. */
+export const GATING_HOOKS: ReadonlySet<HookName> = new Set<HookName>(['before_tool_call', 'attachment_scan']);
+
 export type HookPayload = Record<string, unknown>;
 export type HookPatch = Record<string, unknown> | void | undefined;
 export type HookHandler = (payload: HookPayload) => HookPatch | Promise<HookPatch>;
@@ -53,6 +56,12 @@ export class HookManager {
         if (merged.block) break;
       } catch (err) {
         console.error(`[hooks] ${hook}/${r.name} failed:`, err);
+        // Gating hooks fail CLOSED: a crashing security/guard hook must not silently let the
+        // action through. Observational hooks (logging, metrics, …) keep failing open.
+        if (GATING_HOOKS.has(hook)) {
+          merged = { ...merged, block: `hook ${r.name} failed (${err instanceof Error ? err.message : String(err)})` };
+          break;
+        }
       }
     }
     return merged;

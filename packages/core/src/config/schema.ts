@@ -364,6 +364,10 @@ export const ConfigSchema = z.object({
       toolsets: z.record(z.string(), z.boolean()).default({}),
       platforms: z.record(z.string(), z.object({ disabledToolsets: z.array(z.string()).default([]) })).default({}),
       approvals: z.object({ mode: z.enum(['manual', 'auto', 'smart', 'deny']).default('manual') }).prefault({}),
+      /** Host-level execution tools (terminal, process_start, execute_code) used by NON-admin users:
+       *  'approve' (default) = every call needs an admin's approval, 'deny' = blocked,
+       *  'allow' = treated like any other tool (pre-1.5 behaviour). Admins are unaffected. */
+      hostAccess: z.object({ nonAdmin: z.enum(['approve', 'deny', 'allow']).default('approve') }).prefault({}),
       jail: z.object({ roots: z.array(z.string()).default([]), allowOutside: z.boolean().default(false) }).prefault({}),
       terminal: z
         .object({
@@ -371,6 +375,9 @@ export const ConfigSchema = z.object({
           dockerImage: z.string().default('node:22-slim'),
           ssh: z.object({ host: z.string().optional(), user: z.string().optional(), keyPath: z.string().optional() }).prefault({}),
           timeoutMs: z.number().default(60_000),
+          /** Extra environment variable names passed to shell commands. The default environment is
+           *  scrubbed (no API keys / secrets); `['*']` restores full inheritance (not recommended). */
+          envPassthrough: z.array(z.string()).default([]),
         })
         .prefault({}),
       web: z

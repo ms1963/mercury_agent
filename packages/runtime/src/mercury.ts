@@ -339,7 +339,7 @@ export class Mercury {
     this.checkpoints = new CheckpointManager(dataDir);
     this.voice = new VoiceService(config);
     this.attachments = new AttachmentStore(config, this.db, this.voice, this.hooks);
-    this.jail = new PathJail(config.tools.jail.roots.length ? config.tools.jail.roots : [process.cwd(), join(dataDir, 'workspace')], config.tools.jail.allowOutside);
+    this.jail = new PathJail(config.tools.jail.roots.length ? config.tools.jail.roots : [process.cwd(), join(dataDir, 'workspace')], config.tools.jail.allowOutside, [dataDir]);
     this.debug = new DebugController(this.bus, config.debug);
     this.guardrails = new Guardrails(config, this.judgment, this.bus);
     this.personalities = new Personalities([join(this.assets, 'personalities'), join(dataDir, 'personalities')], () => this.addins.personalities);

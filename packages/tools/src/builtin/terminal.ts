@@ -31,6 +31,7 @@ export const terminal = defineTool<{ command: string; cwd?: string; timeout_s?: 
   toolset: 'terminal',
   risk: 'moderate',
   sensitive: true,
+  hostAccess: true,
   needsApproval: commandApproval,
   parameters: params({ command: str('Shell command'), cwd: str('Working directory'), timeout_s: num('Timeout in seconds') }, ['command']),
   async execute(a, ctx) {
@@ -50,6 +51,7 @@ export const processStart = defineTool<{ command: string; cwd?: string }>({
   toolset: 'process',
   risk: 'moderate',
   sensitive: true,
+  hostAccess: true,
   needsApproval: commandApproval,
   parameters: params({ command: str('Shell command'), cwd: str('Working directory') }, ['command']),
   async execute(a, ctx) {

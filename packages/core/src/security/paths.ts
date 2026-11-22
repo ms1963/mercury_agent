@@ -6,12 +6,18 @@ import { existsSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { PermissionDeniedError } from '../types/common.js';
 
-const SENSITIVE = [/(^|\/)\.ssh(\/|$)/, /(^|\/)\.aws(\/|$)/, /(^|\/)\.gnupg(\/|$)/, /^\/etc\/(shadow|sudoers)/, /(^|\/)secret\.key$/];
+const SENSITIVE = [/(^|\/)\.ssh(\/|$)/, /(^|\/)\.aws(\/|$)/, /(^|\/)\.gnupg(\/|$)/, /^\/etc\/(shadow|sudoers)/, /(^|\/)secret\.key$/, /(^|\/)mercury\.db(-wal|-shm|-journal)?$/, /^\/proc\/[^/]+\/environ$/];
 
 export class PathJail {
   readonly roots: string[];
-  constructor(roots: string[], private allowOutside = false) {
+  private readonly protectedDirs: string[];
+  /**
+   * @param protectedDirs directories whose contents are off-limits (e.g. Mercury's data dir with the
+   *   database, JWT secret and config) — except for roots strictly inside them (the workspace).
+   */
+  constructor(roots: string[], private allowOutside = false, protectedDirs: string[] = []) {
     this.roots = roots.map((r) => realOrResolved(resolve(r)));
+    this.protectedDirs = protectedDirs.map((d) => realOrResolved(resolve(d)));
   }
 
   /** Resolve a user-supplied path and verify it is inside a root. Returns the absolute path. */
@@ -19,6 +25,11 @@ export class PathJail {
     const abs = isAbsolute(p) ? resolve(p) : resolve(base, p);
     const real = realOrResolved(abs);
     if (SENSITIVE.some((re) => re.test(real))) throw new PermissionDeniedError(`Access to sensitive path denied: ${p}`);
+    for (const dir of this.protectedDirs) {
+      if (!isInside(dir, real)) continue;
+      const carveOut = this.roots.some((root) => root !== dir && isInside(dir, root) && isInside(root, real));
+      if (!carveOut) throw new PermissionDeniedError(`Access to Mercury's data directory denied: ${p}`);
+    }
     if (this.allowOutside) return real;
     if (this.roots.some((root) => isInside(root, real))) return real;
     throw new PermissionDeniedError(`Path outside the allowed workspace: ${p} (allowed: ${this.roots.join(', ')})`);

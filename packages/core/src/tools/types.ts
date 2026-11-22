@@ -24,6 +24,8 @@ export interface ApprovalRequest {
   risk: ToolRisk;
   tool?: string;
   args?: unknown;
+  /** Only an admin may resolve this request (e.g. host-level execution by a non-admin user). */
+  requireAdmin?: boolean;
 }
 
 export interface ToolContext {
@@ -62,6 +64,11 @@ export interface Tool<A = Record<string, unknown>> {
   untrustedOutput?: boolean;
   /** Acts on the outside world (writes, sends, executes). Gated when context is untrusted. */
   sensitive?: boolean;
+  /**
+   * Runs code/commands directly on the host (not confined by the path jail). Calls by non-admin
+   * principals are governed by `tools.hostAccess.nonAdmin` (default: admin approval required).
+   */
+  hostAccess?: boolean;
   /**
    * Least-privilege capability this tool requires. When set (and the grant broker is enabled),
    * the call is DENIED unless the running task holds a live, scoped grant for this capability —

@@ -33,12 +33,39 @@ export interface TerminalBackend {
 
 const MAX_OUTPUT = 200_000;
 
+/** Environment variables a shell needs to work normally (no credentials). */
+const BASE_ENV = [
+  'PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LANGUAGE', 'TERM', 'TZ', 'TMPDIR', 'TEMP', 'TMP', 'PWD',
+  'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy',
+  'SSH_AUTH_SOCK', 'DOCKER_HOST', 'DOCKER_CONFIG', 'DOCKER_CONTEXT',
+  'NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'XDG_RUNTIME_DIR', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_DATA_HOME',
+];
+let passthrough: string[] = [];
+
+/** Configure extra variable names inherited by commands (`tools.terminal.envPassthrough`). */
+export function setEnvPassthrough(names: string[]): void {
+  passthrough = [...names];
+}
+
+/**
+ * Scrubbed environment for agent-run commands: only the variables a shell needs (plus configured
+ * passthrough), never provider API keys, MERCURY_JWT_SECRET or other secrets from the server env.
+ */
+export function safeEnv(extra?: Record<string, string>, source: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  if (passthrough.includes('*')) return { ...(source as Record<string, string>), ...extra };
+  const env: Record<string, string> = {};
+  for (const k of [...BASE_ENV, ...passthrough]) if (source[k] !== undefined) env[k] = source[k]!;
+  for (const k of Object.keys(source)) if (k.startsWith('LC_')) env[k] = source[k]!;
+  if (!env.PATH) env.PATH = '/usr/local/bin:/usr/bin:/bin';
+  return { ...env, ...extra };
+}
+
 /** Spawn argv, collect output (capped), enforce timeout and abort signal. */
 export function runArgv(argv: string[], opts: RunCommandOptions & { spawnCwd?: string }): Promise<CommandResult> {
   return new Promise((resolve) => {
     const child = spawn(argv[0]!, argv.slice(1), {
       cwd: opts.spawnCwd ?? opts.cwd,
-      env: { ...process.env, ...opts.env },
+      env: safeEnv(opts.env),
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     let stdout = '';
@@ -80,7 +107,8 @@ export class DockerBackend implements TerminalBackend {
   constructor(private image: string) {}
   argv(command: string, opts: { cwd: string }): string[] {
     // Network stays enabled (agents often need package installs); mount only the workdir.
-    return ['docker', 'run', '--rm', '-i', '--memory', '1g', '--cpus', '1', '-v', `${opts.cwd}:/work`, '-w', '/work', this.image, 'sh', '-lc', command];
+    // Hardening: no privilege gain via setuid, a process cap (fork bombs) and an init reaper.
+    return ['docker', 'run', '--rm', '-i', '--init', '--security-opt', 'no-new-privileges', '--pids-limit', '512', '--memory', '1g', '--cpus', '1', '-v', `${opts.cwd}:/work`, '-w', '/work', this.image, 'sh', '-lc', command];
   }
   run(command: string, opts: RunCommandOptions): Promise<CommandResult> {
     return runArgv(this.argv(command, opts), { ...opts, spawnCwd: process.cwd() });
@@ -89,11 +117,15 @@ export class DockerBackend implements TerminalBackend {
 
 export class SshBackend implements TerminalBackend {
   name = 'ssh';
-  constructor(private host: string, private user?: string, private keyPath?: string) {}
+  constructor(private host: string, private user?: string, private keyPath?: string) {
+    // A host/user beginning with "-" would be parsed by ssh as an option (e.g. -oProxyCommand=…).
+    if (host.startsWith('-') || user?.startsWith('-') || !/^[\w.:\-\[\]]+$/.test(host)) throw new Error(`invalid ssh host: ${host}`);
+    if (user !== undefined && !/^[\w.\-]+$/.test(user)) throw new Error(`invalid ssh user: ${user}`);
+  }
   argv(command: string): string[] {
     const target = this.user ? `${this.user}@${this.host}` : this.host;
     const key = this.keyPath ? ['-i', this.keyPath] : [];
-    return ['ssh', '-n', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', ...key, target, command];
+    return ['ssh', '-n', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', ...key, '--', target, command];
   }
   run(command: string, opts: RunCommandOptions): Promise<CommandResult> {
     return runArgv(this.argv(command), { ...opts, spawnCwd: process.cwd() });
@@ -108,6 +140,7 @@ export function registerTerminalBackend(name: string, factory: (config: MercuryC
 
 export function createTerminalBackend(config: MercuryConfig, name = config.tools.terminal.backend): TerminalBackend {
   const t = config.tools.terminal;
+  setEnvPassthrough(t.envPassthrough ?? []);
   if (custom.has(name)) return custom.get(name)!(config);
   if (name === 'docker') return new DockerBackend(t.dockerImage);
   if (name === 'ssh') {

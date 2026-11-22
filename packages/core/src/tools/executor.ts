@@ -74,15 +74,21 @@ export class ToolExecutor {
     const denied = this.policy.check(ctx.principal, 'tool.use', { tool: { name: tool.name, toolset: tool.toolset, risk: tool.risk }, profile: ctx.personality });
     if (denied) return fail(`Permission denied: ${denied}`, 'denied');
 
-    let args = call.arguments ?? {};
-    if (tool.schema) {
-      const parsed = tool.schema.safeParse(args);
-      if (!parsed.success) return fail(`Invalid arguments for ${tool.name}: ${parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`);
-      args = parsed.data as Record<string, unknown>;
-    } else {
-      const missing = (tool.parameters.required ?? []).filter((k) => args[k] === undefined);
-      if (missing.length) return fail(`Missing required arguments for ${tool.name}: ${missing.join(', ')}`);
-    }
+    // Validate arguments (schema when declared, else the required list). Returns an error text.
+    const validate = (input: Record<string, unknown>): { args: Record<string, unknown> } | { error: string } => {
+      if (tool.schema) {
+        const parsed = tool.schema.safeParse(input);
+        if (!parsed.success) return { error: `Invalid arguments for ${tool.name}: ${parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}` };
+        return { args: parsed.data as Record<string, unknown> };
+      }
+      if (!input || typeof input !== 'object' || Array.isArray(input)) return { error: `Invalid arguments for ${tool.name}: expected an object` };
+      const missing = (tool.parameters.required ?? []).filter((k) => input[k] === undefined);
+      if (missing.length) return { error: `Missing required arguments for ${tool.name}: ${missing.join(', ')}` };
+      return { args: input };
+    };
+    const first = validate(call.arguments ?? {});
+    if ('error' in first) return fail(first.error);
+    let args = first.args;
 
     this.bus.emit({ type: 'tool.call', runId: ctx.runId, sessionId: ctx.sessionId, data: { id: call.id, name: tool.name, args: redactSecrets(JSON.stringify(args)).text, risk: tool.risk } });
 
@@ -94,7 +100,18 @@ export class ToolExecutor {
 
     const before = await this.hooks?.run('before_tool_call', { tool: tool.name, args, principal: ctx.principal, runId: ctx.runId });
     if (before?.block) return fail(`Blocked by hook: ${String(before.block)}`, 'denied');
-    if (before?.args) args = before.args as Record<string, unknown>;
+    if (before?.args && JSON.stringify(before.args) !== JSON.stringify(args)) {
+      // A hook rewrote the arguments: re-validate them and re-run the approval decision on the
+      // NEW arguments — the user/gate approved the original call, not the rewritten one.
+      const again = validate(before.args as Record<string, unknown>);
+      if ('error' in again) return fail(`Hook produced invalid arguments: ${again.error}`);
+      args = again.args;
+      const reapproval = await this.approve(tool, args, ctx, state);
+      if (!reapproval.ok) {
+        this.audit?.record(ctx.principal.username, 'tool.denied', tool.name, { args, reason: reapproval.reason, rewrittenByHook: true });
+        return fail(`Tool call not approved after hook rewrite: ${reapproval.reason}.`, 'denied');
+      }
+    }
 
     // Chaos fault injection (opt-in): deliberately fail/slow eligible tools to exercise recovery.
     const injection = this.chaos?.decide(tool.name) ?? null;
@@ -105,11 +122,19 @@ export class ToolExecutor {
       await new Promise((r) => setTimeout(r, this.chaos?.latencyMs ?? 1000));
       result = { content: `Chaos fault injection: simulated timeout of tool "${tool.name}".`, isError: true };
     } else {
+      // Per-call abort: a timeout (or run stop) aborts the tool's own signal so child processes,
+      // fetches etc. are actually cancelled instead of running on in the background.
+      const callCtl = new AbortController();
+      const onRunAbort = () => callCtl.abort(ctx.signal?.reason);
+      if (ctx.signal?.aborted) callCtl.abort(ctx.signal.reason);
+      else ctx.signal?.addEventListener('abort', onRunAbort, { once: true });
       try {
-        const raw = await withTimeout(tool.execute(args, ctx), tool.timeoutMs ?? this.config.agent.toolTimeoutMs, ctx.signal, tool.name);
+        const raw = await withTimeout(tool.execute(args, { ...ctx, signal: callCtl.signal }), tool.timeoutMs ?? this.config.agent.toolTimeoutMs, ctx.signal, tool.name, callCtl);
         result = typeof raw === 'string' ? { content: raw } : raw;
       } catch (err) {
         result = { content: errorMessage(err), isError: true };
+      } finally {
+        ctx.signal?.removeEventListener('abort', onRunAbort);
       }
     }
 
@@ -163,6 +188,11 @@ export class ToolExecutor {
     }
 
     const reasons: string[] = [];
+    // Host-level execution by a non-admin is a privilege boundary: it bypasses the path jail and
+    // could read server secrets, so only an admin may approve it (self-approval is not enough).
+    const hostGate = !!tool.hostAccess && ctx.principal.role !== 'admin' && this.config.tools.hostAccess.nonAdmin !== 'allow';
+    if (hostGate && this.config.tools.hostAccess.nonAdmin === 'deny') return { ok: false, reason: `${tool.name} runs on the host and is disabled for non-admin users (tools.hostAccess.nonAdmin=deny)` };
+    if (hostGate) reasons.push(`${tool.name} runs on the host; a non-admin call needs an admin's approval`);
     if (tool.risk === 'dangerous') reasons.push(`${tool.name} is a dangerous tool`);
     const per = tool.needsApproval?.(args, ctx);
     if (per) reasons.push(typeof per === 'string' ? per : `${tool.name} requires approval for these arguments`);
@@ -184,23 +214,31 @@ export class ToolExecutor {
 
     if (mode === 'auto') {
       // Auto mode never lets untrusted content or a policy-approve call proceed unchecked: the gate must agree.
-      if (!untrustedDerived && !policyApprove) return { ok: true, reason: 'auto-approved' };
+      if (!untrustedDerived && !policyApprove && !hostGate) return { ok: true, reason: 'auto-approved' };
+      if (hostGate) return this.askHuman(tool, args, ctx, reason, true);
       const g = await gate();
       return g.approve ? { ok: true, reason: `gate approved (p=${g.probability})` } : { ok: false, reason: `approval-required call rejected by gate (p=${g.probability})` };
     }
     if (mode === 'smart') {
       const g = await gate();
-      if (g.approve && tool.risk !== 'dangerous') return { ok: true, reason: `gate approved (p=${g.probability})` };
+      if (g.approve && tool.risk !== 'dangerous' && !hostGate) return { ok: true, reason: `gate approved (p=${g.probability})` };
     }
-    const approved = await ctx.requestApproval({ title: `Allow ${tool.name}?`, detail: `${reason}\nArguments: ${redactSecrets(JSON.stringify(args)).text.slice(0, 1500)}`, risk: tool.risk, tool: tool.name, args });
-    return approved ? { ok: true, reason: 'approved by user' } : { ok: false, reason: 'denied by user' };
+    return this.askHuman(tool, args, ctx, reason, hostGate);
+  }
+
+  private async askHuman(tool: AnyTool, args: Record<string, unknown>, ctx: ToolContext, reason: string, requireAdmin: boolean): Promise<{ ok: boolean; reason: string }> {
+    const approved = await ctx.requestApproval({ title: `Allow ${tool.name}?`, detail: `${reason}\nArguments: ${redactSecrets(JSON.stringify(args)).text.slice(0, 1500)}`, risk: tool.risk, tool: tool.name, args, ...(requireAdmin ? { requireAdmin: true } : {}) });
+    return approved ? { ok: true, reason: requireAdmin ? 'approved by admin' : 'approved by user' } : { ok: false, reason: 'denied by user' };
   }
 }
 
-async function withTimeout<T>(p: Promise<T>, ms: number, signal: AbortSignal | undefined, name: string): Promise<T> {
+async function withTimeout<T>(p: Promise<T>, ms: number, signal: AbortSignal | undefined, name: string, ctl?: AbortController): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`Tool ${name} timed out after ${ms}ms`)), ms);
+    timer = setTimeout(() => {
+      ctl?.abort(new Error(`Tool ${name} timed out after ${ms}ms`));
+      reject(new Error(`Tool ${name} timed out after ${ms}ms`));
+    }, ms);
     signal?.addEventListener('abort', () => reject(new Error('Run stopped')), { once: true });
   });
   try {

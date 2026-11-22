@@ -11,6 +11,7 @@ export const executeCodeTool = defineTool<{ code: string; language?: 'python' | 
   toolset: 'code',
   risk: 'moderate',
   sensitive: true,
+  hostAccess: true,
   parameters: params({ code: str('Script source'), language: strEnum(['python', 'javascript'], 'Language (default python)') }, ['code']),
   async execute(a, ctx) {
     const r = await executeCode(ctx, a.language ?? 'python', a.code);
