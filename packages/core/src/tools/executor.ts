@@ -19,7 +19,7 @@ import type { ChaosController } from '../reliability/chaos.js';
 import { redactSecrets } from '../security/redact.js';
 import { scanForInjection, spotlight } from '../security/injection.js';
 import { errorMessage, truncate } from '../types/common.js';
-import type { ToolCall } from '../types/messages.js';
+import type { JsonSchema, ToolCall } from '../types/messages.js';
 import type { ToolRegistry } from './registry.js';
 import type { AnyTool, ToolContext, ToolResult } from './types.js';
 
@@ -84,6 +84,8 @@ export class ToolExecutor {
       if (!input || typeof input !== 'object' || Array.isArray(input)) return { error: `Invalid arguments for ${tool.name}: expected an object` };
       const missing = (tool.parameters.required ?? []).filter((k) => input[k] === undefined);
       if (missing.length) return { error: `Missing required arguments for ${tool.name}: ${missing.join(', ')}` };
+      const typeErrors = checkTopLevelTypes(tool.parameters, input);
+      if (typeErrors.length) return { error: `Invalid arguments for ${tool.name}: ${typeErrors.join('; ')}` };
       return { args: input };
     };
     const first = validate(call.arguments ?? {});
@@ -246,4 +248,34 @@ async function withTimeout<T>(p: Promise<T>, ms: number, signal: AbortSignal | u
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Conservative JSON-schema check for tools without a zod schema: top-level declared property
+ * types and string enums. Lenient where models commonly differ (numeric/boolean strings pass),
+ * strict where a mismatch changes meaning (object/array smuggled into a string field, etc.).
+ */
+export function checkTopLevelTypes(schema: JsonSchema, input: Record<string, unknown>): string[] {
+  const errors: string[] = [];
+  for (const [key, prop] of Object.entries(schema.properties ?? {})) {
+    const v = input[key];
+    if (v === undefined || v === null || !prop || typeof prop !== 'object') continue;
+    const types = (Array.isArray(prop.type) ? prop.type : prop.type ? [prop.type] : []) as string[];
+    if (types.length) {
+      const ok = types.some((t) => {
+        switch (t) {
+          case 'string': return typeof v === 'string';
+          case 'number': return typeof v === 'number' || (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)));
+          case 'integer': return (typeof v === 'number' && Number.isInteger(v)) || (typeof v === 'string' && /^-?\d+$/.test(v.trim()));
+          case 'boolean': return typeof v === 'boolean' || v === 'true' || v === 'false';
+          case 'array': return Array.isArray(v);
+          case 'object': return typeof v === 'object' && !Array.isArray(v);
+          default: return true;
+        }
+      });
+      if (!ok) errors.push(`${key}: expected ${types.join('|')}`);
+    }
+    if (Array.isArray(prop.enum) && prop.enum.length && typeof v === 'string' && prop.enum.every((e) => typeof e === 'string') && !prop.enum.includes(v)) errors.push(`${key}: must be one of ${prop.enum.map(String).join(', ')}`);
+  }
+  return errors;
 }

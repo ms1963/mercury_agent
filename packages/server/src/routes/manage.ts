@@ -18,6 +18,13 @@ export function registerManageRoutes(app: FastifyInstance, { m, auth, sse }: Ctx
     const row = m.db.get<{ user_id: string | null }>('SELECT user_id FROM runs WHERE id = ?', runId);
     return !!row && row.user_id === p.userId;
   };
+  /** Run events are readable by the owner (runs table, or — for runs without a row — events that name only them). */
+  const canSeeRun = (p: { userId: string; role: string }, runId: string, events: Array<{ userId?: string }>): boolean => {
+    if (p.role === 'admin') return true;
+    if (events.some((e) => e.userId && e.userId !== p.userId)) return false;
+    const row = m.db.get<{ user_id: string | null }>('SELECT user_id FROM runs WHERE id = ?', runId);
+    return row ? row.user_id === p.userId : events.some((e) => e.userId === p.userId);
+  };
   // ---- tools & MCP --------------------------------------------------------
   app.get('/api/tools', async (req) => {
     auth(req);
@@ -300,7 +307,7 @@ export function registerManageRoutes(app: FastifyInstance, { m, auth, sse }: Ctx
   app.get('/api/runs/:id/events', async (req) => {
     const p = auth(req);
     const events = m.recorder.replay(param(req));
-    if (p.role !== 'admin' && events.some((e) => e.userId && e.userId !== p.userId)) throw new HttpError(404, 'run not found');
+    if (!canSeeRun(p, param(req), events)) throw new HttpError(404, 'run not found');
     const children = m.db.all('SELECT id, kind, status, depth FROM runs WHERE parent_run_id = ?', param(req));
     return { events, children };
   });
@@ -312,9 +319,18 @@ export function registerManageRoutes(app: FastifyInstance, { m, auth, sse }: Ctx
       if (p.role === 'admin' || e.userId === p.userId) stream.send('event', e);
     }));
   });
-  app.get('/api/debug', async (req) => (auth(req, 'debug'), { breakpoints: m.debug.getGlobal(), paused: m.debug.list() }));
+  app.get('/api/debug', async (req) => {
+    const p = auth(req, 'debug');
+    return { breakpoints: m.debug.getGlobal(), paused: m.debug.list().filter((s) => ownsRun(p, s.runId)) };
+  });
   app.post('/api/debug/breakpoints', async (req) => (auth(req, 'config.manage'), m.debug.setGlobal(req.body as never)));
-  app.post('/api/debug/resume/:id', async (req) => (auth(req, 'debug'), { ok: m.debug.resume(param(req), ((req.body as Body) ?? { action: 'continue' }) as never) }));
+  app.post('/api/debug/resume/:id', async (req) => {
+    const p = auth(req, 'debug');
+    // Resuming may inject edited messages/tool arguments: only the run's owner (or an admin) may do it.
+    const step = m.debug.list().find((s) => s.id === param(req));
+    if (!step || !ownsRun(p, step.runId)) throw new HttpError(404, 'paused step not found');
+    return { ok: m.debug.resume(step.id, ((req.body as Body) ?? { action: 'continue' }) as never) };
+  });
   app.get('/api/audit', async (req) => {
     auth(req, 'audit.read');
     const q = req.query as Body;
@@ -337,7 +353,7 @@ export function registerManageRoutes(app: FastifyInstance, { m, auth, sse }: Ctx
   app.get('/api/runs/:id/trace', async (req) => {
     const p = auth(req);
     const events = m.recorder.replay(param(req));
-    if (p.role !== 'admin' && events.some((e) => e.userId && e.userId !== p.userId)) throw new HttpError(404, 'run not found');
+    if (!canSeeRun(p, param(req), events)) throw new HttpError(404, 'run not found');
     return buildTrace(events, param(req));
   });
 

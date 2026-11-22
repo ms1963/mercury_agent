@@ -1,9 +1,31 @@
 /** Integration endpoints: adapter webhooks, MCP (streamable HTTP) and Prometheus metrics. */
+import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { handleMcpHttp } from '@mercury/mcp';
 import type { Ctx } from '../http.js';
 
+const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+
 export function registerIntegrationRoutes(app: FastifyInstance, { m, auth }: Ctx): void {
+  const metricsAllowed = (req: FastifyRequest): boolean => {
+    const bearer = /^Bearer\s+(.+)$/i.exec(req.headers.authorization ?? '')?.[1]?.trim();
+    const token = m.config.observability.metricsToken;
+    if (token) {
+      const a = Buffer.from(bearer ?? ''), b = Buffer.from(token);
+      return a.length === b.length && timingSafeEqual(a, b);
+    }
+    // Direct loopback scrape (a reverse proxy on the same host adds X-Forwarded-* and is not trusted here).
+    const proxied = Object.keys(req.headers).some((h) => h.startsWith('x-forwarded') || h === 'forwarded' || h === 'x-real-ip');
+    if (!proxied && LOOPBACK.has(req.socket.remoteAddress ?? '')) return true;
+    if (!bearer) return false;
+    try {
+      auth(req, 'audit.read');
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const webhook = async (req: FastifyRequest, reply: FastifyReply) => {
     const name = (req.params as { name: string }).name;
     const res = await m.gateway.handleWebhook(name, {
@@ -29,8 +51,9 @@ export function registerIntegrationRoutes(app: FastifyInstance, { m, auth }: Ctx
     app.get(m.config.mcp.server.path, async (_req, reply) => reply.code(405).send({ error: 'use POST (stateless streamable HTTP)' }));
   }
 
-  app.get('/metrics', async (_req, reply) => {
+  app.get('/metrics', async (req, reply) => {
     if (!m.config.observability.metrics) return reply.code(404).send('metrics disabled');
+    if (!metricsAllowed(req)) return reply.code(401).send('metrics require a bearer token (observability.metricsToken) or admin auth');
     return reply.type('text/plain; version=0.0.4').send(m.metrics.render());
   });
 }

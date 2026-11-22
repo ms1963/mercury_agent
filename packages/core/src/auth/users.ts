@@ -53,6 +53,12 @@ const toUser = (r: UserRow): User => ({
 export class UserService {
   readonly secret: string;
 
+  /** Max API-token lifetime in days (0 = unlimited); set by the runtime from config.auth.apiTokenMaxTtlDays. */
+  apiTokenMaxTtlDays = 0;
+  static readonly MAX_LOGIN_FAILURES = 10;
+  static readonly LOCK_WINDOW_MS = 15 * 60_000;
+  private loginFailures = new Map<string, { count: number; first: number; lockedUntil: number }>();
+
   constructor(private db: Db, dataDir: string, private tokenTtlHours = 168, private audit?: AuditLog) {
     this.secret = loadOrCreateSecret(join(dataDir, 'secret.key'));
   }
@@ -153,8 +159,21 @@ export class UserService {
 
   /** Verify credentials and issue a session JWT. Both success and failure are audited. */
   login(username: string, password: string): { token: string; user: User } {
+    const key = username.toLowerCase();
+    const now = Date.now();
+    const f = this.loginFailures.get(key);
+    if (f && f.lockedUntil > now) {
+      this.audit?.record(username, 'auth.login_failed', username, { reason: 'locked' });
+      throw new MercuryError('Too many failed logins; try again later', 'login_locked', 'auth', 429);
+    }
     const row = this.db.get<UserRow>('SELECT * FROM users WHERE username = ?', username);
     if (!row || !verifyPassword(password, row.password_hash)) {
+      // Per-account throttle (independent of client IP, so rotating X-Forwarded-For does not help).
+      const cur = f && now - f.first < UserService.LOCK_WINDOW_MS ? f : { count: 0, first: now, lockedUntil: 0 };
+      cur.count++;
+      if (cur.count >= UserService.MAX_LOGIN_FAILURES) cur.lockedUntil = now + UserService.LOCK_WINDOW_MS;
+      this.loginFailures.set(key, cur);
+      if (this.loginFailures.size > 10_000) this.loginFailures.delete(this.loginFailures.keys().next().value as string);
       this.audit?.record(username, 'auth.login_failed', username, { reason: row ? 'bad_password' : 'unknown_user' });
       throw new MercuryError('Invalid username or password', 'invalid_credentials', 'auth', 401);
     }
@@ -162,6 +181,7 @@ export class UserService {
       this.audit?.record(row.id, 'auth.login_failed', username, { reason: 'account_disabled' });
       throw new MercuryError('Account disabled', 'account_disabled', 'auth', 403);
     }
+    this.loginFailures.delete(key);
     const user = toUser(row);
     this.audit?.record(user.id, 'auth.login', username, { role: user.role });
     return { token: this.issueJwt(user), user };
@@ -176,7 +196,9 @@ export class UserService {
     if (bad.length) throw new MercuryError(`Unknown scopes: ${bad.join(', ')}`, 'invalid_scope', 'auth');
     const token = generateApiToken();
     const id = newId('tok');
-    const expires = ttlDays ? new Date(Date.now() + ttlDays * 86_400_000).toISOString() : null;
+    const max = this.apiTokenMaxTtlDays;
+    const days = max > 0 ? Math.min(ttlDays && ttlDays > 0 ? ttlDays : max, max) : ttlDays;
+    const expires = days ? new Date(Date.now() + days * 86_400_000).toISOString() : null;
     this.db.run('INSERT INTO api_tokens (id, user_id, name, token_hash, scopes, created_at, expires_at) VALUES (?,?,?,?,?,?,?)', id, userId, name, sha256(token), toJson(scopes), nowIso(), expires);
     this.audit?.record(actor ?? userId, 'token.issue', id, { name, scopes, userId, expiresAt: expires });
     return { token, info: this.listTokens(userId).find((t) => t.id === id)! };

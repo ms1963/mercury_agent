@@ -96,6 +96,8 @@ export const ConfigSchema = z.object({
     .object({
       tokenTtlHours: z.number().default(24 * 7),
       allowRegistration: z.boolean().default(true),
+      /** Upper bound (days) for API-token lifetimes; tokens created without a TTL get this one. 0 = unlimited. */
+      apiTokenMaxTtlDays: z.number().int().min(0).default(365),
     })
     .prefault({}),
 
@@ -632,6 +634,11 @@ export const ConfigSchema = z.object({
       recordEvents: z.boolean().default(true),
       otlpEndpoint: z.string().optional(),
       metrics: z.boolean().default(true),
+      /**
+       * Bearer token for GET /metrics. When unset, /metrics answers only direct loopback requests
+       * (no X-Forwarded-* headers) and authenticated admins (audit.read).
+       */
+      metricsToken: z.string().optional(),
     })
     .prefault({}),
 

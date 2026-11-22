@@ -81,6 +81,8 @@ export interface RunOptions {
   onDelta?: DeltaHandler;
   /** Trust of the input itself: 'user' for authenticated users, 'untrusted' for mail/webhooks/strangers. */
   trust?: TrustLevel;
+  /** Per-run sampling temperature (defaults to config.agent.temperature); never mutates shared config. */
+  temperature?: number;
   /** The input embeds third-party data (already spotlighted): treat the run as tainted from the first tool call. */
   tainted?: boolean;
   /** Do not persist to a session (subagents, workflow workers). */
@@ -342,7 +344,7 @@ export class Agent {
       judgment: d.judgment,
       onDelta: run.onDelta,
       emit: (type, data) => d.bus.emit({ type, runId: run.runId, sessionId: run.sessionId, data }),
-      loop: (msgs, o) => runToolLoop(loopDeps, run, msgs, { maxIterations: opts.maxIterations, ...o }),
+      loop: (msgs, o) => runToolLoop(loopDeps, run, msgs, { maxIterations: opts.maxIterations, temperature: opts.temperature, ...o }),
       complete: async (msgs, o = {}) => {
         if (run.signal.aborted) throw new RunStoppedError();
         const res = await d.llm.chat({
@@ -350,7 +352,7 @@ export class Agent {
           messages: msgs,
           model: run.model,
           responseFormat: o.json ? 'json' : 'text',
-          temperature: o.temperature,
+          temperature: o.temperature ?? opts.temperature,
           maxTokens: o.maxTokens,
           onDelta: o.stream ? run.onDelta : undefined,
           signal: run.signal,

@@ -272,6 +272,7 @@ export class Mercury {
 
     this.audit = new AuditLog(this.db);
     this.users = new UserService(this.db, dataDir, config.auth.tokenTtlHours, this.audit);
+    this.users.apiTokenMaxTtlDays = config.auth.apiTokenMaxTtlDays;
     this.pairing = new PairingService(this.db, this.users, 30, this.audit);
     // Unified Add-In discovery (declarative, no source edits). Additive and
     // backward-compatible: the legacy dataDir/personalities + dataDir/tools scans
@@ -443,32 +444,28 @@ export class Mercury {
     };
     const evalRunner: EvalCaseRunner = async (c, overrides) => {
       const principal = this.principalFor();
-      const prevTemp = this.config.agent.temperature;
-      if (overrides?.temperature !== undefined) this.config.agent.temperature = overrides.temperature;
+      // Temperature is passed per run: mutating the shared config would leak into concurrent user runs.
       const start = Date.now();
-      try {
-        const r = await this.agent.run({
-          principal,
-          input: c.input,
-          platform: 'eval',
-          kind: 'subagent',
-          ephemeral: true,
-          reflect: false,
-          model: overrides?.model,
-          pattern: overrides?.pattern,
-        });
-        return {
-          output: r.output,
-          toolNames: r.toolNames,
-          inputTokens: r.usage.inputTokens,
-          outputTokens: r.usage.outputTokens,
-          cost: r.usage.cost,
-          durationMs: Date.now() - start,
-          error: r.status === 'error' || r.status === 'blocked' ? r.error ?? r.status : undefined,
-        };
-      } finally {
-        this.config.agent.temperature = prevTemp;
-      }
+      const r = await this.agent.run({
+        principal,
+        input: c.input,
+        platform: 'eval',
+        kind: 'subagent',
+        ephemeral: true,
+        reflect: false,
+        model: overrides?.model,
+        pattern: overrides?.pattern,
+        temperature: overrides?.temperature,
+      });
+      return {
+        output: r.output,
+        toolNames: r.toolNames,
+        inputTokens: r.usage.inputTokens,
+        outputTokens: r.usage.outputTokens,
+        cost: r.usage.cost,
+        durationMs: Date.now() - start,
+        error: r.status === 'error' || r.status === 'blocked' ? r.error ?? r.status : undefined,
+      };
     };
     this.evals = new EvalService(
       new SqliteEvalStore(this.db),
