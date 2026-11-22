@@ -6,6 +6,7 @@
  * Backends are selected by `tools.terminal.backend` and can be added by plugins
  * via `registerTerminalBackend`.
  */
+import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import type { MercuryConfig } from '@mercury/core';
 
@@ -61,13 +62,25 @@ export function safeEnv(extra?: Record<string, string>, source: NodeJS.ProcessEn
 }
 
 /** Spawn argv, collect output (capped), enforce timeout and abort signal. */
-export function runArgv(argv: string[], opts: RunCommandOptions & { spawnCwd?: string }): Promise<CommandResult> {
+export function runArgv(argv: string[], opts: RunCommandOptions & { spawnCwd?: string; onKill?: () => void }): Promise<CommandResult> {
   return new Promise((resolve) => {
+    // Own process group (POSIX) so a timeout/abort also kills background grandchildren.
+    const group = process.platform !== 'win32';
     const child = spawn(argv[0]!, argv.slice(1), {
       cwd: opts.spawnCwd ?? opts.cwd,
       env: safeEnv(opts.env),
       stdio: ['pipe', 'pipe', 'pipe'],
+      detached: group,
     });
+    const kill = () => {
+      try {
+        if (group && child.pid) process.kill(-child.pid, 'SIGKILL');
+        else child.kill('SIGKILL');
+      } catch {
+        child.kill('SIGKILL');
+      }
+      opts.onKill?.();
+    };
     let stdout = '';
     let stderr = '';
     let timedOut = false;
@@ -75,9 +88,9 @@ export function runArgv(argv: string[], opts: RunCommandOptions & { spawnCwd?: s
     child.stderr.on('data', (d: Buffer) => (stderr = (stderr + d.toString()).slice(-MAX_OUTPUT)));
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill('SIGKILL');
+      kill();
     }, opts.timeoutMs);
-    const onAbort = () => child.kill('SIGKILL');
+    const onAbort = () => kill();
     opts.signal?.addEventListener('abort', onAbort, { once: true });
     child.on('error', (err) => {
       stderr += String(err);
@@ -105,13 +118,18 @@ export class LocalBackend implements TerminalBackend {
 export class DockerBackend implements TerminalBackend {
   name = 'docker';
   constructor(private image: string) {}
-  argv(command: string, opts: { cwd: string }): string[] {
+  argv(command: string, opts: { cwd: string }, name = `mercury-${randomBytes(6).toString('hex')}`): string[] {
     // Network stays enabled (agents often need package installs); mount only the workdir.
     // Hardening: no privilege gain via setuid, a process cap (fork bombs) and an init reaper.
-    return ['docker', 'run', '--rm', '-i', '--init', '--security-opt', 'no-new-privileges', '--pids-limit', '512', '--memory', '1g', '--cpus', '1', '-v', `${opts.cwd}:/work`, '-w', '/work', this.image, 'sh', '-lc', command];
+    return ['docker', 'run', '--rm', '-i', '--init', '--name', name, '--security-opt', 'no-new-privileges', '--pids-limit', '512', '--memory', '1g', '--cpus', '1', '-v', `${opts.cwd}:/work`, '-w', '/work', this.image, 'sh', '-lc', command];
   }
   run(command: string, opts: RunCommandOptions): Promise<CommandResult> {
-    return runArgv(this.argv(command, opts), { ...opts, spawnCwd: process.cwd() });
+    // Killing the docker CLI does not stop the container: remove it explicitly on timeout/abort.
+    const name = `mercury-${randomBytes(6).toString('hex')}`;
+    const onKill = () => {
+      spawn('docker', ['rm', '-f', name], { stdio: 'ignore', env: safeEnv() }).on('error', () => undefined).unref();
+    };
+    return runArgv(this.argv(command, opts, name), { ...opts, spawnCwd: process.cwd(), onKill });
   }
 }
 

@@ -60,7 +60,17 @@ export async function executeCode(ctx: ToolContext, language: 'python' | 'javasc
 
   // Scrubbed environment: no API keys or secrets leak into model-written code.
   const env: Record<string, string> = { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: dir, LANG: 'C.UTF-8' };
-  const child = spawn(argv[0]!, argv.slice(1), { cwd: dir, env, stdio: ['ignore', 'pipe', 'pipe', 'pipe'] });
+  // Own process group (POSIX): timeout/abort kills any processes the code spawned, too.
+  const group = process.platform !== 'win32';
+  const child = spawn(argv[0]!, argv.slice(1), { cwd: dir, env, stdio: ['ignore', 'pipe', 'pipe', 'pipe'], detached: group });
+  const killTree = () => {
+    try {
+      if (group && child.pid) process.kill(-child.pid, 'SIGKILL');
+      else child.kill('SIGKILL');
+    } catch {
+      child.kill('SIGKILL');
+    }
+  };
   const rpc = child.stdio[3] as Socket;
   let stdout = '';
   let stderr = '';
@@ -113,9 +123,9 @@ export async function executeCode(ctx: ToolContext, language: 'python' | 'javasc
   const exitCode = await new Promise<number | null>((resolve) => {
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill('SIGKILL');
+      killTree();
     }, cfg.timeoutMs);
-    const onAbort = () => child.kill('SIGKILL');
+    const onAbort = () => killTree();
     ctx.signal?.addEventListener('abort', onAbort, { once: true });
     child.on('close', (code) => {
       clearTimeout(timer);
