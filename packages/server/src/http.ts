@@ -89,7 +89,7 @@ export async function createServer(m: Mercury): Promise<FastifyInstance> {
     reply.header('content-security-policy', CSP);
     reply.header('cross-origin-opener-policy', 'same-origin');
     // API responses carry user data and tokens → never cache them.
-    if (req.url.startsWith('/api/') || req.url.startsWith('/mcp')) reply.header('cache-control', 'no-store');
+    if (/^\/(api\/|mcp|metrics|webhooks?\/)/.test(req.url)) reply.header('cache-control', 'no-store');
   });
 
   app.setErrorHandler((err: Error & { status?: number; statusCode?: number; code?: string; helpTopic?: string }, _req, reply) => {

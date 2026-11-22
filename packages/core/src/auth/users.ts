@@ -73,13 +73,18 @@ export class UserService {
     if (!/^[a-zA-Z0-9_.-]{3,32}$/.test(username)) throw new MercuryError('Username must be 3-32 chars: letters, digits, _ . -', 'invalid_username', 'auth');
     if (password.length < 8) throw new MercuryError('Password must be at least 8 characters', 'weak_password', 'auth');
     if (this.findByUsername(username)) throw new MercuryError('Username already taken', 'username_taken', 'auth', 409);
-    const role: UserRole = this.count() === 0 ? 'admin' : (opts.role ?? 'user');
     const id = newId('usr');
+    const hash = hashPassword(password);
+    // The "first user becomes admin" decision is made inside the INSERT itself, so two
+    // concurrent registrations (e.g. from two processes sharing the db) cannot both
+    // observe an empty table and both become admin.
     this.db.run(
-      'INSERT INTO users (id, username, password_hash, role, display_name, created_at) VALUES (?,?,?,?,?,?)',
-      id, username, hashPassword(password), role, opts.displayName ?? username, nowIso(),
+      `INSERT INTO users (id, username, password_hash, role, display_name, created_at)
+       SELECT ?, ?, ?, CASE WHEN (SELECT COUNT(*) FROM users) = 0 THEN 'admin' ELSE ? END, ?, ?`,
+      id, username, hash, opts.role ?? 'user', opts.displayName ?? username, nowIso(),
     );
     const user = this.get(id);
+    const role: UserRole = user.role;
     this.audit?.record(actor ?? id, 'user.register', username, { role, userId: id });
     return user;
   }

@@ -71,10 +71,13 @@ export class BudgetService {
 
   /** Throws BudgetExceededError if a call with `estimatedTokens` would exceed any applicable rule. */
   check(principal: Principal, model: string, estimatedTokens = 0, override = false): void {
-    if (!this.config.budgets.enabled || principal.kind === 'system') return;
-    if (principal.role === 'admin' && (this.config.budgets.adminBypass || override)) return;
+    if (!this.config.budgets.enabled) return;
+    // Auxiliary (system-principal) calls are not covered by user or '*' rules, but an
+    // explicit rule for user 'system' caps them, so auxiliary spend can be bounded.
+    const isSystem = principal.kind === 'system';
+    if (!isSystem && principal.role === 'admin' && (this.config.budgets.adminBypass || override)) return;
     for (const rule of this.rules()) {
-      if (rule.user !== '*' && rule.user !== principal.userId && rule.user !== principal.username) continue;
+      if (isSystem ? rule.user !== 'system' : rule.user !== '*' && rule.user !== principal.userId && rule.user !== principal.username) continue;
       if (!globMatch(rule.model, model)) continue;
       const used = this.usage(principal.userId, rule.model, periodStart(rule.period));
       const tokens = used.inputTokens + used.outputTokens;

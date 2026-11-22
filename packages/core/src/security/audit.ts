@@ -1,8 +1,15 @@
 /**
  * Append-only, hash-chained audit log. Each entry stores sha256(prev_hash + entry);
  * `verify()` detects any tampering. SQL triggers forbid UPDATE/DELETE.
+ *
+ * When a key is set (`setKey`, derived from the instance secret), new entries are
+ * chained with HMAC-SHA256 and stored with a `k1:` prefix. Someone with write access
+ * to the database file but not to the secret can then no longer drop the triggers
+ * and recompute a valid chain. Older unkeyed entries still verify; once the first
+ * keyed entry exists, any later unkeyed entry breaks the chain (no downgrade).
  */
-import { createHash } from 'node:crypto';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import type { Db } from '../db/db.js';
 import { redactDeep } from './redact.js';
 
@@ -31,8 +38,18 @@ const GENESIS = '0'.repeat(64);
 const digest = (prev: string, ts: string, actor: string, action: string, target: string, details: string) =>
   createHash('sha256').update([prev, ts, actor, action, target, details].join('\u241f')).digest('hex');
 
+const KEYED = 'k1:';
+const keyedDigest = (key: string, prev: string, ts: string, actor: string, action: string, target: string, details: string) =>
+  KEYED + createHmac('sha256', key).update([prev, ts, actor, action, target, details].join('\u241f')).digest('hex');
+
 export class AuditLog {
+  private key: string | undefined;
   constructor(private db: Db, private enabled = true) {}
+
+  /** Enable keyed (HMAC) chaining for new entries. */
+  setKey(key: string | undefined): void {
+    this.key = key || undefined;
+  }
 
   record(actor: string, action: string, target = '', details: Record<string, unknown> = {}): void {
     if (!this.enabled) return;
@@ -40,7 +57,7 @@ export class AuditLog {
     const detailsJson = JSON.stringify(redactDeep(details));
     this.db.transaction(() => {
       const prev = this.db.get<{ hash: string }>('SELECT hash FROM audit ORDER BY seq DESC LIMIT 1')?.hash ?? GENESIS;
-      const hash = digest(prev, ts, actor, action, target, detailsJson);
+      const hash = this.key ? keyedDigest(this.key, prev, ts, actor, action, target, detailsJson) : digest(prev, ts, actor, action, target, detailsJson);
       this.db.run('INSERT INTO audit (ts, actor, action, target, details, prev_hash, hash) VALUES (?,?,?,?,?,?,?)', ts, actor, action, target, detailsJson, prev, hash);
     });
   }
@@ -75,14 +92,32 @@ export class AuditLog {
   }
 
   /** Recompute the chain. Returns the first broken sequence number, or null if intact. */
-  verify(): { ok: boolean; brokenAt: number | null; count: number } {
+  verify(): { ok: boolean; brokenAt: number | null; count: number; keyed: number } {
     let prev = GENESIS;
+    let keyed = 0;
     const rows = this.db.all<AuditEntry>('SELECT * FROM audit ORDER BY seq ASC');
     for (const r of rows) {
-      const expected = digest(prev, r.ts, r.actor, r.action, r.target ?? '', r.details ?? '');
-      if (r.prev_hash !== prev || r.hash !== expected) return { ok: false, brokenAt: r.seq, count: rows.length };
+      const isKeyed = r.hash.startsWith(KEYED);
+      // Keyed entries need the key; after the first keyed entry, unkeyed ones are a downgrade.
+      const fail = (): { ok: boolean; brokenAt: number | null; count: number; keyed: number } => ({ ok: false, brokenAt: r.seq, count: rows.length, keyed });
+      if (isKeyed && !this.key) return fail();
+      if (!isKeyed && keyed > 0) return fail();
+      const fields = [prev, r.ts, r.actor, r.action, r.target ?? '', r.details ?? ''] as const;
+      const expected = isKeyed ? keyedDigest(this.key as string, ...fields) : digest(...fields);
+      if (r.prev_hash !== prev || r.hash !== expected) return fail();
+      if (isKeyed) keyed++;
       prev = r.hash;
     }
-    return { ok: true, brokenAt: null, count: rows.length };
+    return { ok: true, brokenAt: null, count: rows.length, keyed };
   }
+}
+
+/** Load the audit-chain HMAC key (env `MERCURY_AUDIT_KEY` wins), creating a 0600 key file on first use.
+ *  It is separate from the JWT secret so rotating the JWT secret does not invalidate the audit chain. */
+export function loadOrCreateAuditKey(file: string): string {
+  if (process.env.MERCURY_AUDIT_KEY) return process.env.MERCURY_AUDIT_KEY;
+  if (existsSync(file)) return readFileSync(file, 'utf8').trim();
+  const key = randomBytes(32).toString('base64url');
+  writeFileSync(file, key, { mode: 0o600 });
+  return key;
 }

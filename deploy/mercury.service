@@ -13,6 +13,18 @@ Environment=HOME=/home/ubuntu
 ExecStart=/usr/bin/node /home/ubuntu/mercury/packages/cli/dist/bin.js serve --host 127.0.0.1 --port 3000
 Restart=on-failure
 RestartSec=3
+# Sandboxing. Mercury writes only to ~/.mercury (db, workspace, logs) and the
+# project directory (addins / skills installs); everything else is read-only.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/home/ubuntu/.mercury /home/ubuntu/mercury
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+UMask=0077
 
 [Install]
 WantedBy=multi-user.target

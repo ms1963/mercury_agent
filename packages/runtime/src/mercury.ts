@@ -14,6 +14,7 @@ import {
   ApprovalService,
   AttachmentStore,
   AuditLog,
+  loadOrCreateAuditKey,
   BudgetService,
   TaskBudgetService,
   GrantBroker,
@@ -272,6 +273,7 @@ export class Mercury {
 
     this.audit = new AuditLog(this.db);
     this.users = new UserService(this.db, dataDir, config.auth.tokenTtlHours, this.audit);
+    this.audit.setKey(loadOrCreateAuditKey(join(dataDir, 'audit.key')));
     this.users.apiTokenMaxTtlDays = config.auth.apiTokenMaxTtlDays;
     this.pairing = new PairingService(this.db, this.users, 30, this.audit);
     // Unified Add-In discovery (declarative, no source edits). Additive and
