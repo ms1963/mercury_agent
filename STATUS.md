@@ -1,7 +1,9 @@
-# Mercury — Build Status (honest snapshot, 2026-11-18)
+# Mercury — Build Status (honest snapshot, 2026-11-22, through v1.4.0)
 
 **Overall:** all 7 packages compile. From a clean build, `npm install && npm run build && npm test`
-passes (17 files, **200/200 tests**, offline). `npx eslint .` exits 0. The CLI, HTTP server and web UI
+passes (32 files, **381/381 tests**, offline). The v1.4.0 subsystems — multi-agent teams/orchestration
+and the governed long-term memory & knowledge/RAG layer — are covered by the offline suite
+(`tests/teams.test.ts`, `tests/memory.test.ts`). `npx eslint .` exits 0. The CLI, HTTP server and web UI
 run end-to-end with the offline mock LLM and mock decision provider. Nothing has been exercised
 against a real external service: no real LLM API, no Jev API, no chat platform, no STT/TTS service.
 

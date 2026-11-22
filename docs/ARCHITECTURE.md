@@ -2,7 +2,8 @@
 
 Mercury is a self-hosted, extensible agentic AI platform written in TypeScript (Node 22+, ESM,
 npm-workspaces monorepo). It aims for feature parity with Hermes Agent (Nous Research) and adds
-multi-agent workflows, a typed decision engine (Jev), RBAC, token budgets and an MCP server.
+multi-agent workflows, multi-agent teams/orchestration, a governed long-term memory & knowledge/RAG
+layer, a typed decision engine (Jev), RBAC, token budgets and an MCP server.
 
 This document explains *how the system is put together*. For security details see
 [SECURITY.md](SECURITY.md); for writing extensions see [EXTENDING.md](EXTENDING.md).
