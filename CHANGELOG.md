@@ -7,6 +7,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-11-23
+
+### Added
+- **Document-generation tools (`data` toolset).** The agent can now *produce* files to send back to the user, mirroring `image_generate`/`text_to_speech` (each saves via `ctx.services.attachments.save(...)` and returns the file as an attachment):
+  - `document_generate` — turn Markdown or HTML source into **PDF**, **Word (.docx)**, **HTML**, **PowerPoint (.pptx)** or **Markdown (.md)**. Uses the host `pandoc` for md/html → docx/pptx/html/md; for PDF it prefers `libreoffice`/`soffice` (reliable without a LaTeX engine, via an intermediate .docx) and falls back to a pandoc PDF engine (weasyprint/wkhtmltopdf/latex). PPTX slides split on headings / `---`. Degrades gracefully with a clear "install pandoc/libreoffice" message when no engine is available.
+  - `spreadsheet_generate` — build an **Excel (.xlsx)** workbook from structured input (a JSON array of objects or arrays, or CSV text, with an optional header), written as hand-authored OOXML and zipped with the host `zip` (no new npm dependencies). Numeric cells are stored as numbers, text as inline strings.
+- **Office (OOXML) attachment support.** `.docx`/`.xlsx`/`.pptx` are now classified as `document` attachments, MIME-sniffed from their extension, and text-extracted via the host `unzip` (Word body, Excel shared/inline strings, PowerPoint slides in order), with graceful "install unzip" degradation. The `document_text` tool now reads these formats too (description updated).
+
 ## [1.5.2] - 2026-11-23
 
 ### Fixed

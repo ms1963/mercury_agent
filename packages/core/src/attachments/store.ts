@@ -5,6 +5,7 @@
  *   audio  → transcript via STT
  *   video  → key frames + audio track via ffmpeg (if installed) → frames + transcript
  *   text/PDF documents → extracted text (pdftotext if installed)
+ *   Office OOXML (.docx/.xlsx/.pptx) → extracted text (unzip + XML parse, if unzip installed)
  */
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -26,7 +27,17 @@ const EXT_MIME: Record<string, string> = {
   '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.oga': 'audio/ogg', '.m4a': 'audio/mp4', '.webm': 'video/webm',
   '.mp4': 'video/mp4', '.mov': 'video/quicktime', '.pdf': 'application/pdf', '.txt': 'text/plain', '.md': 'text/markdown',
   '.json': 'application/json', '.csv': 'text/csv', '.html': 'text/html', '.yaml': 'text/yaml', '.yml': 'text/yaml',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
 };
+
+/** OOXML (Office Open XML) container MIME types we can extract text from. */
+const OOXML_MIME = {
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+} as const;
 
 /** Detect MIME from magic bytes, falling back to the file extension. */
 export function sniffMime(buf: Buffer, name: string): string {
@@ -49,6 +60,7 @@ export function kindOf(mime: string): AttachmentKind {
   if (mime.startsWith('audio/')) return 'audio';
   if (mime.startsWith('video/')) return 'video';
   if (mime.startsWith('text/') || mime === 'application/pdf' || mime === 'application/json') return 'document';
+  if (mime.startsWith('application/vnd.openxmlformats-officedocument.')) return 'document';
   return 'other';
 }
 
@@ -162,7 +174,7 @@ export class AttachmentStore {
   }
 }
 
-/** Plain-text extraction for documents. PDFs use `pdftotext` when installed. */
+/** Plain-text extraction for documents. PDFs use `pdftotext`; Office OOXML uses `unzip`. */
 export async function extractText(path: string, mime: string): Promise<string> {
   if (mime === 'application/pdf') {
     try {
@@ -172,5 +184,118 @@ export async function extractText(path: string, mime: string): Promise<string> {
       return 'PDF received (install poppler-utils/pdftotext for text extraction).';
     }
   }
+  if (mime === OOXML_MIME.docx) return extractOoxml(path, 'Word document', extractDocx);
+  if (mime === OOXML_MIME.xlsx) return extractOoxml(path, 'Excel spreadsheet', extractXlsx);
+  if (mime === OOXML_MIME.pptx) return extractOoxml(path, 'PowerPoint presentation', extractPptx);
+  // Never fall through to a raw UTF-8 read for a binary container.
+  if (mime.startsWith('application/vnd.openxmlformats-officedocument.')) {
+    return 'Office document received (unsupported OOXML subtype — no text extracted).';
+  }
   return readFileSync(path, 'utf8').slice(0, 100_000);
+}
+
+/** Minimal XML entity decode for the handful of entities OOXML uses in text runs. */
+function decodeXml(s: string): string {
+  return s
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&amp;/g, '&');
+}
+
+/** List the entries inside a zip/OOXML container via `unzip -Z1`. */
+async function zipEntries(path: string): Promise<string[]> {
+  const { stdout } = await run('unzip', ['-Z1', path], { timeout: 60_000, maxBuffer: 8 * 1024 * 1024 });
+  return stdout.split('\n').map((l) => l.trim()).filter(Boolean);
+}
+
+/** Read a single entry's bytes from a zip/OOXML container via `unzip -p`. */
+async function zipEntry(path: string, entry: string): Promise<string> {
+  const { stdout } = await run('unzip', ['-p', path, entry], { timeout: 60_000, maxBuffer: 50 * 1024 * 1024 });
+  return stdout;
+}
+
+/**
+ * Extract text from an OOXML container. Uses the host `unzip` binary (matching the
+ * `pdftotext` pattern) and degrades gracefully when it is missing or the file is malformed.
+ */
+async function extractOoxml(
+  path: string,
+  label: string,
+  parse: (path: string, entries: string[]) => Promise<string>,
+): Promise<string> {
+  try {
+    const entries = await zipEntries(path);
+    const text = (await parse(path, entries)).trim();
+    return text ? text.slice(0, 100_000) : `${label} received (no extractable text found).`;
+  } catch {
+    return `${label} received (install unzip for text extraction).`;
+  }
+}
+
+/** Pull the decoded text of every `<tag>…</tag>` run, joined. Used where only run text is safe. */
+function textRuns(xml: string, tag: string, joiner = ''): string {
+  const re = new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)</${tag}>`, 'g');
+  const out: string[] = [];
+  for (const m of xml.matchAll(re)) out.push(decodeXml(m[1]!));
+  return out.join(joiner);
+}
+
+/** Drop every remaining tag (keeping text nodes) and decode entities. Decode AFTER stripping. */
+function stripTags(xml: string): string {
+  return decodeXml(xml.replace(/<[^>]+>/g, ''));
+}
+
+/** Collapse runs of 3+ newlines and trailing spaces for readable output. */
+function tidy(text: string): string {
+  return text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/** Word: text from word/document.xml. Tabs/breaks/paragraphs become whitespace, then strip tags. */
+async function extractDocx(path: string, _entries: string[]): Promise<string> {
+  let xml = await zipEntry(path, 'word/document.xml');
+  xml = xml
+    .replace(/<w:tab\b[^>]*\/?>/g, '\t')
+    .replace(/<w:br\b[^>]*\/?>/g, '\n')
+    .replace(/<\/w:p>/g, '\n');
+  return tidy(stripTags(xml));
+}
+
+/** PowerPoint: text per slide (ppt/slides/slideN.xml) in numeric order; strip tags per slide. */
+async function extractPptx(path: string, entries: string[]): Promise<string> {
+  const slides = entries
+    .filter((e) => /^ppt\/slides\/slide\d+\.xml$/.test(e))
+    .sort((a, b) => Number(a.match(/(\d+)/)![1]) - Number(b.match(/(\d+)/)![1]));
+  const out: string[] = [];
+  for (const s of slides) {
+    const xml = (await zipEntry(path, s)).replace(/<a:br\b[^>]*\/?>/g, '\n').replace(/<\/a:p>/g, '\n');
+    const text = tidy(stripTags(xml));
+    if (text) out.push(text);
+  }
+  return out.join('\n\n');
+}
+
+/**
+ * Excel: shared strings (the text table) plus inline strings in the sheets. Worksheets are NOT
+ * tag-stripped — their `<v>` cells hold numbers and shared-string *indices*, not text — so only
+ * `<t>` run text is taken from them.
+ */
+async function extractXlsx(path: string, entries: string[]): Promise<string> {
+  const parts: string[] = [];
+  if (entries.includes('xl/sharedStrings.xml')) {
+    const xml = await zipEntry(path, 'xl/sharedStrings.xml');
+    // Each <si> is one cell string (possibly several runs); one shared string per line.
+    for (const m of xml.matchAll(/<si(?:\s[^>]*)?>([\s\S]*?)<\/si>/g)) {
+      const text = textRuns(m[1]!, 't', '').trim();
+      if (text) parts.push(text);
+    }
+  }
+  for (const e of entries.filter((x) => /^xl\/worksheets\/sheet\d+\.xml$/.test(x))) {
+    const inline = textRuns(await zipEntry(path, e), 't', ' ').trim();
+    if (inline) parts.push(inline);
+  }
+  return parts.join('\n');
 }

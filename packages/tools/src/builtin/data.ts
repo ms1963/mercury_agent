@@ -135,7 +135,7 @@ export const archiveTool = defineTool<{ action: 'create' | 'extract' | 'list'; a
 
 export const documentText = defineTool<{ path: string }>({
   name: 'document_text',
-  description: 'Extract text from a document (PDF via pdftotext, DOCX, HTML, plain text).',
+  description: 'Extract text from a document (PDF via pdftotext, Word .docx, Excel .xlsx, PowerPoint .pptx, HTML, plain text).',
   toolset: 'data',
   risk: 'safe',
   untrustedOutput: true,
