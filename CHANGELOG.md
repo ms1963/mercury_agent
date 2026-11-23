@@ -21,6 +21,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Tools that ignore cancellation are tracked as runaway (`tool.runaway` event + audit); new calls are refused while 2 are still running.
 - `execute_code` can run in a locked-down container (`tools.executeCode.backend`: `auto` | `host` | `docker`; no network, no capabilities, read-only, nobody user).
 - Opt-in automatic verification of completed top-level runs (`verification.autoVerify`).
+- Polyglot tools can run in a locked-down container (`tools.polyglotBackend`: `auto` | `host` | `docker`; tool.json `image`, `network`, `workdir`).
 - Polyglot tools whose folder is writable through the path jail are host-gated (`tools.hostAccess.nonAdmin`) and tamper-pinned (folder fingerprint at load; changed files → call refused).
 - Host-specific `deploy/14444ce25a.conf` replaced by a generic `deploy/nginx.conf.example`.
 - Deployment: systemd unit sandboxing, nginx no longer adds a shared-cache directive, docker-compose binds 127.0.0.1.
@@ -33,6 +34,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Auxiliary usage triggered by a user's run now appears under that user (kind `auxiliary`) instead of `system`.
 - With `tools.terminal.backend: docker`, `execute_code` now also runs in docker (`tools.executeCode.backend: host` restores host execution).
 - `POST /api/schedules` without `when`/`task` returns 400 instead of 500.
+- With `tools.terminal.backend: docker`, python/node polyglot tools (or tools with an `image`) now run in docker without network (`tools.polyglotBackend: host` restores host execution).
 - Polyglot tools in folders inside a jail root (e.g. the bundled tools when Mercury runs from a checkout in its working directory) now count as host execution for non-admins and refuse to run after their files change until Mercury is restarted.
 
 ## [1.4.0] - 2026-11-22

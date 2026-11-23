@@ -9,14 +9,16 @@
  *     "timeoutMs": 15000, "requires": ["python3"] }
  *
  * `build` runs once when the first command element (relative file) is missing.
- * The child runs in the tool folder with a scrubbed environment plus MERCURY_WORKDIR.
+ * The child runs in the tool folder with a scrubbed environment plus MERCURY_WORKDIR — on the host,
+ * or in a locked-down container (`tools.polyglotBackend`, tool.json `image`/`network`/`workdir`).
  */
-import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readdirSync, readFileSync, statSync, watch, type FSWatcher } from 'node:fs';
 import { isAbsolute, join, relative } from 'node:path';
 import { z } from 'zod';
-import { type AnyTool, type ToolRegistry } from '@mercury/core';
-import { runArgv } from '../terminal/backends.js';
+import { createHash, randomBytes } from 'node:crypto';
+import { spawn } from 'node:child_process';
+import { type AnyTool, type MercuryConfig, type ToolRegistry } from '@mercury/core';
+import { runArgv, safeEnv } from '../terminal/backends.js';
 import { truncate } from '../util.js';
 
 export const ManifestSchema = z.object({
@@ -30,6 +32,12 @@ export const ManifestSchema = z.object({
   timeoutMs: z.number().default(30_000),
   requires: z.array(z.string()).default([]),
   untrustedOutput: z.boolean().default(false),
+  /** Container image for the docker backend (default: inferred for python/node commands). */
+  image: z.string().optional(),
+  /** Docker backend: allow network access (default: none). */
+  network: z.boolean().default(false),
+  /** Docker backend: how the caller's workdir is mounted at /work (default read-only). */
+  workdir: z.enum(['none', 'ro', 'rw']).default('ro'),
 });
 export type ToolManifest = z.infer<typeof ManifestSchema>;
 
@@ -106,6 +114,50 @@ export function parseToolOutput(stdout: string): { content: string; isError?: bo
   return { content: text };
 }
 
+export type PolyglotBackend = 'host' | 'docker';
+
+/** Image for a manifest: explicit `image`, else inferred from a python/node command, else undefined. */
+export function polyglotImage(config: MercuryConfig, m: ToolManifest): string | undefined {
+  if (m.image) return m.image;
+  const cmd = (m.command[0] ?? '').split('/').pop() ?? '';
+  if (/^python(3(\.\d+)?)?$/.test(cmd)) return config.tools.executeCode.pythonImage;
+  if (cmd === 'node') return config.tools.executeCode.nodeImage;
+  return undefined;
+}
+
+/**
+ * Where a polyglot tool runs (`tools.polyglotBackend`). 'docker' requires an image (explicit or
+ * inferred) and fails closed without one; 'auto' uses docker when the terminal backend is docker and
+ * an image is known, otherwise the host.
+ */
+export function resolvePolyglotBackend(config: MercuryConfig, m: ToolManifest): PolyglotBackend | { error: string } {
+  const b = config.tools.polyglotBackend ?? 'auto';
+  if (b === 'host') return 'host';
+  const image = polyglotImage(config, m);
+  if (b === 'docker') return image ? 'docker' : { error: `tool ${m.name} has no container image (set "image" in tool.json) and tools.polyglotBackend is docker` };
+  return config.tools.terminal.backend === 'docker' && image ? 'docker' : 'host';
+}
+
+/** docker run argv for a polyglot tool: folder read-only at /tool, workdir per manifest at /work. */
+export function dockerPolyglotArgv(config: MercuryConfig, m: ToolManifest, dir: string, workdir: string, name: string, user: string): string[] {
+  const image = polyglotImage(config, m);
+  if (!image) throw new Error(`no container image for tool ${m.name}`);
+  const mounts = ['-v', `${dir}:/tool:ro`];
+  if (m.workdir !== 'none') mounts.push('-v', `${workdir}:/work${m.workdir === 'ro' ? ':ro' : ''}`);
+  return [
+    'docker', 'run', '--rm', '-i', '--init', '--name', name,
+    ...(m.network ? [] : ['--network', 'none']),
+    '--read-only', '--tmpfs', '/tmp:rw,size=64m', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges',
+    '--pids-limit', '256', '--memory', '512m', '--cpus', '1', '--user', '65534:65534',
+    '-e', 'HOME=/tmp', '-e', 'LANG=C.UTF-8', '-e', 'PYTHONDONTWRITEBYTECODE=1',
+    '-e', `MERCURY_WORKDIR=${m.workdir === 'none' ? '' : '/work'}`, '-e', `MERCURY_USER=${user}`,
+    ...mounts, '-w', '/tool', image, ...m.command,
+  ];
+}
+
+const DOCKER_CLI_ENV = ['DOCKER_HOST', 'DOCKER_CONFIG', 'DOCKER_CONTEXT', 'DOCKER_TLS_VERIFY', 'DOCKER_CERT_PATH'];
+const dockerCliEnv = (): Record<string, string> => Object.fromEntries(DOCKER_CLI_ENV.filter((k) => process.env[k] !== undefined).map((k) => [k, process.env[k]!]));
+
 export function manifestToTool(dir: string, m: ToolManifest, opts: PolyglotLoadOptions = {}): AnyTool {
   const writable = !!opts.isWritable?.(dir);
   // Pinned fingerprint of a model-writable folder (re-pinned after Mercury's own build step).
@@ -130,6 +182,25 @@ export function manifestToTool(dir: string, m: ToolManifest, opts: PolyglotLoadO
         if (!wasBuilt) pinned = fingerprintDir(dir);
       } else {
         await ensureBuilt(dir, m);
+      }
+      const backend = resolvePolyglotBackend(ctx.services.config, m);
+      if (typeof backend === 'object') return { content: backend.error, isError: true };
+      if (backend === 'docker') {
+        const name = `mercury-tool-${randomBytes(6).toString('hex')}`;
+        const env = dockerCliEnv();
+        const r = await runArgv(dockerPolyglotArgv(ctx.services.config, m, dir, ctx.workdir, name, ctx.principal.username), {
+          cwd: dir,
+          spawnCwd: process.cwd(),
+          timeoutMs: m.timeoutMs,
+          signal: ctx.signal,
+          stdin: JSON.stringify(args ?? {}),
+          env,
+          // Killing the docker CLI does not stop the container: remove it explicitly.
+          onKill: () => spawn('docker', ['rm', '-f', name], { stdio: 'ignore', env: safeEnv(env) }).on('error', () => undefined).unref(),
+        });
+        if (r.timedOut) return { content: `Tool timed out after ${m.timeoutMs} ms`, isError: true };
+        if (r.exitCode !== 0) return { content: truncate(`exit ${r.exitCode}\n${r.stderr || r.stdout}`), isError: true };
+        return parseToolOutput(r.stdout);
       }
       const argv = m.command.map((c, i) => (i === 0 && c.startsWith('./') ? join(dir, c) : c));
       const r = await runArgv(argv, {

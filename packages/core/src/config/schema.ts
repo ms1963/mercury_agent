@@ -408,6 +408,10 @@ export const ConfigSchema = z.object({
         })
         .prefault({}),
       polyglotDirs: z.array(z.string()).default([]),
+      /** Where polyglot tools run: 'host', 'docker' (no network, read-only tool folder, workdir
+       *  read-only unless tool.json says otherwise; needs an image) or 'auto' (docker when
+       *  tools.terminal.backend is docker and an image is known, else host). */
+      polyglotBackend: z.enum(['auto', 'host', 'docker']).default('auto'),
     })
     .prefault({}),
 

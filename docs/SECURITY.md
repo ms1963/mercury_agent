@@ -136,7 +136,12 @@ backward-compatible — new keys default to safe values).
   mount, user `nobody`, pid/memory/CPU limits; images `pythonImage`/`nodeImage`) or `auto` (default:
   docker when the terminal backend is docker). Tool calls from the script still go through the
   executor. Non-admin calls keep needing admin approval in both modes. Polyglot tools are
-  admin-installed programs and run on the host. A polyglot tool whose folder lies inside a
+  admin-installed programs. `tools.polyglotBackend` decides where they run: `host`, `docker`
+  (tool folder read-only at `/tool`, caller workdir at `/work` read-only unless tool.json sets
+  `"workdir": "rw"`/`"none"`, no network unless `"network": true`, same container limits as
+  `execute_code`; image from tool.json `"image"` or inferred for python/node commands, refused
+  without one) or `auto` (default: docker when the terminal backend is docker and an image is
+  known, otherwise host; `build` steps still run on the host). A polyglot tool whose folder lies inside a
   path-jail root (so the file tools could rewrite its code) is treated as host execution
   (`tools.hostAccess.nonAdmin` applies) and is pinned: its folder is fingerprinted at load and a
   call is refused once any file in it changed (restart Mercury to reload a reviewed change). Keep
