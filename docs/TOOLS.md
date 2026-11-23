@@ -3,7 +3,7 @@
 <!-- GENERATED FILE — do not edit by hand.
      Regenerate with: node scripts/gen-tools-doc.mjs -->
 
-Mercury ships **79 built-in tools**, registered automatically at startup
+Mercury ships **83 built-in tools**, registered automatically at startup
 (`registerBuiltinTools()` in `packages/tools/src/index.ts`). These are compiled
 TypeScript, not files on disk — the `tools/` directory at the repository root holds
 only *example* external tools (Go / JS / Python) that show how to add your own.
@@ -19,7 +19,7 @@ for approvals, the path jail and the SSRF guard that govern tool use.
 | Agents & workflows | 3 |
 | Browser automation | 6 |
 | Code & sandbox | 1 |
-| Data | 6 |
+| Data | 8 |
 | Decisions & reasoning | 3 |
 | Files | 10 |
 | Git | 4 |
@@ -28,14 +28,14 @@ for approvals, the path jail and the SSRF guard that govern tool use.
 | Messaging | 2 |
 | Processes | 4 |
 | Scheduler | 3 |
-| Skills | 4 |
+| Skills | 5 |
 | System | 1 |
 | Terminal & processes | 1 |
 | Utility | 11 |
 | Vector search | 2 |
-| Web | 5 |
+| Web | 6 |
 | Wiki | 3 |
-| **Total** | **79** |
+| **Total** | **83** |
 
 ## Agents & workflows
 
@@ -68,8 +68,10 @@ for approvals, the path jail and the SSRF guard that govern tool use.
 | --- | --- |
 | `archive` | Create, extract or list .tar.gz / .zip archives (uses tar/unzip/zip on the host). |
 | `csv_parse` | Parse CSV (inline or file) into JSON objects using the header row. Also reports column names and row count. |
-| `document_text` | Extract text from a document (PDF via pdftotext, DOCX, HTML, plain text). |
+| `document_generate` | Generate a document file from Markdown or HTML source and attach it to the reply. Output formats: pdf, docx (Word), html, pptx (PowerPoint — splits on headings / "---" slide breaks), md. PDF/DOCX/PPTX use host pandoc (+ libreoffice for PDF). |
+| `document_text` | Extract text from a document (PDF via pdftotext, Word .docx, Excel .xlsx, PowerPoint .pptx, HTML, plain text). |
 | `json_query` | Extract a value from JSON (inline or a file) with a path like "items[0].name". |
+| `spreadsheet_generate` | Generate an Excel .xlsx spreadsheet from structured data and attach it to the reply. Provide either rows (a JSON array of objects or of arrays) or csv (CSV text). Optional header (column names) and sheet_name. |
 | `sqlite_query` | Run SQL against a SQLite database file in the workspace. Read-only unless write=true. |
 | `yaml_convert` | Convert YAML to JSON or JSON to YAML. |
 
@@ -153,6 +155,7 @@ for approvals, the path jail and the SSRF guard that govern tool use.
 
 | Tool | Description |
 | --- | --- |
+| `skill_compose` | Run a composed skill: an ordered pipeline of tool calls and nested sub-skills. Each step is {tool, args} to call a tool, or {skill, steps, inputs} to run a nested sub-skill. Intermediate results are cached; recursion is depth- and cycle-guarded. Every tool step still goes through normal policy/approval. |
 | `skill_install` | Install skills from a local folder or a git URL (admin only). |
 | `skill_manage` | Create a new skill or improve an existing one (procedural memory). Write the body as a reusable procedure: When to use, Steps, Pitfalls, Verification. Create skills after solving non-trivial tasks. |
 | `skill_view` | Load the full instructions of a skill (or one of its supporting files). Do this before following a skill. |
@@ -201,6 +204,7 @@ for approvals, the path jail and the SSRF guard that govern tool use.
 | `rss_read` | Read an RSS or Atom feed and list the latest items. |
 | `weather` | Current weather and 3-day forecast for a place (Open-Meteo, no API key). |
 | `web_fetch` | Fetch a web page and return readable text (format=text), raw HTML (html) or the list of links (links). |
+| `web_read` | Open a web page (gated, requires approval) and return its readable main content — title and article text, boilerplate removed. Set render=true to run a headless browser (executes JavaScript) for JS-heavy pages, otherwise plain HTTP is used. Optionally includes the page links. |
 | `web_search` | Search the web. Returns titles, URLs and snippets. |
 
 ## Wiki

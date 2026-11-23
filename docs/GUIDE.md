@@ -76,7 +76,7 @@ ESM, an npm-workspaces monorepo). In one process it provides:
 - a **web UI** (a no-build single-page app) and a **REST + SSE HTTP API**,
 - **chat-platform gateways** (19 adapters: Telegram, Discord, Slack, WhatsApp, Facebook, X, LinkedIn, Signal, Matrix,
   Mattermost, Teams, IRC, Email, SMS, Home Assistant, RSS, webhook, webchat, CLI),
-- **multi-agent workflows**, **persistent memory**, **skills**, **79 built-in tools** plus
+- **multi-agent workflows**, **persistent memory**, **skills**, **83 built-in tools** plus
   polyglot (any-language) tools,
 - an **MCP** client *and* server,
 - a **scheduler**, **voice** (STT/TTS), and a full **security** stack (RBAC, API tokens, budgets,

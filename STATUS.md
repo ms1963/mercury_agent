@@ -1,12 +1,33 @@
-# Mercury — Build Status (honest snapshot, 2026-11-23, through v1.5.0)
+# Mercury — Build Status (honest snapshot, 2026-11-23, through v1.6.0)
 
-**Overall:** all 7 packages compile. From a clean build, `npm install && npm run build && npm test`
-passes (32 files, **381/381 tests**, offline). The v1.4.0 subsystems — multi-agent teams/orchestration
+**Overall:** all 8 packages compile. From a clean build, `npm install && npm run build && npm test`
+passes (38 files, **513 passed / 2 skipped**, offline). The v1.4.0 subsystems — multi-agent teams/orchestration
 and the governed long-term memory & knowledge/RAG layer — are covered by the offline suite
 (`tests/teams.test.ts`, `tests/memory.test.ts`). `npx eslint .` exits 0. The CLI, HTTP server and web UI
 run end-to-end with the offline mock LLM and mock decision provider. **The core agent loop has now
-also been exercised against real LLMs** — see §0. The Jev API, chat platforms and STT/TTS services
-remain offline/mock-only.
+also been exercised against real LLMs** — see §0. The Jev API and chat platforms remain offline/mock-only.
+(Note: one test, `security-gaps-residual.test.ts` SC-24, fails **only on the live deployment host**
+because that host carries an untracked `deploy/<host>.conf` nginx vhost; the repository ships no such
+file, so CI is green.)
+
+## 0a. Document/spreadsheet generation + voice, verified end-to-end (2026-11-23, v1.6.0)
+
+The v1.6.0 generation and media tools were driven **through their real handlers** (offline, no public
+server) and produced valid files, each returned as an attachment exactly as the live agent would:
+
+- **`document_generate`** → real `e2e.docx` (valid OOXML, `word/document.xml`), `e2e.pptx`
+  (`ppt/presentation.xml`), `e2e.pdf` (`%PDF`, via libreoffice), `e2e.html`, `e2e.md` — all from the
+  host `pandoc`/`libreoffice`.
+- **`spreadsheet_generate`** → real `e2e.xlsx` (valid OOXML, `xl/workbook.xml`) from JSON rows, via the
+  host `zip`.
+- **`text_to_speech`** → real `speech.wav` (RIFF/WAVE, 16-bit PCM) through a real `VoiceService` on the
+  offline **piper** provider — proving text-in → audio-file-out as an attachment.
+- **OOXML extraction round-trip** — the generated docx/pptx/xlsx fed back through `extractText` are
+  classified as `document`, MIME-sniffed, and text-extracted correctly (xlsx numeric cells correctly
+  stay out of the text layer by design).
+- **`image_generate`** — implemented and registered, but hardwired to the OpenAI image API
+  (needs `OPENAI_API_KEY`); **no offline provider**, so it was **not** exercised live. Verified by code
+  and registration only.
 
 ## 0. Live test against real LLMs (2026-11-23)
 

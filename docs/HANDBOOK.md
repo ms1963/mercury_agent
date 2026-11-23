@@ -38,7 +38,7 @@ Everything in this handbook hangs off one story. Mercury is not a chatbot you ty
 1. **Give it a home** *(Install)* — one Node process and one SQLite file on your machine.
 2. **Give it a brain** *(LLM providers)* — Mercury ships with no model; you point it at one.
 3. **Give it a voice** *(Chats, Sessions, Runs)* — you talk; it answers; every exchange is recorded.
-4. **Give it hands** *(Tools)* — 79 built-in tools let it read files, run code, search the web, act.
+4. **Give it hands** *(Tools)* — 83 built-in tools let it read files, run code, search the web, act.
 5. **Give it a memory and teach it** *(Memory, Skills, Reflection, Lessons)* — it remembers you, distils reusable skills, and learns a lesson from every run.
 6. **Let it work on its own** *(Scheduler, Workflows)* — scheduled agents and multi-agent teams.
 7. **Connect it to the world** *(Integrations & MCP)* — chat platforms, email, and the Model Context Protocol as both client and server.
@@ -88,7 +88,7 @@ What you get, at a glance:
 | **19 chat gateways** | Telegram, Discord, Slack, WhatsApp, Facebook, X, LinkedIn, Signal, Matrix, Teams, Email, SMS, ... |
 | **Multi-agent workflows** | Nine templates — pipeline, debate, map-reduce, coordinator-worker, … |
 | **Persistent memory** | Six kinds, from working scratch to curated long-term facts |
-| **79 built-in tools** | Files, shell, web, code, git, data, media, scheduling, memory, … |
+| **83 built-in tools** | Files, shell, web, code, git, data, media, scheduling, memory, … |
 | **MCP client *and* server** | Consume external tool servers; expose Mercury's own tools to others |
 | A typed **decision engine (Jev)** | Optional; routes models, judges risk, triages, drives reflection |
 
@@ -607,7 +607,7 @@ Runs are **first-class and fully recorded**. You don't need to think about them 
 
 # Part 4 — The hands: tools (the fourth movement: doing, not just talking)
 
-A chatbot talks. An **agent** acts. Tools are the hands that turn Mercury from a text generator into something that reads your files, runs commands, searches the web, generates images and edits code. Mercury ships **79 built-in tools** organised into **19 toolsets**.
+A chatbot talks. An **agent** acts. Tools are the hands that turn Mercury from a text generator into something that reads your files, runs commands, searches the web, generates images and edits code. Mercury ships **83 built-in tools** organised into **19 toolsets**.
 
 ## 4.1 The safety idea you need first: risk levels & "untrusted"
 

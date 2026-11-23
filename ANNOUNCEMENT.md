@@ -16,7 +16,7 @@ Repo: https://github.com/ms1963/mercury_agent — MIT — © 2026 Michael Stal
 
 **About (short description, paste into the sidebar "About" ⚙️):**
 
-> Self-hosted, extensible agentic AI platform in TypeScript — 16 chat gateways, 76 built-in tools, MCP client *and* server, multi-agent workflows, persistent memory, and an optional decision engine. Bring your own LLM.
+> Self-hosted, extensible agentic AI platform in TypeScript — 16 chat gateways, 83 built-in tools, MCP client *and* server, multi-agent workflows, persistent memory, and an optional decision engine. Bring your own LLM.
 
 **Topics (add these in the About settings):**
 
@@ -41,7 +41,7 @@ Show HN: Mercury – a self-hosted agentic AI platform in TypeScript
 > Anthropic) and Mercury gives you the agent runtime around it: a CLI and a
 > no-build web UI, 16 chat gateways (Telegram, Discord, Slack, WhatsApp, Signal,
 > Matrix, Mattermost, Teams, IRC, Email, SMS, Home Assistant, RSS, webhook,
-> webchat, CLI), 76 built-in tools plus polyglot custom tools, multi-agent YAML
+> webchat, CLI), 83 built-in tools plus polyglot custom tools, multi-agent YAML
 > workflows, persistent memory (working/episodic/semantic/procedural), a scheduler
 > that takes natural language or cron, and voice (STT/TTS).
 >
@@ -70,7 +70,7 @@ Show HN: Mercury – a self-hosted agentic AI platform in TypeScript
 **Title:**
 
 ```
-I built Mercury: a self-hosted agentic platform (TypeScript) that runs on Ollama/LM Studio/OpenRouter — MCP client + server, 16 chat gateways, 76 tools
+I built Mercury: a self-hosted agentic platform (TypeScript) that runs on Ollama/LM Studio/OpenRouter — MCP client + server, 16 chat gateways, 83 tools
 ```
 
 **Body:**
@@ -83,7 +83,7 @@ I built Mercury: a self-hosted agentic platform (TypeScript) that runs on Ollama
 > What's in it:
 > - **16 chat gateways** — Telegram, Discord, Slack, WhatsApp, Signal, Matrix,
 >   Mattermost, Teams, IRC, Email, SMS, Home Assistant, RSS, webhook, webchat, CLI
-> - **76 built-in tools** + the ability to add polyglot custom tools
+> - **83 built-in tools** + the ability to add polyglot custom tools
 > - **MCP client *and* server** — consume external MCP tools, and expose Mercury's
 >   own tools/agents to other MCP clients
 > - **Multi-agent workflows** defined in YAML
@@ -133,7 +133,7 @@ keep the honesty paragraph in all of them.
 > webchat, CLI.
 
 **4/**
-> 76 built-in tools + polyglot custom tools, multi-agent YAML workflows, persistent
+> 83 built-in tools + polyglot custom tools, multi-agent YAML workflows, persistent
 > memory (working/episodic/semantic/procedural), an NL+cron scheduler, and voice
 > (STT/TTS).
 
@@ -162,7 +162,7 @@ keep the honesty paragraph in all of them.
 > Highlights:
 > • MCP client *and* server — interoperate both directions
 > • 16 chat gateways (Telegram, Slack, Discord, WhatsApp, Teams, Matrix, and more)
-> • 76 built-in tools + polyglot custom tools
+> • 83 built-in tools + polyglot custom tools
 > • Multi-agent YAML workflows, persistent memory, NL/cron scheduler, voice
 > • Self-hosting security: scrypt+JWT, RBAC, guardrails, path jail, SSRF guard,
 >   audit log
@@ -183,7 +183,7 @@ keep the honesty paragraph in all of them.
 **awesome-ai-agents / awesome-llm (agents section):**
 
 ```
-- [Mercury](https://github.com/ms1963/mercury_agent) - Self-hosted, extensible agentic AI platform in TypeScript. MCP client and server, 16 chat gateways, 76 built-in tools, multi-agent workflows, persistent memory, and an optional decision engine. Bring your own LLM (Ollama, LM Studio, OpenRouter, OpenAI-compatible, Anthropic). MIT.
+- [Mercury](https://github.com/ms1963/mercury_agent) - Self-hosted, extensible agentic AI platform in TypeScript. MCP client and server, 16 chat gateways, 83 built-in tools, multi-agent workflows, persistent memory, and an optional decision engine. Bring your own LLM (Ollama, LM Studio, OpenRouter, OpenAI-compatible, Anthropic). MIT.
 ```
 
 **awesome-mcp-servers:**
@@ -195,7 +195,7 @@ keep the honesty paragraph in all of them.
 **awesome-selfhosted (AI / Automation section):**
 
 ```
-- [Mercury](https://github.com/ms1963/mercury_agent) - Self-hosted agentic AI platform in TypeScript with 16 chat gateways, 76 tools, multi-agent workflows, persistent memory, scheduler, voice, and self-hosting security (RBAC, guardrails, SSRF guard, audit log). Bring your own LLM. `MIT` `Nodejs`
+- [Mercury](https://github.com/ms1963/mercury_agent) - Self-hosted agentic AI platform in TypeScript with 16 chat gateways, 83 tools, multi-agent workflows, persistent memory, scheduler, voice, and self-hosting security (RBAC, guardrails, SSRF guard, audit log). Bring your own LLM. `MIT` `Nodejs`
 ```
 
 > awesome-selfhosted requires a license tag and a language tag, and entries in
