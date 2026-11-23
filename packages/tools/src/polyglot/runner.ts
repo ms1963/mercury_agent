@@ -11,8 +11,9 @@
  * `build` runs once when the first command element (relative file) is missing.
  * The child runs in the tool folder with a scrubbed environment plus MERCURY_WORKDIR.
  */
-import { existsSync, readdirSync, readFileSync, statSync, watch, type FSWatcher } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
+import { createHash } from 'node:crypto';
+import { existsSync, lstatSync, readdirSync, readFileSync, statSync, watch, type FSWatcher } from 'node:fs';
+import { isAbsolute, join, relative } from 'node:path';
 import { z } from 'zod';
 import { type AnyTool, type ToolRegistry } from '@mercury/core';
 import { runArgv } from '../terminal/backends.js';
@@ -33,6 +34,52 @@ export const ManifestSchema = z.object({
 export type ToolManifest = z.infer<typeof ManifestSchema>;
 
 const builtDirs = new Set<string>();
+
+/**
+ * Options deciding how much a tool folder is trusted. A folder the model can write through the
+ * file tools (it lies inside a path-jail root) would let it swap the tool's code and then run it on
+ * the host, bypassing the host-execution gate. Such tools are therefore marked `hostAccess` (non-admin
+ * calls need an admin's approval) and pinned: the folder's content is fingerprinted at load time and
+ * a call is refused if any file changed since then.
+ */
+export interface PolyglotLoadOptions {
+  /** True when `dir` is writable by the model (e.g. `(d) => jail.contains(d)`). */
+  isWritable?: (dir: string) => boolean;
+}
+
+const MAX_FINGERPRINT_FILES = 2000;
+const MAX_FINGERPRINT_BYTES = 64 * 1024 * 1024;
+
+/** sha256 over (relative path, content) of every file in `dir` (symlinks by target path). */
+export function fingerprintDir(dir: string): string {
+  const h = createHash('sha256');
+  let files = 0;
+  let bytes = 0;
+  const walk = (d: string): void => {
+    for (const name of readdirSync(d).sort()) {
+      const full = join(d, name);
+      const st = lstatSync(full);
+      const rel = relative(dir, full);
+      if (st.isSymbolicLink()) {
+        h.update(`L\0${rel}\0`);
+        try {
+          h.update(statSync(full).isFile() ? readFileSync(full) : 'dir');
+        } catch {
+          h.update('dangling');
+        }
+      } else if (st.isDirectory()) {
+        h.update(`D\0${rel}\0`);
+        walk(full);
+      } else if (st.isFile()) {
+        if (++files > MAX_FINGERPRINT_FILES || (bytes += st.size) > MAX_FINGERPRINT_BYTES) throw new Error(`tool folder too large to pin: ${dir}`);
+        h.update(`F\0${rel}\0${st.mode & 0o111 ? 'x' : '-'}\0`);
+        h.update(readFileSync(full));
+      }
+    }
+  };
+  walk(dir);
+  return h.digest('hex');
+}
 
 async function ensureBuilt(dir: string, m: ToolManifest): Promise<void> {
   if (!m.build || builtDirs.has(dir)) return;
@@ -59,7 +106,10 @@ export function parseToolOutput(stdout: string): { content: string; isError?: bo
   return { content: text };
 }
 
-export function manifestToTool(dir: string, m: ToolManifest): AnyTool {
+export function manifestToTool(dir: string, m: ToolManifest, opts: PolyglotLoadOptions = {}): AnyTool {
+  const writable = !!opts.isWritable?.(dir);
+  // Pinned fingerprint of a model-writable folder (re-pinned after Mercury's own build step).
+  let pinned = writable ? fingerprintDir(dir) : undefined;
   return {
     name: m.name,
     description: m.description,
@@ -70,15 +120,25 @@ export function manifestToTool(dir: string, m: ToolManifest): AnyTool {
     sensitive: m.risk !== 'safe',
     timeoutMs: m.timeoutMs + 5000,
     source: `polyglot:${dir}`,
+    ...(writable ? { hostAccess: true } : {}),
     async execute(args, ctx) {
-      await ensureBuilt(dir, m);
+      if (pinned !== undefined) {
+        if (fingerprintDir(dir) !== pinned)
+          return { content: `Refused: the files of tool ${m.name} changed since it was loaded (its folder is writable by the file tools). Restart Mercury to reload it after reviewing the change.`, isError: true };
+        const wasBuilt = builtDirs.has(dir);
+        await ensureBuilt(dir, m);
+        if (!wasBuilt) pinned = fingerprintDir(dir);
+      } else {
+        await ensureBuilt(dir, m);
+      }
       const argv = m.command.map((c, i) => (i === 0 && c.startsWith('./') ? join(dir, c) : c));
       const r = await runArgv(argv, {
         cwd: dir,
         timeoutMs: m.timeoutMs,
         signal: ctx.signal,
         stdin: JSON.stringify(args ?? {}),
-        env: { MERCURY_WORKDIR: ctx.workdir, MERCURY_USER: ctx.principal.username },
+        // No bytecode caches inside the tool folder (they would also break the pinned fingerprint).
+        env: { MERCURY_WORKDIR: ctx.workdir, MERCURY_USER: ctx.principal.username, PYTHONDONTWRITEBYTECODE: '1' },
       });
       if (r.timedOut) return { content: `Tool timed out after ${m.timeoutMs} ms`, isError: true };
       if (r.exitCode !== 0) return { content: truncate(`exit ${r.exitCode}\n${r.stderr || r.stdout}`), isError: true };
@@ -88,7 +148,7 @@ export function manifestToTool(dir: string, m: ToolManifest): AnyTool {
 }
 
 /** Load every `<dir>/<tool>/tool.json`. Invalid manifests are reported, not thrown. */
-export function loadPolyglotTools(dirs: string[]): { tools: AnyTool[]; errors: string[] } {
+export function loadPolyglotTools(dirs: string[], opts: PolyglotLoadOptions = {}): { tools: AnyTool[]; errors: string[] } {
   const tools: AnyTool[] = [];
   const errors: string[] = [];
   for (const base of dirs) {
@@ -99,7 +159,7 @@ export function loadPolyglotTools(dirs: string[]): { tools: AnyTool[]; errors: s
       if (!statSync(dir).isDirectory() || !existsSync(file)) continue;
       try {
         const m = ManifestSchema.parse(JSON.parse(readFileSync(file, 'utf8')));
-        tools.push(manifestToTool(dir, m));
+        tools.push(manifestToTool(dir, m, opts));
       } catch (err) {
         errors.push(`${file}: ${String(err)}`);
       }
@@ -109,11 +169,11 @@ export function loadPolyglotTools(dirs: string[]): { tools: AnyTool[]; errors: s
 }
 
 /** Register polyglot tools and hot-reload them when files change. Returns a stop function. */
-export function registerPolyglotTools(registry: ToolRegistry, dirs: string[], opts: { watch?: boolean; onError?: (e: string) => void } = {}): () => void {
+export function registerPolyglotTools(registry: ToolRegistry, dirs: string[], opts: { watch?: boolean; onError?: (e: string) => void } & PolyglotLoadOptions = {}): () => void {
   const reload = () => {
     for (const t of registry.list()) if (t.source?.startsWith('polyglot:')) registry.unregister(t.name);
     builtDirs.clear();
-    const { tools, errors } = loadPolyglotTools(dirs);
+    const { tools, errors } = loadPolyglotTools(dirs, opts);
     tools.forEach((t) => registry.register(t));
     errors.forEach((e) => opts.onError?.(e));
   };

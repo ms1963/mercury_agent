@@ -653,7 +653,11 @@ export class Mercury {
   async start(opts: { services?: boolean } = {}): Promise<void> {
     const { config } = this;
     const polyDirs = [join(this.assets, 'tools'), join(config.dataDir, 'tools'), ...config.tools.polyglotDirs, ...this.addins.toolDirs];
-    this.cleanups.push(registerPolyglotTools(this.tools, polyDirs, { onError: (e) => this.logger.warn('polyglot tool', { error: e }) }));
+    this.cleanups.push(registerPolyglotTools(this.tools, polyDirs, {
+        onError: (e) => this.logger.warn('polyglot tool', { error: e }),
+        // Folders the file tools can write are host-gated and tamper-pinned (see PolyglotLoadOptions).
+        isWritable: (d) => this.jail.contains(d),
+      }));
     await this.loadPlugins();
     if (opts.services === false) return;
     // Learning: subscribe to run.end so outcomes are recorded automatically (off by default).

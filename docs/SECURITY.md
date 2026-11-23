@@ -136,7 +136,11 @@ backward-compatible — new keys default to safe values).
   mount, user `nobody`, pid/memory/CPU limits; images `pythonImage`/`nodeImage`) or `auto` (default:
   docker when the terminal backend is docker). Tool calls from the script still go through the
   executor. Non-admin calls keep needing admin approval in both modes. Polyglot tools are
-  admin-installed programs and run on the host.
+  admin-installed programs and run on the host. A polyglot tool whose folder lies inside a
+  path-jail root (so the file tools could rewrite its code) is treated as host execution
+  (`tools.hostAccess.nonAdmin` applies) and is pinned: its folder is fingerprinted at load and a
+  call is refused once any file in it changed (restart Mercury to reload a reviewed change). Keep
+  `tools.polyglotDirs` outside the jail roots for tools that should behave like ordinary tools.
 - **Budgets**: per-user/model token and cost limits (`budgets.rules`) stop runaway loops. Auxiliary
   calls made as the system principal (wiki, team synthesis, critic, classifiers, MCP sampling)
   *inside a user's agent run or team run* are checked against and charged to that user's budget
