@@ -332,7 +332,11 @@ export class Mercury {
     // Reliability: chaos fault injector (off by default) is passed into the real tool path.
     this.chaos = new ChaosController(config, this.bus);
     this.executor = new ToolExecutor(config, this.tools, this.policy, this.bus, this.judgment, this.hooks, this.audit, this.codePolicies, this.grants, this.taint, this.chaos);
-    this.approvals = new ApprovalService(this.bus);
+    this.approvals = new ApprovalService(this.bus, {
+      timeoutMs: config.tools.approvals.timeoutMs,
+      noHandlerTimeoutMs: config.tools.approvals.noHandlerTimeoutMs,
+      apiAnswerablePlatforms: config.tools.approvals.apiAnswerablePlatforms,
+    });
     this.memory = new MemoryManager(config, this.db, new HashEmbedding(config.memory.embeddings.dims), this.bus, this.hooks, this.policy, this.audit);
     this.memory.summarizer = async (userId, query, text) =>
       (await this.llm.complete(this.users.principalFor(this.users.get(userId)), [

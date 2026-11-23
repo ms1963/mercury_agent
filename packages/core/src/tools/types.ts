@@ -49,6 +49,13 @@ export interface ToolContext {
   emit(type: string, data: Record<string, unknown>): void;
   /** Ask a human (or the configured policy) for approval. */
   requestApproval(req: ApprovalRequest): Promise<boolean>;
+  /**
+   * Whether an approval on this run's platform can realistically be answered (an interactive handler
+   * is registered, or the platform is declared API-answerable). When false, the executor avoids the
+   * dead human-wait and applies the configured `unattended` fast-path instead. Optional so older
+   * contexts (and tests) default to the answerable/human path.
+   */
+  approvalAnswerable?(): boolean;
 }
 
 export interface Tool<A = Record<string, unknown>> {

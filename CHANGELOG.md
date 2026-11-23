@@ -7,6 +7,62 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-11-23
+
+### Performance & throughput
+
+The dominant chat latency over the HTTP API was **not** the LLM. Event-trace measurements of real chat
+turns showed a 327s turn spending only 27s in LLM calls, and a 675s turn only 75s — the rest was gated
+tool calls waiting on an approval that **no one could answer**. On the `web` platform (chat over the HTTP
+API) there is no interactive approval handler, so every gated call fell into a `setTimeout` and waited the
+**hard-coded 5-minute** timeout before auto-denying. That single dead wait, repeated per gated call, was the
+bottleneck.
+
+- **Approval fast-path (core fix).** The executor now knows whether an approval can realistically be
+  answered on the run's platform (`ToolContext.approvalAnswerable`, backed by
+  `ApprovalService.isAnswerable()` — an interactive handler is registered, or the platform is listed in
+  `tools.approvals.apiAnswerablePlatforms`). When a gated call is **unanswerable** it no longer dead-waits;
+  it applies the configured `tools.approvals.unattended` behaviour immediately:
+  - `gate` (default) — the fast judgment gate decides SAFE non-dangerous / non-host / non-untrusted calls;
+    host-access, dangerous and untrusted-content-derived calls are **DENIED** (never auto-allowed).
+  - `deny` — deny every unanswerable approval-required call immediately (strictest).
+  - `wait` — legacy behaviour: wait for an API resolver, then deny (now on a short, configurable timeout).
+  Out of the box, chat over the API is fast and never stalls, while a genuine human-in-the-loop path is
+  preserved whenever an interactive handler is present or the platform is declared API-answerable.
+- **Default approval timeout slashed** from 5 minutes to **60s**, and made configurable via
+  `tools.approvals.timeoutMs` (answerable path) and `tools.approvals.noHandlerTimeoutMs` (no-handler wait).
+  Backward compatible: `new ApprovalService(bus, ms)` still accepts the old numeric timeout argument.
+- **Smart-gate memoization + single-flight.** Identical gated calls within a run (same tool, risk, taint
+  and arguments) now reuse one judgment decision instead of issuing a redundant LLM classification per
+  call; concurrent identical calls are coalesced into a single in-flight judgment. Memo is per-run and
+  bounded (oldest-evicted).
+
+### Added
+
+- **Admin-predetermined approval rules (`tools.approvals.rules`).** Because config is admin-controlled,
+  an admin can now decide **in advance** which gated tools non-admins may run, instead of every call
+  waiting for an interactive approval. Rules match by `tool` (glob), `toolset` and/or `risk`, are scoped by
+  caller role via `appliesTo` (default `non-admin`), and are evaluated first-match-wins with a decision of
+  `allow` (pre-authorize), `deny` (block), `gate` (let the fast gate decide) or `ask` (force human
+  approval). The prompt-injection safety net is preserved: an `allow`/`gate` rule never blanket-authorizes
+  an untrusted-content-derived sensitive call — it still defers to the gate.
+
+### Tests
+
+- New `tests/approvals-gating.test.ts` (normal behaviour) and `tests/approvals-perf.test.ts` (performance),
+  all deterministic with a stubbed gate (no network/LLM): manual mode with a handler still honours the human
+  decision; unanswerable requests resolve fast and never auto-allow risky/host/untrusted calls; auto/smart
+  modes unchanged; the `unattended`, `timeoutMs`, `noHandlerTimeoutMs` and `apiAnswerablePlatforms` knobs are
+  honoured; admin rules behave per spec; an unanswerable call resolves in milliseconds (not minutes); and the
+  gate is memoized/coalesced (one judgment for identical calls).
+
+### Notes
+
+- The ~86 tool schemas / 20k–40k input tokens shipped per LLM request remain the next-largest lever on
+  per-turn latency and cost. Trimming them safely (per-platform tool definitions, leaner JSON-schema) is
+  tracked as follow-up work rather than changed hastily here, to avoid altering which tools are functionally
+  available.
+
 ## [1.6.0] - 2026-11-23
 
 ### Added

@@ -192,6 +192,7 @@ export class Agent {
       services: d.services,
       emit: (type, data) => d.bus.emit({ type, runId, sessionId, userId: opts.principal.userId, data }),
       requestApproval: (req) => d.approvals.request(req, { runId, userId: opts.principal.userId, platform }),
+      approvalAnswerable: () => d.approvals.isAnswerable(platform),
     };
     const run = new RunState(runId, sessionId, opts.principal, platform, depth, controller, toolCtx, security, model, opts.toolsets, opts.onDelta);
 

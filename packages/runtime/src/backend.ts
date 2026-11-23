@@ -14,6 +14,7 @@ export function directToolContext(m: Mercury, principal: Principal, platform: st
     services: m.services,
     emit: (type, data) => m.bus.emit({ type, userId: principal.userId, data }),
     requestApproval: (req) => m.approvals.request(req, { userId: principal.userId, platform }),
+    approvalAnswerable: () => m.approvals.isAnswerable(platform),
   };
 }
 

@@ -365,7 +365,59 @@ export const ConfigSchema = z.object({
       disabled: z.array(z.string()).default([]),
       toolsets: z.record(z.string(), z.boolean()).default({}),
       platforms: z.record(z.string(), z.object({ disabledToolsets: z.array(z.string()).default([]) })).default({}),
-      approvals: z.object({ mode: z.enum(['manual', 'auto', 'smart', 'deny']).default('manual') }).prefault({}),
+      approvals: z
+        .object({
+          mode: z.enum(['manual', 'auto', 'smart', 'deny']).default('manual'),
+          /** How long a human has to answer an approval that CAN be answered (handler or API-answerable
+           *  platform). Lowered from the historical 5 minutes so an unanswered request fails fast. */
+          timeoutMs: z.number().int().positive().default(60_000),
+          /** Timeout for a request that falls through to a wait with NO interactive handler registered
+           *  (only reached when unattended='wait'). Kept distinct so operators can tune it separately. */
+          noHandlerTimeoutMs: z.number().int().positive().default(60_000),
+          /** What to do when a gated call needs approval but NO approver can realistically answer
+           *  (no interactive handler for the platform and the platform is not API-answerable):
+           *    'gate'  (default) = let the fast judgment gate decide SAFE non-dangerous/non-host/non-untrusted
+           *                        calls; dangerous/host/untrusted calls are DENIED (never auto-allowed).
+           *    'deny'            = deny every unanswerable approval-required call immediately (most strict).
+           *    'wait'            = legacy behaviour: wait noHandlerTimeoutMs for an API resolver, then deny. */
+          unattended: z.enum(['gate', 'deny', 'wait']).default('gate'),
+          /** Platforms whose pending approvals a human/admin realistically resolves through the HTTP
+           *  approvals API/UI (e.g. ['web']). Requests on these platforms are treated as answerable and
+           *  routed to the human wait path even without an in-process interactive handler. */
+          apiAnswerablePlatforms: z.array(z.string()).default([]),
+          /**
+           * Admin-predetermined approval rules for tool calls. Because config is admin-controlled, this
+           * lets an admin decide IN ADVANCE which gated tools non-admins may run, instead of every call
+           * waiting for an interactive approval. Rules are evaluated top-to-bottom; the first match wins
+           * and overrides the `mode`/`unattended` behaviour for that call. A call that matches no rule
+           * follows the normal mode logic.
+           *
+           * Matching: a rule matches when every field it specifies matches the call — `tool` (glob on the
+           * tool name, e.g. "fs_*"), `toolset`, and `risk`. `appliesTo` scopes the rule by caller role
+           * (default 'non-admin', so admins are unaffected unless 'all'/'admin' is chosen).
+           *
+           * decision:
+           *   'allow' = pre-authorize (admin's explicit standing consent). Host/dangerous are allowed by
+           *             this deliberate choice, BUT an untrusted-content-derived (tainted) sensitive call
+           *             is still NOT blanket-allowed — it falls through to the gate so the prompt-injection
+           *             safety net is preserved.
+           *   'deny'  = block the call outright.
+           *   'gate'  = let the fast judgment gate decide (fail-closed if unavailable).
+           *   'ask'   = force a human approval even under auto/smart mode.
+           */
+          rules: z
+            .array(
+              z.object({
+                tool: z.string().optional(),
+                toolset: z.string().optional(),
+                risk: z.enum(['safe', 'moderate', 'dangerous']).optional(),
+                appliesTo: z.enum(['all', 'non-admin', 'admin']).default('non-admin'),
+                decision: z.enum(['allow', 'deny', 'gate', 'ask']),
+              }),
+            )
+            .default([]),
+        })
+        .prefault({}),
       /** Host-level execution tools (terminal, process_start, execute_code) used by NON-admin users:
        *  'approve' (default) = every call needs an admin's approval, 'deny' = blocked,
        *  'allow' = treated like any other tool (pre-1.5 behaviour). Admins are unaffected. */

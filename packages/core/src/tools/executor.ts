@@ -7,7 +7,7 @@
  *   → spotlighting of untrusted output → after_tool_call hooks → audit + events
  */
 import type { MercuryConfig } from '../config/schema.js';
-import type { PolicyEngine } from '../auth/policy.js';
+import { globMatch, type PolicyEngine } from '../auth/policy.js';
 import type { EventBus } from '../events/bus.js';
 import type { Judgment } from '../decision/judgment.js';
 import type { HookManager } from '../plugins/hooks.js';
@@ -68,6 +68,10 @@ export class ToolExecutor {
    */
   private readonly runaway = new Map<string, number>();
   static readonly MAX_RUNAWAY_PER_TOOL = 2;
+
+  /** Per-run memo of smart-gate decisions (coalesces identical gated calls; bounded, oldest-evicted). */
+  private readonly gateMemo = new Map<string, Promise<{ approve: boolean; probability: number }>>();
+  static readonly GATE_MEMO_MAX = 1000;
 
   /** Number of still-running executions of `tool` that outlived their timeout/abort. */
   runawayCount(tool: string): number {
@@ -240,15 +244,55 @@ export class ToolExecutor {
 
     const mode = this.config.tools.approvals.mode;
     const reason = reasons.join('; ');
-    if (mode === 'deny') return { ok: false, reason: `approval required (${reason}) and approvals.mode=deny` };
 
-    const gate = async () =>
-      this.judgment?.gateToolCall({ tool: tool.name, args, userRequest: state.userRequest, risk: tool.risk, untrustedContext: taintedCtx }, ctx.runId) ?? { approve: false, probability: 0 };
+    // Memoized/coalesced smart gate: identical gated calls within a run reuse one judgment (an LLM
+    // classification). Avoids redundant network round-trips and keeps the decision consistent per run.
+    const gate = () => this.gateDecision(tool, args, ctx, state, taintedCtx);
+
+    // Whether a human can realistically answer an approval on this platform (interactive handler or an
+    // API-answerable platform). When nobody can answer we must NOT dead-wait the timeout.
+    const answerable = ctx.approvalAnswerable?.() ?? true;
+    const unattended = this.config.tools.approvals.unattended;
+
+    // Route to a human when answerable; otherwise apply the configured unattended fast-path. The security
+    // invariant holds in every branch: host/dangerous/untrusted-derived calls are never auto-ALLOWED here.
+    const askOrFastPath = async (requireAdmin: boolean): Promise<{ ok: boolean; reason: string }> => {
+      if (answerable || unattended === 'wait') return this.askHuman(tool, args, ctx, reason, requireAdmin);
+      if (unattended === 'deny') return { ok: false, reason: `approval required (${reason}) but no approver is available (unattended=deny)` };
+      // unattended === 'gate': fail-closed for the risky categories, let the fast gate decide the rest.
+      if (hostGate || untrustedDerived || tool.risk === 'dangerous') {
+        const why = hostGate ? 'host access' : tool.risk === 'dangerous' ? 'dangerous tool' : 'untrusted-derived';
+        return { ok: false, reason: `approval required (${reason}) but no approver is available; denied (unattended=gate, ${why})` };
+      }
+      const g = await gate();
+      return g.approve ? { ok: true, reason: `no approver; gate approved (p=${g.probability})` } : { ok: false, reason: `no approver; gate rejected (p=${g.probability})` };
+    };
+
+    // (3) Admin-predetermined approval rules override mode/unattended for THIS call (first match wins).
+    // Config is admin-controlled, so this is how an admin pre-decides which gated tools non-admins may run.
+    const rule = this.matchApprovalRule(tool, ctx);
+    if (rule) {
+      if (rule === 'deny') return { ok: false, reason: `approval denied by admin rule (${reason})` };
+      if (rule === 'ask') return askOrFastPath(hostGate);
+      if (rule === 'gate') {
+        // Preserve the injection safety net: a tainted sensitive call is never gate-allowed to the outside.
+        if (untrustedDerived) return { ok: false, reason: `admin rule 'gate' but call is untrusted-derived; denied (${reason})` };
+        const g = await gate();
+        return g.approve ? { ok: true, reason: `admin rule gate approved (p=${g.probability})` } : { ok: false, reason: `admin rule gate rejected (p=${g.probability})` };
+      }
+      // rule === 'allow': admin's explicit standing consent (covers host/dangerous by deliberate choice),
+      // EXCEPT an untrusted-content-derived sensitive call, which still falls through to the gate.
+      if (!untrustedDerived) return { ok: true, reason: 'pre-authorized by admin rule' };
+      const g = await gate();
+      return g.approve ? { ok: true, reason: `admin rule allow; gate confirmed untrusted call (p=${g.probability})` } : { ok: false, reason: `admin rule allow but gate rejected untrusted call (p=${g.probability})` };
+    }
+
+    if (mode === 'deny') return { ok: false, reason: `approval required (${reason}) and approvals.mode=deny` };
 
     if (mode === 'auto') {
       // Auto mode never lets untrusted content or a policy-approve call proceed unchecked: the gate must agree.
       if (!untrustedDerived && !policyApprove && !hostGate) return { ok: true, reason: 'auto-approved' };
-      if (hostGate) return this.askHuman(tool, args, ctx, reason, true);
+      if (hostGate) return askOrFastPath(true);
       const g = await gate();
       return g.approve ? { ok: true, reason: `gate approved (p=${g.probability})` } : { ok: false, reason: `approval-required call rejected by gate (p=${g.probability})` };
     }
@@ -256,7 +300,51 @@ export class ToolExecutor {
       const g = await gate();
       if (g.approve && tool.risk !== 'dangerous' && !hostGate) return { ok: true, reason: `gate approved (p=${g.probability})` };
     }
-    return this.askHuman(tool, args, ctx, reason, hostGate);
+    return askOrFastPath(hostGate);
+  }
+
+  /**
+   * First-match evaluation of the admin-predetermined approval rules for this call.
+   * Returns the configured decision, or undefined when no rule applies (normal mode logic then runs).
+   */
+  private matchApprovalRule(tool: AnyTool, ctx: ToolContext): 'allow' | 'deny' | 'gate' | 'ask' | undefined {
+    const rules = this.config.tools.approvals.rules;
+    if (!rules?.length) return undefined;
+    const isAdmin = ctx.principal.role === 'admin';
+    for (const r of rules) {
+      if (r.appliesTo === 'non-admin' && isAdmin) continue;
+      if (r.appliesTo === 'admin' && !isAdmin) continue;
+      if (r.tool && !globMatch(r.tool, tool.name)) continue;
+      if (r.toolset && r.toolset !== tool.toolset) continue;
+      if (r.risk && r.risk !== tool.risk) continue;
+      return r.decision;
+    }
+    return undefined;
+  }
+
+  /**
+   * Smart gate decision with per-run memoization + single-flight: identical gated calls (same run, tool,
+   * risk, taint and arguments) reuse one in-flight/resolved judgment instead of issuing another LLM call.
+   */
+  private gateDecision(tool: AnyTool, args: Record<string, unknown>, ctx: ToolContext, state: RunSecurityState, taintedCtx: boolean): Promise<{ approve: boolean; probability: number }> {
+    if (!this.judgment) return Promise.resolve({ approve: false, probability: 0 });
+    const key = `${ctx.runId ?? ''}|${tool.name}|${tool.risk}|${taintedCtx ? 1 : 0}|${stableStringify(args)}`;
+    const cached = this.gateMemo.get(key);
+    if (cached) {
+      this.bus.emit({ type: 'tool.gate.cache', runId: ctx.runId, data: { tool: tool.name, hit: true } });
+      return cached;
+    }
+    const p = this.judgment
+      .gateToolCall({ tool: tool.name, args, userRequest: state.userRequest, risk: tool.risk, untrustedContext: taintedCtx }, ctx.runId)
+      .catch(() => ({ approve: false, probability: 0 }));
+    // Bound the memo so a long-running process cannot grow it without limit (evict oldest).
+    if (this.gateMemo.size >= ToolExecutor.GATE_MEMO_MAX) {
+      const first = this.gateMemo.keys().next().value;
+      if (first !== undefined) this.gateMemo.delete(first);
+    }
+    this.gateMemo.set(key, p);
+    this.bus.emit({ type: 'tool.gate.cache', runId: ctx.runId, data: { tool: tool.name, hit: false } });
+    return p;
   }
 
   private releaseRunaway(name: string): void {
@@ -268,6 +356,25 @@ export class ToolExecutor {
   private async askHuman(tool: AnyTool, args: Record<string, unknown>, ctx: ToolContext, reason: string, requireAdmin: boolean): Promise<{ ok: boolean; reason: string }> {
     const approved = await ctx.requestApproval({ title: `Allow ${tool.name}?`, detail: `${reason}\nArguments: ${redactSecrets(JSON.stringify(args)).text.slice(0, 1500)}`, risk: tool.risk, tool: tool.name, args, ...(requireAdmin ? { requireAdmin: true } : {}) });
     return approved ? { ok: true, reason: requireAdmin ? 'approved by admin' : 'approved by user' } : { ok: false, reason: 'denied by user' };
+  }
+}
+
+/** Deterministic JSON with sorted object keys so identical logical arguments produce one memo key. */
+function stableStringify(value: unknown): string {
+  const seen = new WeakSet<object>();
+  const walk = (v: unknown): unknown => {
+    if (v === null || typeof v !== 'object') return v;
+    if (seen.has(v as object)) return '[circular]';
+    seen.add(v as object);
+    if (Array.isArray(v)) return v.map(walk);
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(v as Record<string, unknown>).sort()) out[k] = walk((v as Record<string, unknown>)[k]);
+    return out;
+  };
+  try {
+    return JSON.stringify(walk(value));
+  } catch {
+    return String(value);
   }
 }
 

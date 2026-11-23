@@ -1,7 +1,8 @@
-# Mercury — Build Status (honest snapshot, 2026-11-23, through v1.6.0)
+# Mercury — Build Status (honest snapshot, 2026-11-23, through v1.7.0)
 
 **Overall:** all 8 packages compile. From a clean build, `npm install && npm run build && npm test`
-passes (38 files, **513 passed / 2 skipped**, offline). The v1.4.0 subsystems — multi-agent teams/orchestration
+passes (40 files, **537 passed / 2 skipped**, offline — up from 513 after the v1.7.0 approval
+gating/performance tests in `tests/approvals-gating.test.ts` and `tests/approvals-perf.test.ts`). The v1.4.0 subsystems — multi-agent teams/orchestration
 and the governed long-term memory & knowledge/RAG layer — are covered by the offline suite
 (`tests/teams.test.ts`, `tests/memory.test.ts`). `npx eslint .` exits 0. The CLI, HTTP server and web UI
 run end-to-end with the offline mock LLM and mock decision provider. **The core agent loop has now
