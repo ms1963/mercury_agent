@@ -131,7 +131,12 @@ backward-compatible — new keys default to safe values).
   `docker` backend (`tools.terminal.backend`; containers run with `no-new-privileges`, pid/memory/CPU
   limits), or run Mercury itself in Docker / under the systemd unit in `deploy/mercury.service`
   (`NoNewPrivileges`, `ProtectSystem=strict`, `PrivateTmp`, write access only to `~/.mercury` and
-  the project dir). Note: `execute_code` always runs on the host, even with the docker backend.
+  the project dir). `execute_code` follows `tools.executeCode.backend`: `host` (child process, not a
+  sandbox), `docker` (container with `--network none`, `--cap-drop ALL`, read-only root and code
+  mount, user `nobody`, pid/memory/CPU limits; images `pythonImage`/`nodeImage`) or `auto` (default:
+  docker when the terminal backend is docker). Tool calls from the script still go through the
+  executor. Non-admin calls keep needing admin approval in both modes. Polyglot tools are
+  admin-installed programs and run on the host.
 - **Budgets**: per-user/model token and cost limits (`budgets.rules`) stop runaway loops. Auxiliary
   calls made as the system principal (wiki, team synthesis, critic, classifiers, MCP sampling)
   *inside a user's agent run or team run* are checked against and charged to that user's budget
@@ -204,7 +209,9 @@ The verification subsystem (`core/src/verification`) checks that a task is actua
 confidence, aggregated into one score. When the score is below `verification.confidenceThreshold` the
 run is **escalated for human review** (persisted, reviewable at `GET /api/escalations` and resolvable
 via `POST /api/escalations/:id/resolve`) instead of silently passing — a safety backstop against
-over-confident completion of sensitive work. Checks are opt-in per step, so nothing runs implicitly.
+over-confident completion of sensitive work. Checks are opt-in per step. With
+`verification.autoVerify: true` every completed top-level agent run is additionally verified by a
+required `critic` check (one extra judge call per run); failures are escalated. It is off by default.
 
 ## Chaos fault injection (operator-gated)
 

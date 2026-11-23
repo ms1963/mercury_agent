@@ -1847,6 +1847,8 @@ shown is the default applied when the key is omitted. Keys are grouped by their 
 | `tools.image.model` | `'dall-e-3'` | Image model. |
 | `tools.executeCode.timeoutMs` | `30000` | Code-execution timeout. |
 | `tools.executeCode.maxToolCalls` | `50` | Max nested tool calls from executed code. |
+| `tools.executeCode.backend` | `'auto'` | `host`, `docker` (no network, no capabilities, read-only) or `auto` (docker when `tools.terminal.backend` is docker). |
+| `tools.executeCode.pythonImage` / `nodeImage` | `python:3.12-slim` / `node:22-slim` | Images for the docker backend. |
 | `tools.polyglotDirs` | `[]` | Directories scanned for polyglot (multi-language) tools. |
 
 ### `mcp`

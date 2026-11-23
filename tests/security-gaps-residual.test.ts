@@ -5,9 +5,15 @@
  *  R8 — JSON-schema tools (no zod schema) enforce additionalProperties:false and numeric/string bounds,
  *       also after a before_tool_call hook rewrites the arguments.
  *  R9 — tools that ignore their abort signal are tracked as runaway and further calls are refused.
+ *  SC-12 — execute_code can run in a locked-down docker container (stdio tool-call framing).
+ *  DD-01 — opt-in automatic critic verification of completed top-level runs.
+ *  SC-24 — generic nginx example instead of a host-specific config.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { checkTopLevelTypes, currentBudgetOwner, SYSTEM_PRINCIPAL, ToolExecutor, withBudgetOwner } from '@mercury/core';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { checkTopLevelTypes, ConfigSchema, currentBudgetOwner, SYSTEM_PRINCIPAL, ToolExecutor, withBudgetOwner } from '@mercury/core';
+import { dockerCodeArgv, executeCode, resolveExecuteCodeBackend } from '@mercury/tools';
 import { directToolContext } from '@mercury/runtime';
 import { makeMercury } from './helpers.js';
 
@@ -122,6 +128,90 @@ describe('R8 JSON-schema argument enforcement', () => {
       expect(r.result.content).toMatch(/Hook produced invalid arguments.*unknown argument/);
       expect(seen).toBeUndefined();
     });
+  });
+});
+
+describe('SC-12 execute_code backends', () => {
+  it("'auto' follows the terminal backend; explicit values win", () => {
+    const cfg = (o: Record<string, unknown>) => ConfigSchema.parse({ tools: o });
+    expect(resolveExecuteCodeBackend(cfg({}))).toBe('host');
+    expect(resolveExecuteCodeBackend(cfg({ terminal: { backend: 'docker' } }))).toBe('docker');
+    expect(resolveExecuteCodeBackend(cfg({ terminal: { backend: 'docker' }, executeCode: { backend: 'host' } }))).toBe('host');
+    expect(resolveExecuteCodeBackend(cfg({ executeCode: { backend: 'docker' } }))).toBe('docker');
+  });
+  it('the docker invocation has no network, no capabilities, read-only fs and code mount, unprivileged user', () => {
+    const argv = dockerCodeArgv(ConfigSchema.parse({}), 'python', '/tmp/x', 'n1').join(' ');
+    for (const flag of ['--network none', '--read-only', '--cap-drop ALL', 'no-new-privileges', '--user 65534:65534', '-v /tmp/x:/code:ro', '--pids-limit', '--memory'])
+      expect(argv).toContain(flag);
+    expect(argv).toContain('python:3.12-slim python3 -u /code/main.py');
+    expect(dockerCodeArgv(ConfigSchema.parse({}), 'javascript', '/tmp/x', 'n1').join(' ')).toContain('node:22-slim node /code/main.mjs');
+  });
+
+  describe('stdio tool-call framing (the protocol used inside docker), exercised on the host', () => {
+    let ctx: Awaited<ReturnType<typeof makeMercury>>;
+    beforeAll(async () => {
+      ctx = await makeMercury({}, { startServices: true });
+    });
+    afterAll(() => ctx.close());
+    const run = async (language: 'python' | 'javascript', code: string) =>
+      executeCode(directToolContext(ctx.m, await ctx.m.localPrincipal(), 'cli'), language, code, { backend: 'host', transport: 'stdio' });
+    it('python: tool calls work and ordinary stderr is kept separate', async () => {
+      const r = await run('python', ['import sys', 'sys.stderr.write("diag\\n")', 'print("a=" + call_tool("calculator", expression="6*7"))', 'print("b=" + call_tool("calculator", expression="1+1"))'].join('\n'));
+      expect(r.exitCode).toBe(0);
+      expect(r.stdout).toMatch(/a=.*42/);
+      expect(r.stdout).toMatch(/b=.*2/);
+      expect(r.toolCalls).toBe(2);
+      expect(r.stderr).toContain('diag');
+      expect(r.stderr).not.toContain('MRPC');
+    });
+    it('javascript: tool calls work and the script exits', async () => {
+      const r = await run('javascript', 'console.log("x=" + await callTool("calculator", { expression: "3*3" })); console.log("y=" + await callTool("calculator", { expression: "2+2" }));');
+      expect(r.exitCode).toBe(0);
+      expect(r.stdout).toMatch(/x=.*9/);
+      expect(r.stdout).toMatch(/y=.*4/);
+    });
+    it('blocked tools stay blocked over the stdio channel', async () => {
+      const r = await run('python', ['try:', '    call_tool("execute_code", code="1")', 'except RuntimeError as e:', '    print("blocked:", e)'].join('\n'));
+      expect(r.stdout).toContain('cannot be called from execute_code');
+    });
+  });
+});
+
+describe('DD-01 automatic verification of completed runs', () => {
+  it('is off by default', async () => {
+    const ctx = await makeMercury();
+    try {
+      const p = await ctx.m.localPrincipal();
+      await ctx.m.agent.run({ principal: p, input: 'hello', platform: 'test' });
+      await ctx.m.verificationIdle();
+      expect(ctx.m.db.all('SELECT id FROM verifications')).toHaveLength(0);
+    } finally {
+      await ctx.close();
+    }
+  });
+  it('verification.autoVerify records a critic verification per top-level run and escalates failures', async () => {
+    const ctx = await makeMercury({ verification: { autoVerify: true } });
+    try {
+      ctx.m.verifier.setCritic(async () => ({ passed: false, confidence: 0.1, detail: 'test critic' }));
+      const p = await ctx.m.localPrincipal();
+      const r = await ctx.m.agent.run({ principal: p, input: 'hello', platform: 'test' });
+      await ctx.m.verificationIdle();
+      const rows = ctx.m.db.all<{ run_id: string; passed: number; escalated: number }>('SELECT run_id, passed, escalated FROM verifications');
+      expect(rows).toEqual([{ run_id: r.runId, passed: 0, escalated: 1 }]);
+      expect(ctx.m.db.all('SELECT id FROM escalations WHERE run_id = ?', r.runId)).toHaveLength(1);
+    } finally {
+      await ctx.close();
+    }
+  });
+});
+
+describe('SC-24 no host-specific deployment artefacts', () => {
+  it('ships a generic nginx example instead of a host-specific config', () => {
+    const root = join(__dirname, '..');
+    expect(existsSync(join(root, 'deploy', '14444ce25a.conf'))).toBe(false);
+    const conf = readFileSync(join(root, 'deploy', 'nginx.conf.example'), 'utf8');
+    expect(conf).not.toMatch(/14444ce25a|abacusai|x_original_host/);
+    expect(conf).not.toMatch(/s-maxage|proxy_cache\s/);
   });
 });
 

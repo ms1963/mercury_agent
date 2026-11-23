@@ -92,9 +92,11 @@ import {
   attachMetrics,
   createLogger,
   discoverPlugins,
+  errorMessage,
   installConfiguredHooks,
   loadConfig,
   loadPlugin,
+  type Check,
   type DecisionProvider,
   type LoadedPlugin,
   type Logger,
@@ -375,6 +377,8 @@ export class Mercury {
       );
       return { passed: r.noul >= 0.5, confidence: r.noul, detail: `critic p(satisfies)=${r.noul.toFixed(2)} via ${r.provider}` };
     });
+    // Opt-in automatic verification of completed top-level runs (verification.autoVerify).
+    this.cleanups.push(this.bus.on('run.end', (e) => this.autoVerify(e.runId, (e.data as { status?: string } | undefined)?.status)));
 
     // Reliability engineering: record completed runs (opt-in) for replay regression, a replay
     // service that re-runs recorded inputs through the real agent, and per-agent SLOs.
@@ -550,6 +554,27 @@ export class Mercury {
    * existing LLMService (circuit-breaker + retry), as the system principal with the
    * auxiliary budget override — never a mock provider.
    */
+  /** Pending automatic verifications (awaited on shutdown / by tests via verificationIdle()). */
+  private readonly pendingVerifications = new Set<Promise<unknown>>();
+
+  /** Wait for automatic verifications started by finished runs. */
+  async verificationIdle(): Promise<void> {
+    await Promise.allSettled([...this.pendingVerifications]);
+  }
+
+  private autoVerify(runId: string | undefined, status: string | undefined): void {
+    const v = this.config.verification;
+    if (!runId || status !== 'completed' || !v.enabled || !v.autoVerify || !v.checks.includes('critic')) return;
+    const row = this.db.get<{ user_id: string; input: string; output: string | null; depth: number }>('SELECT user_id, input, output, depth FROM runs WHERE id = ?', runId);
+    if (!row || row.depth > 0) return;
+    const check: Check = { id: 'auto-critic', type: 'critic', required: true, goal: row.input };
+    const p: Promise<unknown> = this.verifier
+      .verify({ runId, userId: row.user_id, goal: row.input, output: row.output ?? '', checks: [check] })
+      .catch((err: unknown) => this.logger.warn('automatic verification failed', { runId, error: errorMessage(err) }))
+      .finally(() => this.pendingVerifications.delete(p));
+    this.pendingVerifications.add(p);
+  }
+
   private buildWikiLlm() {
     const ask = (system: string, user: string, json: boolean) =>
       this.llm.complete(SYSTEM_PRINCIPAL, [
@@ -710,6 +735,7 @@ export class Mercury {
 
   async shutdown(): Promise<void> {
     this.scheduler.stop();
+    await this.verificationIdle();
     await this.gateway.stop();
     await this.mcp.closeAll().catch(() => undefined);
     for (const p of this.loadedPlugins) await p.teardown?.();

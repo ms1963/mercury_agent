@@ -19,6 +19,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Auxiliary (system-principal) LLM calls made inside a user's agent/team run are checked against and charged to that user's budget; approval-gate decisions stay exempt.
 - JSON-schema tools enforce `additionalProperties: false`, numeric bounds, string length and `maxItems` (also after hook rewrites).
 - Tools that ignore cancellation are tracked as runaway (`tool.runaway` event + audit); new calls are refused while 2 are still running.
+- `execute_code` can run in a locked-down container (`tools.executeCode.backend`: `auto` | `host` | `docker`; no network, no capabilities, read-only, nobody user).
+- Opt-in automatic verification of completed top-level runs (`verification.autoVerify`).
+- Host-specific `deploy/14444ce25a.conf` replaced by a generic `deploy/nginx.conf.example`.
 - Deployment: systemd unit sandboxing, nginx no longer adds a shared-cache directive, docker-compose binds 127.0.0.1.
 
 ### Changed (tooling)
@@ -27,6 +30,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed (behaviour)
 - Non-admin `terminal`/`process_start`/`execute_code` calls now need an admin's approval (set `tools.hostAccess.nonAdmin: allow` for the previous behaviour).
 - Auxiliary usage triggered by a user's run now appears under that user (kind `auxiliary`) instead of `system`.
+- With `tools.terminal.backend: docker`, `execute_code` now also runs in docker (`tools.executeCode.backend: host` restores host execution).
 - `POST /api/schedules` without `when`/`task` returns 400 instead of 500.
 
 ## [1.4.0] - 2026-11-22

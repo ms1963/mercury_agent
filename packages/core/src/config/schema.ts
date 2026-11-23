@@ -396,7 +396,17 @@ export const ConfigSchema = z.object({
         .prefault({}),
       browser: z.object({ backend: z.string().default('auto'), cdpUrl: z.string().optional() }).prefault({}),
       image: z.object({ provider: z.string().default('openai'), model: z.string().default('dall-e-3') }).prefault({}),
-      executeCode: z.object({ timeoutMs: z.number().default(30_000), maxToolCalls: z.number().default(50) }).prefault({}),
+      executeCode: z
+        .object({
+          timeoutMs: z.number().default(30_000),
+          maxToolCalls: z.number().default(50),
+          /** Where model-written code runs: 'host' (child process), 'docker' (container without
+           *  network, code dir mounted read-only) or 'auto' (docker when tools.terminal.backend is docker). */
+          backend: z.enum(['auto', 'host', 'docker']).default('auto'),
+          pythonImage: z.string().default('python:3.12-slim'),
+          nodeImage: z.string().default('node:22-slim'),
+        })
+        .prefault({}),
       polyglotDirs: z.array(z.string()).default([]),
     })
     .prefault({}),
@@ -548,6 +558,9 @@ export const ConfigSchema = z.object({
       escalate: z.boolean().default(true),
       /** Which check types are enabled; others are skipped (backward-compatible toggles). */
       checks: z.array(z.enum(['test', 'schema', 'critic', 'assertion'])).default(['test', 'schema', 'critic', 'assertion']),
+      /** Automatically verify every completed top-level agent run with a critic check (opt-in:
+       *  costs one extra judge call per run). Off = verification only via POST /api/verify. */
+      autoVerify: z.boolean().default(false),
     })
     .prefault({}),
 
