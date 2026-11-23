@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-11-23
+
 ### Security
 - Ownership checks on run-scoped endpoints (stop, feedback, replay, time-travel, state, events, trace, debug resume), approvals (owner or admin; admin-only approvals for host execution by non-admins), team runs, task budgets, schedules and verification records.
 - Pairing approval requires `gateway.manage`; already linked identities are only moved with `relink`.
@@ -28,6 +30,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed (tooling)
 - `npm run typecheck` / `npm run lint` now also type-check the test suite (`tsconfig.tests.json`); 20 latent type errors in existing tests fixed.
+- Removed unused variables/imports so `npm run lint` reports zero warnings.
 
 ### Changed (behaviour)
 - Non-admin `terminal`/`process_start`/`execute_code` calls now need an admin's approval (set `tools.hostAccess.nonAdmin: allow` for the previous behaviour).
