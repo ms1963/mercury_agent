@@ -12,9 +12,11 @@ Honesty rules this table obeys:
 
 - The **Mercury** column describes only code that exists in **this repository**. The **Tested** column
   means covered by the offline `vitest` suite (`MERCURY_ENABLE_MOCK=1 npm test`) and/or run by hand in
-  this environment. It never means tested against a real external LLM, a real Jev API, a real chat
-  platform, or a real STT/TTS service — see [STATUS.md](../STATUS.md) for the precise
-  tested-vs-untested breakdown.
+  this environment. **Exception:** the core agent loop (chat, tool execution, self-distilling skills,
+  routing-learning, reflection, token/cost accounting) has now been exercised against real LLMs via
+  the Abacus RouteLLM endpoint — see [STATUS.md](../STATUS.md) §0. Outside that, the Tested column does
+  not mean tested against a real Jev API, a real chat platform, or a real STT/TTS service — see
+  [STATUS.md](../STATUS.md) for the precise tested-vs-untested breakdown.
 - The **Hermes Agent** column reflects Mercury's *parity target* and Hermes's publicly-known
   positioning. **It is not a benchmark of a Hermes installation** — no Hermes instance was run or
   measured for this document. Treat it as "the baseline Mercury set out to match," not as a verified

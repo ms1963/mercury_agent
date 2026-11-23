@@ -24,8 +24,11 @@ See [docs/PROVIDERS.md](docs/PROVIDERS.md) for one-line setups.
 > The deterministic mock provider used by the automated test suite is disabled in normal
 > operation; it is only enabled when `MERCURY_ENABLE_MOCK=1` is set.
 
-> Status: see [STATUS.md](STATUS.md) for what is tested and what has not been run against real
-> external services.
+> Status: the **core agent loop has been exercised against real LLMs** (Abacus RouteLLM: route-llm,
+> gpt-5.5, claude-sonnet-5 — real chat, tool execution, self-distilling skills, routing-learning and
+> token/cost accounting, 2026-11-23). The Jev engine, chat platforms and voice/STT-TTS remain
+> offline/mock-only. See [STATUS.md](STATUS.md) §0 for the live-test detail and the full
+> tested-vs-untested breakdown.
 
 ## Quickstart
 

@@ -1,11 +1,44 @@
-# Mercury — Build Status (honest snapshot, 2026-11-22, through v1.4.0)
+# Mercury — Build Status (honest snapshot, 2026-11-23, through v1.5.0)
 
 **Overall:** all 7 packages compile. From a clean build, `npm install && npm run build && npm test`
 passes (32 files, **381/381 tests**, offline). The v1.4.0 subsystems — multi-agent teams/orchestration
 and the governed long-term memory & knowledge/RAG layer — are covered by the offline suite
 (`tests/teams.test.ts`, `tests/memory.test.ts`). `npx eslint .` exits 0. The CLI, HTTP server and web UI
-run end-to-end with the offline mock LLM and mock decision provider. Nothing has been exercised
-against a real external service: no real LLM API, no Jev API, no chat platform, no STT/TTS service.
+run end-to-end with the offline mock LLM and mock decision provider. **The core agent loop has now
+also been exercised against real LLMs** — see §0. The Jev API, chat platforms and STT/TTS services
+remain offline/mock-only.
+
+## 0. Live test against real LLMs (2026-11-23)
+
+The core agent loop was run against **real LLMs** via the Abacus **RouteLLM** endpoint
+(`https://routellm.abacus.ai/v1`, the built-in OpenAI-compatible `chatllm` provider), with no mock
+(`MERCURY_ENABLE_MOCK` unset). Models exercised: `chatllm/route-llm`, `chatllm/gpt-5.5` and
+`chatllm/claude-sonnet-5`. These were real, billed, non-deterministic calls. What was verified
+end-to-end against the live models:
+
+- **Agent loop + tool execution** — multi-turn runs that wrote files (`write_file`) and ran them
+  (`terminal`), returning correct real output (e.g. prime/square/factorial/Fibonacci scripts).
+- **Self-distilling skills** — booting the runtime with services on (`startServices: true`, the path
+  `mercury serve` uses), a novel successful run **auto-distilled** an approved skill
+  (`auto-write-python-file-tmp`: generalized `write_file → terminal` with `{path}`/`{content}`/
+  `{command}`/`{timeout_s}` params); subsequent similar runs **matched and reused** it (uses=5,
+  successes=5) instead of re-distilling.
+- **Routing-learning stats** — `learning_route_stats` populated per (difficulty bucket, model) from
+  real outcomes: for the same `low` bucket at 100% success, gpt-5.5 cost ~20× less than
+  claude-sonnet-5 (6.7k vs 43.7k tokens). This is real learned cost/success data the router can act on.
+- **Experience hints** — `learn hints` returns a real hint distilled from a prior successful run.
+- **Reflection, memory writes, token/cost accounting** — all recorded from the live runs.
+
+**Note on one-shot mode.** The CLI `chat` command boots with services **off**
+(`bin.ts` sets `startServices` true only for `serve` / `mcp serve`), and `mercury.ts` returns before
+attaching the background `run.end` subscribers when `services === false`. So auto-distillation and
+routing-learning accumulate under `mercury serve` (or an equivalent services-on process), **not** in
+one-shot `mercury chat`. The subsystems themselves are functional, as proven above.
+
+**Still NOT exercised against real services** (see §2): the Jev decision engine, real chat-platform
+adapters, real STT/TTS/voice, external MCP servers, Docker/SSH terminal backends, the Playwright
+browser backend, web-search/image-gen providers, the deployment scripts, and LLM Wiki
+synthesis/answer/contradiction **quality** against a real model.
 
 ## 1. Fully implemented and tested
 
@@ -39,9 +72,9 @@ Tested here means covered by the vitest suite (`tests/`) and/or run by hand in t
 
 ## 2. Implemented but untested against real external services
 
-These areas have code that compiles. In most cases it also has mock-based tests. None of it has run against the real service:
+These areas have code that compiles. In most cases it also has mock-based tests. Except where §0 notes it was exercised live, none of it has run against the real service:
 
-- **LLM providers:** OpenAI-compatible (incl. Ollama/OpenRouter) and Anthropic, including streaming and tool calling against real APIs.
+- **LLM providers:** the **OpenAI-compatible** provider **has** been exercised against a real API — the Abacus RouteLLM endpoint via the built-in `chatllm` provider, including real tool-calling (see §0). Streaming against a real API, and the **Anthropic**, **Ollama**, **LM Studio** and direct **OpenAI/OpenRouter** providers, remain unexercised live.
 - **LLM Wiki against a real model:** page synthesis, grounded answering and contradiction detection call the real `LLMService`, but their output quality has only been exercised with a test-local fake LLM. The model-output JSON parsing is defensive; real-model page/answer quality is unmeasured here.
 - **Jev decisions:** the real OpenRouter API (`typesafe/jev-1.13`). The request/response format follows the integration notes and was tested only with mocked HTTP.
 - **Gateway adapters:** all 16 against real platforms (Telegram, Discord, Slack, WhatsApp, Signal, Matrix, Mattermost, Teams, IRC, Email IMAP/SMTP, SMS/Twilio, Home Assistant, RSS, webhook, webchat, CLI). Telegram, Slack and webhook only ran through mock transports.

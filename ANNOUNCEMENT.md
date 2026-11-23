@@ -2,8 +2,10 @@
 
 This file collects copy-paste-ready text for announcing Mercury across different
 channels. The tone is deliberately honest and early-stage: Mercury has a large
-*implemented* surface area and a 69-test offline suite, but it has **not** yet been
-exercised against real external LLM / chat / voice services. Keep that framing —
+*implemented* surface area and an offline test suite. Its **core agent loop has now been
+exercised against real LLMs** (Abacus RouteLLM — real chat, tool execution, self-distilling
+skills and routing-learning), but it has **not** yet been exercised against real chat / voice
+services or the Jev decision engine. Keep that framing —
 the HN and r/LocalLLaMA crowds reward candor and punish overclaiming.
 
 Repo: https://github.com/ms1963/mercury_agent — MIT — © 2026 Michael Stal

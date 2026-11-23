@@ -7,6 +7,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Validated
+- **Live test against real LLMs (2026-11-23).** The core agent loop was exercised end-to-end against real models via the Abacus RouteLLM endpoint (built-in OpenAI-compatible `chatllm` provider; models `route-llm`, `gpt-5.5`, `claude-sonnet-5`), with no mock. Verified live: multi-turn runs with real `write_file` + `terminal` tool execution; **self-distilling skills** auto-minting an approved skill from a run trace and reusing it on later runs; **routing-learning** stats accumulating real per-model cost/success; experience hints; reflection; memory writes; and token/cost accounting. Noted that auto-distillation/routing-learning accumulate under a services-on process (`mercury serve`), not one-shot `mercury chat`. Docs updated (`STATUS.md` §0, `README.md`, `docs/GUIDE.md`, `docs/COMPARISON.md`, `ANNOUNCEMENT.md`). The Jev engine, chat platforms, voice/STT-TTS, external MCP, Docker/SSH backends and deployment scripts remain un-exercised against real services.
+
 ## [1.5.0] - 2026-11-23
 
 ### Security

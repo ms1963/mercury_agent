@@ -17,11 +17,13 @@ topic files in [`docs/help/`](help/)).
 
 > **Honest-status note.** Mercury's seven packages compile, `npm install && npm run build && npm test`
 > passes **185/185 tests offline**, and the CLI, HTTP server and web UI run end-to-end with the
-> deterministic offline mock LLM. **Nothing in this guide has been exercised against a real external
-> service** — no real LLM API, no Jev API, no chat platform, no STT/TTS service, no Docker image
-> build, no systemd run. Treat feature descriptions as "implemented and offline-tested"; see
-> [STATUS.md](../STATUS.md) for the precise tested-vs-untested breakdown. Where a feature has only
-> been run against a mock, this guide says so.
+> deterministic offline mock LLM. **The core agent loop has since been exercised against real LLMs**
+> (Abacus RouteLLM: route-llm, gpt-5.5, claude-sonnet-5 — real chat, tool execution, self-distilling
+> skills, routing-learning, reflection and token/cost accounting; see [STATUS.md](../STATUS.md) §0).
+> The **Jev API, chat platforms, STT/TTS services, Docker image build and systemd run remain
+> un-exercised against real services.** Treat those feature descriptions as "implemented and
+> offline-tested"; see [STATUS.md](../STATUS.md) for the precise tested-vs-untested breakdown. Where a
+> feature has only been run against a mock, this guide says so.
 >
 > **Mocks removed for integrations.** The integration-standing mocks have been stripped from the
 > production/runtime paths: the gateway `MockTransport` (adapters now use the real `FetchTransport`;
