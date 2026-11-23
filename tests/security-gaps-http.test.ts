@@ -3,10 +3,18 @@
  * schedule/task ownership, admin-only pairing, password change + JWT revocation, login lockout,
  * hardened headers, /metrics gating and API-token expiry. Uses Fastify inject (no network).
  */
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { createServer } from '@mercury/server';
 import { makeMercury } from './helpers.js';
+
+// Read the release version from the root package.json so this assertion tracks
+// version bumps automatically instead of hard-coding a literal that breaks CI.
+const pkgVersion = JSON.parse(
+  readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8'),
+).version as string;
 
 let ctx: Awaited<ReturnType<typeof makeMercury>>;
 let app: FastifyInstance;
@@ -186,7 +194,7 @@ describe('HTTP hardening', () => {
     expect(String(html.headers['content-security-policy'] ?? '')).toContain("default-src");
   });
   it('reports the real package version on /health', async () => {
-    expect((await call('GET', '/health')).json().version).toBe('1.4.0');
+    expect((await call('GET', '/health')).json().version).toBe(pkgVersion);
   });
   it('serves uploaded HTML attachments as downloads, not inline', async () => {
     const att = await ctx.m.attachments.save(aliceId, 'x.html', Buffer.from('<script>alert(1)</script>'), 'text/html');
