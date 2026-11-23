@@ -7,6 +7,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-11-23
+
+### Fixed
+- **Chat image attachments were silently dropped for models whose vision capability came from a model profile.** When a model profile declared `vision: true` (e.g. `chatllm/route-llm`), that capability reached the router but not the provider's wire-format builder, which re-guessed capabilities from the bare model name (`route-llm` → `vision: false`) and replaced each image with the placeholder "image not visible to this model — no vision capability". The provider factory now accepts a capability-override closure from the registry so provider-side capabilities match the resolved model profile, and image parts are forwarded correctly. Added a regression test (`tests/providers.test.ts`).
+
 ## [1.5.1] - 2026-11-23
 
 ### Validated
