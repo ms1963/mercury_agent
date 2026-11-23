@@ -28,7 +28,7 @@ const assertions = defaultAssertionRegistry();
 
 describe('validateShape', () => {
   it('accepts a conforming object and reports violations otherwise', () => {
-    const shape = { type: 'object', required: ['name', 'age'], properties: { name: { type: 'string', minLength: 1 }, age: { type: 'integer', minimum: 0 } } } as const;
+    const shape = { type: 'object', required: ['name', 'age'], properties: { name: { type: 'string', minLength: 1 }, age: { type: 'integer', minimum: 0 } } } as unknown as Parameters<typeof validateShape>[1];
     expect(validateShape({ name: 'a', age: 3 }, shape)).toEqual([]);
     expect(validateShape({ name: '', age: -1 }, shape).length).toBe(2);
     expect(validateShape({ age: 3 }, shape)[0]).toMatch(/name: required/);

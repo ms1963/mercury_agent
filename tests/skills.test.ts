@@ -23,7 +23,7 @@ const distillCfg = (o: Record<string, unknown> = {}) => ({
 
 /** Drive a run that makes two real calculator tool calls, so the trace is eligible to distil. */
 async function twoToolRun(m: Awaited<ReturnType<typeof makeMercury>>['m'], p: Principal, input: string, exprs: [string, string]) {
-  const mock = m.providers.get('mock') as { enqueue: (...r: unknown[]) => void };
+  const mock = m.providers.get('mock') as unknown as { enqueue: (...r: unknown[]) => void };
   mock.enqueue(
     { toolCalls: [{ id: newId('call'), name: 'calculator', arguments: { expression: exprs[0] } }] },
     { toolCalls: [{ id: newId('call'), name: 'calculator', arguments: { expression: exprs[1] } }] },
@@ -133,7 +133,7 @@ describe('self-distilling skills — agent/planner reuse', () => {
     ctx = await makeMercury(distillCfg({ autoApprove: true, matchMinSimilarity: 0.3 }), { startServices: true });
     const p = await ctx.m.localPrincipal();
     await twoToolRun(ctx.m, p, 'Average the two benchmark scores for the summary', ['80+90', '70+60']);
-    const mock = ctx.m.providers.get('mock') as { enqueue: (...r: unknown[]) => void; calls: Array<{ messages: Array<{ role: string; content: string }> }> };
+    const mock = ctx.m.providers.get('mock') as unknown as { enqueue: (...r: unknown[]) => void; calls: Array<{ messages: Array<{ role: string; content: string }> }> };
     mock.enqueue({ content: 'Echo.' });
     await ctx.m.commands.handle({ principal: p, input: 'Average the two benchmark scores for the summary please', platform: 'cli' });
     const sys = mock.calls.at(-1)!.messages.find((msg) => msg.role === 'system')!.content;

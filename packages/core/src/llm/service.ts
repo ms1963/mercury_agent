@@ -6,6 +6,7 @@
 import type { MercuryConfig } from '../config/schema.js';
 import type { BudgetService } from '../budgets/budgets.js';
 import { costOf } from '../budgets/budgets.js';
+import { currentBudgetOwner } from '../budgets/attribution.js';
 import type { TaskBudgetService } from '../budgets/task-budgets.js';
 import type { PolicyEngine } from '../auth/policy.js';
 import type { EventBus } from '../events/bus.js';
@@ -122,7 +123,12 @@ export class LLMService {
     const { provider, model } = this.registry.resolve(modelId);
     const caps = this.registry.capabilities(modelId);
     const estimate = call.messages.reduce((n, m) => n + estimateTokens(m.content), 0) + (call.maxTokens ?? 512);
+    // An auxiliary (system) call made on behalf of a user is checked against and charged to that
+    // user's budget. Security decisions (kind 'decision') stay exempt so a spent budget can never
+    // disable the approval gate (they remain capped by an explicit 'system' rule).
+    const owner = call.principal.kind === 'system' && call.kind !== 'decision' ? currentBudgetOwner() : undefined;
     this.budgets.check(call.principal, modelId, estimate, call.budgetOverride);
+    if (owner) this.budgets.check(owner, modelId, estimate, false);
     // Per-task hard budget: stop a task before it spends past its cap (throws to halt/escalate).
     const profile = this.registry.profile(modelId);
     const estimatedCost = costOf(profile, { inputTokens: estimate, outputTokens: 0 });
@@ -190,7 +196,7 @@ export class LLMService {
     }
     const durationMs = Date.now() - started;
     const cost = costOf(this.registry.profile(modelId), res.usage);
-    this.budgets.record(call.principal.userId, modelId, res.usage, cost, call.kind ?? 'chat', call.runId);
+    this.budgets.record(owner?.userId ?? call.principal.userId, modelId, res.usage, cost, call.kind ?? 'chat', call.runId);
     // Per-task running cost ledger (single source of truth; the bus `llm.response` hook is not used).
     this.taskBudgets?.record(call.runId, cost, res.usage.inputTokens, res.usage.outputTokens);
     this.bus.emit({

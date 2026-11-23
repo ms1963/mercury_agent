@@ -61,6 +61,19 @@ export class ToolExecutor {
     private chaos?: ChaosController,
   ) {}
 
+  /**
+   * Executions that timed out (or were stopped) but whose promise has not settled because the
+   * tool ignores its abort signal. JavaScript cannot force-kill an in-process promise, so these
+   * are tracked per tool and further calls are refused while too many are still running.
+   */
+  private readonly runaway = new Map<string, number>();
+  static readonly MAX_RUNAWAY_PER_TOOL = 2;
+
+  /** Number of still-running executions of `tool` that outlived their timeout/abort. */
+  runawayCount(tool: string): number {
+    return this.runaway.get(tool) ?? 0;
+  }
+
   async execute(call: ToolCall, ctx: ToolContext, state: RunSecurityState): Promise<ExecutedTool> {
     const started = Date.now();
     const fail = (content: string, kind = 'error'): ExecutedTool => {
@@ -73,6 +86,10 @@ export class ToolExecutor {
     if (!this.registry.isEnabled(tool, ctx.platform, ctx.allowedToolsets)) return fail(`Tool "${call.name}" is disabled for this agent/platform.`, 'denied');
     const denied = this.policy.check(ctx.principal, 'tool.use', { tool: { name: tool.name, toolset: tool.toolset, risk: tool.risk }, profile: ctx.personality });
     if (denied) return fail(`Permission denied: ${denied}`, 'denied');
+    const stuck = this.runawayCount(tool.name);
+    if (stuck >= ToolExecutor.MAX_RUNAWAY_PER_TOOL) {
+      return fail(`Tool "${tool.name}" has ${stuck} earlier execution(s) still running past their timeout (it ignores cancellation); refusing new calls until they finish.`, 'denied');
+    }
 
     // Validate arguments (schema when declared, else the required list). Returns an error text.
     const validate = (input: Record<string, unknown>): { args: Record<string, unknown> } | { error: string } => {
@@ -130,11 +147,25 @@ export class ToolExecutor {
       const onRunAbort = () => callCtl.abort(ctx.signal?.reason);
       if (ctx.signal?.aborted) callCtl.abort(ctx.signal.reason);
       else ctx.signal?.addEventListener('abort', onRunAbort, { once: true });
+      let settled = false;
+      const pending = Promise.resolve()
+        .then(() => tool.execute(args, { ...ctx, signal: callCtl.signal }))
+        .finally(() => { settled = true; });
       try {
-        const raw = await withTimeout(tool.execute(args, { ...ctx, signal: callCtl.signal }), tool.timeoutMs ?? this.config.agent.toolTimeoutMs, ctx.signal, tool.name, callCtl);
+        const raw = await withTimeout(pending, tool.timeoutMs ?? this.config.agent.toolTimeoutMs, ctx.signal, tool.name, callCtl);
         result = typeof raw === 'string' ? { content: raw } : raw;
       } catch (err) {
         result = { content: errorMessage(err), isError: true };
+        if (!settled) {
+          // The tool did not honour the abort: track it until its promise finally settles.
+          this.runaway.set(tool.name, this.runawayCount(tool.name) + 1);
+          this.bus.emit({ type: 'tool.runaway', runId: ctx.runId, data: { id: call.id, name: tool.name, running: this.runawayCount(tool.name) } });
+          this.audit?.record(ctx.principal.username, 'tool.runaway', tool.name, { runId: ctx.runId, running: this.runawayCount(tool.name) });
+          void pending.then(
+            () => this.releaseRunaway(tool.name),
+            () => this.releaseRunaway(tool.name),
+          );
+        }
       } finally {
         ctx.signal?.removeEventListener('abort', onRunAbort);
       }
@@ -228,6 +259,12 @@ export class ToolExecutor {
     return this.askHuman(tool, args, ctx, reason, hostGate);
   }
 
+  private releaseRunaway(name: string): void {
+    const n = this.runawayCount(name) - 1;
+    if (n > 0) this.runaway.set(name, n);
+    else this.runaway.delete(name);
+  }
+
   private async askHuman(tool: AnyTool, args: Record<string, unknown>, ctx: ToolContext, reason: string, requireAdmin: boolean): Promise<{ ok: boolean; reason: string }> {
     const approved = await ctx.requestApproval({ title: `Allow ${tool.name}?`, detail: `${reason}\nArguments: ${redactSecrets(JSON.stringify(args)).text.slice(0, 1500)}`, risk: tool.risk, tool: tool.name, args, ...(requireAdmin ? { requireAdmin: true } : {}) });
     return approved ? { ok: true, reason: requireAdmin ? 'approved by admin' : 'approved by user' } : { ok: false, reason: 'denied by user' };
@@ -276,6 +313,26 @@ export function checkTopLevelTypes(schema: JsonSchema, input: Record<string, unk
       if (!ok) errors.push(`${key}: expected ${types.join('|')}`);
     }
     if (Array.isArray(prop.enum) && prop.enum.length && typeof v === 'string' && prop.enum.every((e) => typeof e === 'string') && !prop.enum.includes(v)) errors.push(`${key}: must be one of ${prop.enum.map(String).join(', ')}`);
+    // Numeric bounds (numeric strings are compared by value, matching the lenient type check).
+    const num = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' && types.some((t) => t === 'number' || t === 'integer') ? Number(v) : undefined;
+    if (num !== undefined && Number.isFinite(num)) {
+      if (typeof prop.minimum === 'number' && num < prop.minimum) errors.push(`${key}: must be >= ${prop.minimum}`);
+      if (typeof prop.maximum === 'number' && num > prop.maximum) errors.push(`${key}: must be <= ${prop.maximum}`);
+      if (typeof prop.exclusiveMinimum === 'number' && num <= prop.exclusiveMinimum) errors.push(`${key}: must be > ${prop.exclusiveMinimum}`);
+      if (typeof prop.exclusiveMaximum === 'number' && num >= prop.exclusiveMaximum) errors.push(`${key}: must be < ${prop.exclusiveMaximum}`);
+    }
+    if (typeof v === 'string' && types.includes('string')) {
+      if (typeof prop.maxLength === 'number' && v.length > prop.maxLength) errors.push(`${key}: must be at most ${prop.maxLength} characters`);
+      if (typeof prop.minLength === 'number' && v.length < prop.minLength) errors.push(`${key}: must be at least ${prop.minLength} characters`);
+    }
+    if (Array.isArray(v) && typeof prop.maxItems === 'number' && v.length > prop.maxItems) errors.push(`${key}: must have at most ${prop.maxItems} items`);
+  }
+  // A schema that forbids additional properties is honoured: undeclared keys are rejected
+  // (otherwise a model/hook could smuggle parameters the tool never advertised).
+  if (schema.additionalProperties === false) {
+    const declared = new Set(Object.keys(schema.properties ?? {}));
+    const extra = Object.keys(input).filter((k) => !declared.has(k));
+    if (extra.length) errors.push(`unknown argument(s): ${extra.join(', ')}`);
   }
   return errors;
 }

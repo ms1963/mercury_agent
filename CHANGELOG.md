@@ -16,10 +16,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - WhatsApp/Facebook webhooks fail closed without `appSecret` (`allowUnsigned` for local testing); webchat requires long random visitor ids.
 - HTTP hardening: CSP/XFO/nosniff headers, `no-store` for API/metrics/webhooks, attachments served as downloads unless inert media, generic 5xx bodies, `/health` reports the real version, `/metrics` gated (`observability.metricsToken`, loopback or admin).
 - Proactive actions are tainted; reserved `__name__` schedules; auto playbooks are per user; automatic skill creation/refinement only for admin runs; spawner limits can only be tightened; MCP `readOnlyHint` honoured only for trusted servers; safe git sources for skill installs; add-in paths resolved with realpath; random local admin password; keyed (HMAC) audit chain (`audit.key`); budget rules for user `system` cap auxiliary calls.
+- Auxiliary (system-principal) LLM calls made inside a user's agent/team run are checked against and charged to that user's budget; approval-gate decisions stay exempt.
+- JSON-schema tools enforce `additionalProperties: false`, numeric bounds, string length and `maxItems` (also after hook rewrites).
+- Tools that ignore cancellation are tracked as runaway (`tool.runaway` event + audit); new calls are refused while 2 are still running.
 - Deployment: systemd unit sandboxing, nginx no longer adds a shared-cache directive, docker-compose binds 127.0.0.1.
+
+### Changed (tooling)
+- `npm run typecheck` / `npm run lint` now also type-check the test suite (`tsconfig.tests.json`); 20 latent type errors in existing tests fixed.
 
 ### Changed (behaviour)
 - Non-admin `terminal`/`process_start`/`execute_code` calls now need an admin's approval (set `tools.hostAccess.nonAdmin: allow` for the previous behaviour).
+- Auxiliary usage triggered by a user's run now appears under that user (kind `auxiliary`) instead of `system`.
 - `POST /api/schedules` without `when`/`task` returns 400 instead of 500.
 
 ## [1.4.0] - 2026-11-22

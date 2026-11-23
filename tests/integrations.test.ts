@@ -121,7 +121,7 @@ describe('with a Mercury instance', () => {
     // Through the gateway: voice memo → transcript → agent turn.
     ctx.m.users.linkIdentity('tg', '99', admin.userId);
     const sent: string[] = [];
-    await ctx.m.gateway.add('tg', { type: 'telegram' }, { name: 'tg', type: 'telegram', textOnly: false, start: async () => undefined, stop: async () => undefined, status: () => ({ connected: true }), send: async (o) => void sent.push(o.text) } as never);
+    await ctx.m.gateway.add('tg', { type: 'telegram' }, { name: 'tg', type: 'telegram', textOnly: false, start: async () => undefined, stop: async () => undefined, status: () => ({ connected: true }), send: async (o: { text: string }) => void sent.push(o.text) } as never);
     await ctx.m.gateway.onInbound({ ...inbound[0]!, platform: 'tg', attachments: [{ name: 'v.ogg', mime: 'audio/ogg', data: Buffer.from('x'), voice: true }] });
     expect(sent.join('\n')).toContain('[voice memo]');
   });
@@ -173,7 +173,7 @@ describe('with a Mercury instance', () => {
     const cfg = { token: 'litok', authorUrn: 'urn:li:person:abc', apiBase: 'http://li.test' };
     const li = new LinkedInAdapter('linkedin', cfg, { transport, logger: createLogger('error') });
     await li.start(async () => undefined);
-    expect(li.handleWebhook).toBeUndefined();
+    expect((li as { handleWebhook?: unknown }).handleWebhook).toBeUndefined();
     await li.send({ chatId: '', text: 'posted from mercury' });
     const post = transport.last('/ugcPosts')!;
     expect(JSON.parse(post.body!)).toMatchObject({ author: 'urn:li:person:abc', specificContent: { 'com.linkedin.ugc.ShareContent': { shareCommentary: { text: 'posted from mercury' } } } });

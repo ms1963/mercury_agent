@@ -133,9 +133,20 @@ backward-compatible — new keys default to safe values).
   (`NoNewPrivileges`, `ProtectSystem=strict`, `PrivateTmp`, write access only to `~/.mercury` and
   the project dir). Note: `execute_code` always runs on the host, even with the docker backend.
 - **Budgets**: per-user/model token and cost limits (`budgets.rules`) stop runaway loops. Auxiliary
-  calls made as the system principal (wiki, team synthesis, critic, classifiers, MCP sampling) are
-  charged to user `system` and are not covered by user or `*` rules; add a rule with
-  `user: system` to cap them.
+  calls made as the system principal (wiki, team synthesis, critic, classifiers, MCP sampling)
+  *inside a user's agent run or team run* are checked against and charged to that user's budget
+  (the user's own and `*` rules). Approval-gate decisions (`kind: decision`) are exempt so a spent
+  budget never disables the gate. Background auxiliary calls with no user context are charged to
+  user `system`; add a rule with `user: system` to cap them (it also caps decisions).
+- **Tool arguments**: tools with a zod schema are parsed by it (unknown keys stripped). Tools that
+  only declare a JSON schema (custom/MCP tools) get required-key, top-level type/enum checks,
+  `minimum`/`maximum`/`exclusive*`, `minLength`/`maxLength`, `maxItems`, and — when the schema says
+  `additionalProperties: false` — rejection of undeclared keys. The same checks run again on
+  arguments rewritten by a `before_tool_call` hook.
+- **Tool timeouts**: on timeout/stop the tool's `AbortSignal` fires; built-in tools honour it. A
+  custom tool that ignores it cannot be force-killed in-process: the execution is reported as
+  `tool.runaway` (event + audit entry) and, while 2 such executions of the same tool are still
+  running, further calls to it are refused until they finish.
 - **Self-improvement**: automatic skill creation/refinement from reflections only happens for runs
   of admins; auto-derived failure playbooks quote a user's output and are shown only to that user.
   Proactive actions built from event text are marked as untrusted (tainted) and receive the event

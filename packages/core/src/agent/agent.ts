@@ -37,6 +37,7 @@ import type { Personalities } from './personalities.js';
 import { buildSystemPrompt } from './prompt.js';
 import { expandReferences } from './references.js';
 import { RunState, type RunUsage } from './run-state.js';
+import { withBudgetOwner } from '../budgets/attribution.js';
 
 export interface AgentDeps {
   config: MercuryConfig;
@@ -143,6 +144,11 @@ export class Agent {
   }
 
   async run(opts: RunOptions): Promise<RunResult> {
+    // Auxiliary LLM calls made during this run (summaries, wiki/team synthesis, ...) are charged to its user.
+    return withBudgetOwner(opts.principal, () => this.runAsOwner(opts));
+  }
+
+  private async runAsOwner(opts: RunOptions): Promise<RunResult> {
     const d = this.deps;
     const runId = newId('run');
     const platform = opts.platform ?? 'cli';

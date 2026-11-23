@@ -19,6 +19,7 @@ import type { EventBus } from '../events/bus.js';
 import type { Blackboard } from '../memory/blackboard.js';
 import type { AuditLog } from '../security/audit.js';
 import { MercuryError, newId, nowIso, type Principal } from '../types/common.js';
+import { withBudgetOwner } from '../budgets/attribution.js';
 import type {
   NewTeam,
   TeamDefinition,
@@ -107,6 +108,11 @@ export class TeamsService {
 
   /** Run a team on a task. Returns the persisted run record (never throws for a member failure). */
   async run(principal: Principal, idOrName: string, task: string, opts: TeamRunOptions = {}): Promise<TeamRunRecord> {
+    // The coordinator/judge synthesis runs as the system principal; charge it to the caller's budget.
+    return withBudgetOwner(principal, () => this.runAsOwner(principal, idOrName, task, opts));
+  }
+
+  private async runAsOwner(principal: Principal, idOrName: string, task: string, opts: TeamRunOptions): Promise<TeamRunRecord> {
     this.ensureEnabled();
     if (this.opts.policy) this.opts.policy.assert(principal, 'teams.run');
     if (this.config.teams.requireApproval && !opts.approve) {

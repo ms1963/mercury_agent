@@ -24,7 +24,7 @@ const replayCfg = (o: Record<string, unknown> = {}) => ({
 
 /** Drive a run that makes two real calculator tool calls, so the trace has a few ordered steps. */
 async function twoToolRun(m: Awaited<ReturnType<typeof makeMercury>>['m'], p: Principal, input: string, exprs: [string, string]) {
-  const mock = m.providers.get('mock') as { enqueue: (...r: unknown[]) => void };
+  const mock = m.providers.get('mock') as unknown as { enqueue: (...r: unknown[]) => void };
   mock.enqueue(
     { toolCalls: [{ id: newId('call'), name: 'calculator', arguments: { expression: exprs[0] } }] },
     { toolCalls: [{ id: newId('call'), name: 'calculator', arguments: { expression: exprs[1] } }] },
@@ -99,7 +99,7 @@ describe('run replay — fork / time-travel from a step', () => {
     const fromStep = Math.max(1, Math.floor(parentTrace.steps.length / 2));
 
     // The fork re-runs the agent from fromStep; enqueue its (deterministic) downstream turn.
-    const mock = m.providers.get('mock') as { enqueue: (...r: unknown[]) => void };
+    const mock = m.providers.get('mock') as unknown as { enqueue: (...r: unknown[]) => void };
     mock.enqueue({ content: 'Recomputed with the edited input.' });
 
     const res = await m.traces.replayFrom(parentRunId, { fromStep, edits: { input: 'Add the yearly figures instead' }, userId: p.userId });
@@ -130,7 +130,7 @@ describe('run replay — fork / time-travel from a step', () => {
 
     // Fork: the recomputed downstream tries a side-effecting (moderate) write_file call.
     const target = join(ctx.dir, 'should-not-be-written.txt');
-    const mock = m.providers.get('mock') as { enqueue: (...r: unknown[]) => void };
+    const mock = m.providers.get('mock') as unknown as { enqueue: (...r: unknown[]) => void };
     mock.enqueue(
       { toolCalls: [{ id: newId('call'), name: 'write_file', arguments: { path: target, content: 'governed out' } }] },
       { content: 'Finished (write was denied).' },

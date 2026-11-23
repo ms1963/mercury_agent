@@ -19,6 +19,7 @@ export * from './auth/pairing.js';
 export * from './auth/policy.js';
 export * from './auth/users.js';
 export * from './budgets/budgets.js';
+export * from './budgets/attribution.js';
 export * from './budgets/task-budgets.js';
 export * from './checkpoints/checkpoints.js';
 export * from './config/load.js';

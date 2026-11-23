@@ -13,7 +13,7 @@
 import { createServer, type Server } from 'node:http';
 import { type AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { type Principal } from '@mercury/core';
+import { type Principal, type ToolResult } from '@mercury/core';
 import { directToolContext } from '@mercury/runtime';
 import { extractMainContent, renderPage } from '@mercury/tools';
 import { makeMercury } from './helpers.js';
@@ -84,7 +84,7 @@ describe('web_read tool backend selection', () => {
 
   it('uses the HTTP backend by default (render defaults to false)', async () => {
     const tctx = directToolContext(ctx.m, p, 'cli');
-    const out = await webRead().execute({ url: `${base}/page` }, tctx);
+    const out = (await webRead().execute({ url: `${base}/page` }, tctx)) as ToolResult;
     expect(out.data).toMatchObject({ backend: 'http', status: 200 });
     expect(out.content).toContain('HTTP 200');
     expect(out.content).toContain('distinctive main article body');
@@ -92,7 +92,7 @@ describe('web_read tool backend selection', () => {
 
   it('uses the headless-browser backend when render=true, via the same extractor', async () => {
     const tctx = directToolContext(ctx.m, p, 'cli');
-    const out = await webRead().execute({ url: `${base}/page`, render: true }, tctx);
+    const out = (await webRead().execute({ url: `${base}/page`, render: true }, tctx)) as ToolResult;
     expect((out.data as { backend: string }).backend).toBe('fetch');
     expect(out.content).toContain('rendered via fetch');
     expect(out.content).toContain('distinctive main article body');
@@ -101,7 +101,7 @@ describe('web_read tool backend selection', () => {
 
   it('can include page links from the rendered DOM', async () => {
     const tctx = directToolContext(ctx.m, p, 'cli');
-    const out = await webRead().execute({ url: `${base}/page`, render: true, include_links: true }, tctx);
+    const out = (await webRead().execute({ url: `${base}/page`, render: true, include_links: true }, tctx)) as ToolResult;
     expect(out.content).toContain('distinctive main article body');
   });
 
@@ -111,7 +111,7 @@ describe('web_read tool backend selection', () => {
       const rp = await renderCtx.m.localPrincipal();
       const tctx = directToolContext(renderCtx.m, rp, 'cli');
       const tool = renderCtx.m.tools.list().find((x) => x.name === 'web_read')!;
-      const out = await tool.execute({ url: `${base}/page` }, tctx);
+      const out = (await tool.execute({ url: `${base}/page` }, tctx)) as ToolResult;
       expect((out.data as { backend: string }).backend).toBe('fetch');
       expect(out.content).toContain('rendered via fetch');
     } finally {

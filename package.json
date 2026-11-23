@@ -26,8 +26,8 @@
     "clean": "tsc -b --clean packages/cli packages/server",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint . && tsc -b packages/cli packages/server --noEmit false",
-    "typecheck": "tsc -b packages/cli packages/server",
+    "lint": "eslint . && tsc -b packages/cli packages/server --noEmit false && tsc -p tsconfig.tests.json",
+    "typecheck": "tsc -b packages/cli packages/server && tsc -p tsconfig.tests.json",
     "dev": "tsc -b packages/cli packages/server && node packages/cli/dist/bin.js serve",
     "start": "node packages/cli/dist/bin.js serve",
     "mercury": "node packages/cli/dist/bin.js"

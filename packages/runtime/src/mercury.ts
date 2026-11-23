@@ -153,7 +153,7 @@ function decisionProviders(config: MercuryConfig, llm: LLMService, hasRealLlm: b
   const d = config.decision;
   const jev = new JevDecisionProvider({ apiKey: process.env[d.jev.apiKeyEnv], model: d.jev.model, baseUrl: d.jev.baseUrl, timeoutMs: d.jev.timeoutMs });
   const llmProv = new LlmDecisionProvider(async (messages) => {
-    const r = await llm.complete(SYSTEM_PRINCIPAL, messages, { model: d.llmModel, responseFormat: 'json', budgetOverride: true });
+    const r = await llm.complete(SYSTEM_PRINCIPAL, messages, { model: d.llmModel, responseFormat: 'json', budgetOverride: true, kind: 'decision' });
     return { content: r.content, model: r.modelId };
   });
   // The mock decision provider is a test-only fallback (enabled via MERCURY_ENABLE_MOCK,
