@@ -4,7 +4,7 @@
  * web_read tool, and the deeper planner-executor workflow. Fully offline/deterministic.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { LearningService, ModelRouter, routeBucket, safeFetch, type Principal } from '@mercury/core';
+import { safeFetch, type Principal } from '@mercury/core';
 import { directToolContext } from '@mercury/runtime';
 import { extractMainContent } from '@mercury/tools';
 import { mcpPreset, mcpPresets, resolvePreset } from '@mercury/mcp';

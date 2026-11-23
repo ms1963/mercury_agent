@@ -10,7 +10,7 @@
  *   - governance (protected keys) and the per-task budget ceiling are enforced during tuning,
  *   - an accepted tune is versioned and reversible (config restored on revert).
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   ConfigSchema,
   Db,

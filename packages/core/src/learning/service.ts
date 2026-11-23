@@ -221,7 +221,7 @@ export class LearningService implements RouteLearner {
    * When a run succeeds, look for a recently-failed playbook whose task is similar; if found and
    * it has no remediation yet, record what worked (pattern + output excerpt) as its remediation.
    */
-  private recordRemediationFromSuccess(userId: string | null, task: string, output: string, pattern: string | null, startedAt: string): void {
+  private recordRemediationFromSuccess(userId: string | null, task: string, output: string, pattern: string | null, _startedAt: string): void {
     const open = this.db.all<Playbook & { task_sample: string | null; error_sample: string | null }>(
       'SELECT * FROM learning_playbooks WHERE remediation IS NULL AND task_sample IS NOT NULL ORDER BY updated_at DESC LIMIT 50',
     );

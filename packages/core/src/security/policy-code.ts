@@ -145,7 +145,7 @@ export class PolicyCodeEngine {
   }
 
   /** Whether a rule's condition matches the call. Returns a human reason or null. */
-  private triggered(rule: PolicyRule, args: Record<string, unknown>, ctx: PolicyContext): string | null {
+  private triggered(rule: PolicyRule, args: Record<string, unknown>, _ctx: PolicyContext): string | null {
     // whenTainted with no other condition: the taint itself is the trigger.
     const hasAmount = rule.maxAmountField !== undefined && rule.maxAmount !== undefined;
     const hasField = rule.field !== undefined;

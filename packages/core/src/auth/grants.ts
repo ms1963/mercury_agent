@@ -158,7 +158,7 @@ export class GrantBroker {
   }
 
   /** Revoke every grant for a task (e.g. when the task ends). Returns the count revoked. */
-  revokeTask(taskId: string, by = 'system'): number {
+  revokeTask(taskId: string, _by = 'system'): number {
     let n = 0;
     for (const g of this.grants.values()) {
       if (g.taskId === taskId && !g.revoked) {

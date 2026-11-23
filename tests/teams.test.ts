@@ -46,7 +46,7 @@ describe('teams orchestration', () => {
   });
 
   it('enforces a per-run budget ceiling', async () => {
-    const { service } = svc(async (i) => ({ output: 'x', cost: 10, status: 'completed' }));
+    const { service } = svc(async (_i) => ({ output: 'x', cost: 10, status: 'completed' }));
     service.define(SYSTEM_PRINCIPAL, { name: 'squad', strategy: 'pipeline', members: [{ name: 'a' }, { name: 'b' }, { name: 'c' }] });
     const rec = await service.run(SYSTEM_PRINCIPAL, 'squad', 'go', { budget: 12 });
     expect(rec.cost).toBeLessThanOrEqual(20);
@@ -54,7 +54,7 @@ describe('teams orchestration', () => {
   });
 
   it('refuses to run when teams are disabled', async () => {
-    const { service } = svc(okDelegate, {});
+    const { service: _service } = svc(okDelegate, {});
     const dbConfig = ConfigSchema.parse({ teams: { enabled: false } });
     const db = new Db(':memory:');
     const s2 = new TeamsService(new SqliteTeamStore(db), dbConfig, { delegate: okDelegate });
