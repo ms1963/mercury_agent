@@ -44,12 +44,22 @@ export class ProviderRegistry {
     // The offline mock exists solely for the test suite and is enabled only when
     // MERCURY_ENABLE_MOCK=1 is set (see vitest.config.ts).
     if (process.env.MERCURY_ENABLE_MOCK === '1') this.register(new MockProvider());
+    // Capability overrides so a provider's own wire-format builder (e.g. image_url parts
+    // in OpenAICompatibleProvider.toWire) sees the SAME capabilities the registry/router
+    // use — i.e. the model profile's flags, not just a guess from the model name. Without
+    // this, auto-routed ids like "chatllm/route-llm" (vision via profile, but no vision
+    // keyword in the name) get their images silently dropped by the provider. Read lazily
+    // so profiles populated later in this constructor are visible at call time.
+    const overridesFor = (id: string) => (model: string): Partial<ModelCapabilities> | undefined => {
+      const prof = this.profiles.get(`${id}/${model}`);
+      return prof ? { tools: prof.tools, vision: prof.vision, audio: prof.audio, contextWindow: prof.contextWindow } : undefined;
+    };
     // Auto-enable cloud providers whose API key is present in the environment.
     for (const [id, env] of Object.entries(ENV_KEYS)) {
-      if (process.env[env] && !config.llm.providers[id]) this.register(createProvider(id, { type: id, enabled: true }, config.llm.timeoutMs));
+      if (process.env[env] && !config.llm.providers[id]) this.register(createProvider(id, { type: id, enabled: true }, config.llm.timeoutMs, overridesFor(id)));
     }
     for (const [id, pc] of Object.entries(config.llm.providers)) {
-      if (pc.enabled) this.register(createProvider(id, pc, config.llm.timeoutMs));
+      if (pc.enabled) this.register(createProvider(id, pc, config.llm.timeoutMs, overridesFor(id)));
     }
     for (const p of BUILTIN_PROFILES) {
       const provider = p.id.split('/')[0]!;
@@ -120,7 +130,12 @@ export function normalizeProfile(p: Partial<ModelProfile> & { id: string }): Mod
   };
 }
 
-export function createProvider(id: string, pc: ProviderConfig, timeoutMs: number): LLMProvider {
+export function createProvider(
+  id: string,
+  pc: ProviderConfig,
+  timeoutMs: number,
+  capabilityOverrides?: (model: string) => Partial<ModelCapabilities> | undefined,
+): LLMProvider {
   const apiKey =
     pc.apiKey ??
     (pc.apiKeyEnv ? process.env[pc.apiKeyEnv] : undefined) ??
@@ -138,7 +153,7 @@ export function createProvider(id: string, pc: ProviderConfig, timeoutMs: number
     case 'openai-compatible': {
       const baseUrl = pc.baseUrl ?? DEFAULT_BASE_URLS[pc.type];
       if (!baseUrl) throw new MercuryError(`Provider "${id}" needs a baseUrl`, 'config_invalid', 'models');
-      return new OpenAICompatibleProvider({ id, type: pc.type, baseUrl, apiKey, headers: pc.headers, timeoutMs });
+      return new OpenAICompatibleProvider({ id, type: pc.type, baseUrl, apiKey, headers: pc.headers, timeoutMs, capabilityOverrides });
     }
     default:
       throw new MercuryError(`Unknown provider type "${pc.type}" for "${id}"`, 'config_invalid', 'models');
