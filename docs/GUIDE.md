@@ -135,7 +135,7 @@ npm run build        # tsc project references → each package's dist/
 via TypeScript project references. After it finishes you can run the binary directly:
 
 ```bash
-node packages/cli/dist/bin.js version      # → "mercury 1.5.0"
+node packages/cli/dist/bin.js version      # → "mercury 1.8.1"
 node packages/cli/dist/bin.js doctor       # environment check (see Appendix E)
 ```
 
@@ -1577,11 +1577,11 @@ variables < CLI flags (see Appendix B), and `MERCURY_HOME` overrides the data di
 | `doctor` | Environment / configuration health check (see Appendix E). | — |
 | `update` | Self-update the installation. | — |
 | `help [topic]` | Show help; with a topic, prints the matching help doc. | — |
-| `version`, `-v` | Print the version (prints `mercury 1.5.0`). | — |
+| `version`, `-v` | Print the version (prints `mercury 1.8.1`). | — |
 
-> **Version note.** This guide documents the **1.5.0** release (the root `package.json` is `1.5.0`).
+> **Version note.** This guide documents the **1.8.1** release (the root `package.json` is `1.8.1`).
 > `mercury version` in `packages/cli/src/bin.ts` resolves its string dynamically from the CLI
-> package.json, so it reports `mercury 1.5.0` and tracks the release automatically.
+> package.json, so it reports `mercury 1.8.1` and tracks the release automatically.
 
 > Honest-status note: `import-agent`, `update`, and `install.sh` have been exercised only against the
 > offline/mock setup in this repository; they have not been validated against a real Hermes install, a
