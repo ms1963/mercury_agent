@@ -41,8 +41,11 @@ Usage: mercury <command> [options]
                             Swap the STT/TTS stack in one step (openai, speaches,
                             whisper, openedai, kokoro, piper, edge-tts)
   gateway [status|start|pending|pair <CODE>]
-  mcp [status|serve|presets|enable <preset> [--name n] [--connect]]
-                            MCP connections, serve Mercury over MCP stdio, or enable a curated preset
+  mcp [status|serve|presets|enable <preset> [--name n] [--connect]|disable <server>]
+                            MCP connections & optional integrations. 'presets' lists all curated
+                            connectors (Slack, Notion, Postgres, Playwright, …) with provenance,
+                            required env vars and on/off state; all are DISABLED by default.
+                            'enable <preset>' turns one on, 'disable <server>' turns it off.
   user [list|add|passwd|role|delete]
   token [list|create <name> --scopes chat,mcp|revoke <id>]
   audit [list|verify] [--actor id] [--action token] [--since ISO] [--limit n] [--json]

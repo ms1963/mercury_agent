@@ -868,20 +868,25 @@ mercury config set mcp.servers.fs '{"transport":"stdio","command":"npx","args":[
 ```
 
 **Curated presets — the shortcut for well-known servers (1.1.1).** Rather than hand-write the config for
-a common connector, enable a shipped preset. The presets are `filesystem`, `fetch`, `github`, `git` and
-`sqlite`; all are registered `untrusted` (their output stays subject to spotlighting/policy/approval) and
-none embed secrets — they reference `${ENV_VAR}` placeholders (`MCP_FS_ROOT`, `GITHUB_TOKEN`,
-`MCP_GIT_REPO`, `MCP_SQLITE_DB`; `fetch` needs none) resolved from the environment at connect time.
+a common connector, enable a shipped preset. The core presets are `filesystem`, `fetch`, `github`, `git`
+and `sqlite`, and **v1.8.0 adds 14 optional integrations** (Google Calendar, CalDAV, Slack, Playwright,
+Puppeteer, Brave Search, Tavily, Redis, PostgreSQL, Discord, Microsoft Teams, Notion, Confluence,
+Obsidian). **Every preset is disabled by default** — enabling is always an explicit action. All are
+registered `untrusted` (their output stays subject to spotlighting/policy/approval) and none embed
+secrets — they reference `${ENV_VAR}` placeholders resolved from the environment at connect time (put
+them in `~/.mercury/.env`). Each preset records its honest provenance (`official` / `official-archived`
+/ `community`) and the exact npm package it invokes; every package was verified with `npm view`.
 
 ```bash
-mercury mcp presets                 # list presets and the env vars each one needs
-mercury mcp status                  # configured servers + whether each is connected (default sub-command)
+mercury mcp presets                 # list presets with provenance, package, env vars and on/off state
+mercury mcp status                  # connected servers + which configured servers are enabled
 mercury mcp enable github --name gh # write the preset into mcp.servers (optionally under a custom name)
-mercury mcp enable github --connect # enable and connect immediately
+mercury mcp enable slack --connect  # enable and connect immediately
+mercury mcp disable slack           # set enabled: false and disconnect (config retained)
 ```
 
 `mercury mcp enable` reports any required variables that are unset so you can export them before
-connecting. See the [`mcp` help](help/mcp.md).
+connecting. See the [`mcp` help](help/mcp.md) and the [`integrations` help](help/integrations.md).
 
 **Check it worked and use the tools:**
 
@@ -1556,7 +1561,7 @@ variables < CLI flags (see Appendix B), and `MERCURY_HOME` overrides the data di
 | `learn` | Inspect learning from runs (experience hints, auto-tuned routing, failure playbooks). | `stats [bucket]`, `hints <task...>`, `playbooks`; `--json`, `--limit <n>` |
 | `config` | Inspect and edit configuration. | `path`, `get <key>`, `set <key> <value>` |
 | `gateway` | Manage the messaging gateway and device pairing. | `status`, `start`, `pending`, `pair <CODE>` |
-| `mcp` | MCP client/server helpers and curated presets. | `status` (default), `presets`, `enable <preset>` (`--name <n>`, `--connect`), `list`, `serve` |
+| `mcp` | MCP client/server helpers and curated presets (incl. 14 optional integrations). | `status` (default), `presets` (`--json`), `enable <preset>` (`--name <n>`, `--connect`), `disable <server>`, `list`, `serve` |
 | `user` | User administration (admin only). | `list`, `add`, `passwd`, `role`, `delete` |
 | `token` | Manage API tokens. | `list`, `create <name> --scopes <...>`, `revoke <id>` |
 | `audit` | Read and verify the hash-chained audit log (admin). | `list` (filters: `--actor <id>`, `--action <name\|prefix>`, `--target <t>`, `--since <ISO>`, `--until <ISO>`, `--limit <n>`, `--offset <n>`, `--json`), `verify` |

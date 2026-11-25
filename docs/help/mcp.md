@@ -8,15 +8,19 @@ Mercury is both an MCP **client** and **server**.
 
 ## Curated presets
 
-Mercury ships curated connector presets so you don't have to remember command lines:
-`filesystem`, `fetch`, `github`, `git`, `sqlite`. List and inspect them:
+Mercury ships curated connector presets so you don't have to remember command lines. The core
+presets are `filesystem`, `fetch`, `github`, `git`, `sqlite`, and v1.8.0 adds **14 optional
+integrations** — see the dedicated `integrations` help topic. Manage them with:
 
-- `mercury mcp presets` — list the presets and the env vars each one needs.
-- `mercury mcp status` — show configured servers and whether they are connected.
-- `mercury mcp enable <preset> [--name myname]` — add a preset to `mcp.servers` in config.
+- `mercury mcp presets` — list every preset with its provenance, required env vars and on/off state.
+- `mercury mcp status` — show connected servers plus which configured servers are enabled.
+- `mercury mcp enable <preset> [--name myname] [--connect]` — write a preset into `mcp.servers`
+  and mark it **enabled**.
+- `mercury mcp disable <server>` — set `enabled: false` and disconnect (the config is retained).
 
-Presets never embed secrets. They reference placeholders like `${GITHUB_TOKEN}`,
-`${MCP_FS_ROOT}`, `${MCP_GIT_REPO}` and `${MCP_SQLITE_DB}`, which are resolved from the
-environment at connect time. `mercury mcp enable` reports any required variables that are
-unset so you can export them before connecting. All preset servers are registered as
-`untrusted` — their tool output is treated as untrusted and stays subject to policy/approval.
+Every preset is **disabled by default** — enabling is always an explicit action, and `connectAll`
+skips any server whose `enabled` is false. Presets never embed secrets. They reference placeholders
+like `${GITHUB_TOKEN}`, `${SLACK_BOT_TOKEN}` or `${POSTGRES_URL}`, which are resolved from the
+environment at connect time; put them in `~/.mercury/.env`. `mercury mcp enable` reports any required
+variables that are unset. All preset servers are registered as `untrusted` — their tool output is
+treated as untrusted and stays subject to policy/approval.

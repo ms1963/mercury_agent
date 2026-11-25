@@ -5,7 +5,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { getPath, installSkills, mercuryHome, resolveVoicePreset, runEvalSuite, scaffold, scaffoldAddin, selectEvals, setConfigValue, voicePresets, type EvalObservation, type ExtensionKind, type VoiceKind } from '@mercury/core';
 import type { Mercury } from '@mercury/runtime';
-import { mcpPreset, mcpPresets, resolvePreset } from '@mercury/mcp';
+import { enablePresetConfig, mcpPreset, mcpPresets } from '@mercury/mcp';
 import { flag, type Args } from './args.js';
 
 const out = (v: unknown, json?: boolean) => console.log(json || typeof v !== 'string' ? JSON.stringify(v, null, 2) : v);
@@ -473,31 +473,69 @@ export async function learnCmd(m: Mercury, a: Args): Promise<void> {
 }
 
 /**
- * MCP management incl. curated connector presets.
- *   mercury mcp status                  connected servers + tool counts (default)
- *   mercury mcp presets                 list curated presets and the env vars they need
- *   mercury mcp enable <preset> [--name n] [--connect]   write a preset into mcp.servers
+ * MCP management incl. curated connector presets and the 14 optional integrations.
+ *   mercury mcp status                                   connected + configured servers (default)
+ *   mercury mcp presets [--json]                         list all presets with provenance/env/state
+ *   mercury mcp enable <preset> [--name n] [--connect]   write a preset into mcp.servers (enabled=true)
+ *   mercury mcp disable <serverName>                      set enabled=false + disconnect (config kept)
+ *
+ * Every preset is DISABLED by default: `enable` is the only thing that writes `enabled: true`, and
+ * `connectAll` skips any server whose `enabled` is false. Secrets are NEVER entered here — they live
+ * in ~/.mercury/.env; the preset only records which env vars it needs.
  */
 export async function mcpCmd(m: Mercury, a: Args): Promise<void> {
   const sub = a._[1] ?? 'status';
+  const configured = m.config.mcp.servers;
   if (sub === 'presets') {
-    if (flag(a, 'json')) return out(mcpPresets(), true);
-    return out(mcpPresets().map((p) => `${p.name.padEnd(12)} ${p.description}\n    env: ${p.requiredEnv.join(', ') || '(none)'}  — ${p.notes}`).join('\n'));
+    if (flag(a, 'json')) {
+      return out(mcpPresets().map((p) => ({
+        name: p.name, description: p.description, provenance: p.provenance, pkg: p.pkg, requiredEnv: p.requiredEnv, notes: p.notes,
+        configured: !!configured[p.name], enabled: configured[p.name]?.enabled ?? false,
+      })), true);
+    }
+    return out(mcpPresets().map((p) => {
+      const st = configured[p.name];
+      const state = st ? (st.enabled ? 'ENABLED' : 'disabled') : '—';
+      return `${p.name.padEnd(16)} [${p.provenance.padEnd(17)}] ${state.padEnd(8)} ${p.description}\n    pkg: ${p.pkg}\n    env: ${p.requiredEnv.join(', ') || '(none)'} — ${p.notes}`;
+    }).join('\n'));
   }
   if (sub === 'enable') {
     const presetName = need(a._[2], 'mercury mcp enable <preset> [--name <serverName>] [--connect]');
+    const serverName = flag(a, 'name') || presetName;
     const preset = mcpPreset(presetName);
-    if (!preset) throw new Error(`Unknown preset "${presetName}". Available: ${mcpPresets().map((p) => p.name).join(', ')}`);
-    const resolved = resolvePreset(preset);
-    const serverName = flag(a, 'name') || preset.name;
-    setConfigValue(`mcp.servers.${serverName}`, resolved.config, m.configFile);
-    const lines = [`Enabled MCP preset "${preset.name}" as server "${serverName}" (saved to config).`];
-    if (resolved.missingEnv.length) lines.push(`⚠ Set these env vars before use (placeholders left in config): ${resolved.missingEnv.join(', ')}`);
-    if (flag(a, 'connect') && !resolved.missingEnv.length) {
-      const status = await m.mcp.connect(serverName, resolved.config);
+    let config: import('@mercury/core').McpServerConfig;
+    let missingEnv: string[] = [];
+    if (preset) {
+      const resolved = enablePresetConfig(preset);
+      config = resolved.config;
+      missingEnv = resolved.missingEnv;
+    } else if (configured[presetName]) {
+      // Re-enable an existing (user-defined, non-preset) server that was previously disabled.
+      config = { ...configured[presetName], enabled: true };
+    } else {
+      throw new Error(`Unknown preset "${presetName}". Available: ${mcpPresets().map((p) => p.name).join(', ')}`);
+    }
+    setConfigValue(`mcp.servers.${serverName}`, config, m.configFile);
+    const lines = [`Enabled MCP server "${serverName}"${preset ? ` from preset "${preset.name}"` : ''} (saved to config, enabled=true).`];
+    if (missingEnv.length) lines.push(`⚠ Set these env vars in ~/.mercury/.env before use (placeholders left in config): ${missingEnv.join(', ')}`);
+    if (flag(a, 'connect') && !missingEnv.length) {
+      const status = await m.mcp.connect(serverName, config);
       lines.push(status.connected ? `Connected: ${status.tools.length} tool(s)` : `Connection failed: ${status.error ?? 'unknown error'}`);
     }
     return out(lines.join('\n'));
+  }
+  if (sub === 'disable') {
+    const serverName = need(a._[2], 'mercury mcp disable <serverName>');
+    if (!configured[serverName]) throw new Error(`No MCP server "${serverName}" in config. Configured: ${Object.keys(configured).join(', ') || '(none)'}`);
+    setConfigValue(`mcp.servers.${serverName}.enabled`, false, m.configFile);
+    await m.mcp.disconnect(serverName).catch(() => undefined);
+    return out(`Disabled MCP server "${serverName}" (enabled=false, disconnected). Its config is retained — re-enable with: mercury mcp enable ${serverName}`);
+  }
+  if (sub === 'status') {
+    return out({
+      connected: m.mcp.status(),
+      configured: Object.fromEntries(Object.entries(configured).map(([n, c]) => [n, { enabled: c.enabled, transport: c.transport }])),
+    }, true);
   }
   return out(m.mcp.status(), true);
 }

@@ -67,3 +67,28 @@ decision:
 
 budgets:
   enabled: true            # per-user / per-model token & cost caps
+
+# ---------------------------------------------------------------------------
+# MCP (Model Context Protocol) servers — OPTIONAL.
+# Mercury ships curated presets: the core 5 (filesystem, fetch, github, git,
+# sqlite) plus 14 optional integrations added in v1.8.0. Every preset is
+# DISABLED by default. Discover them with `mercury mcp presets` and turn one on
+# with `mercury mcp enable <name>` (or the Web UI "Integrations" panel), which
+# writes the resolved server config below with enabled: true. Secrets are never
+# stored here — put ${ENV_VAR} values in ~/.mercury/.env. See `mercury help integrations`.
+# ---------------------------------------------------------------------------
+# mcp:
+#   servers:
+#     # Written by `mercury mcp enable slack` once SLACK_BOT_TOKEN/SLACK_TEAM_ID are set:
+#     slack:
+#       transport: stdio
+#       command: npx
+#       args: ['-y', '@modelcontextprotocol/server-slack']
+#       env:
+#         SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN}
+#         SLACK_TEAM_ID: ${SLACK_TEAM_ID}
+#       trust: untrusted      # preset default — tool output treated as untrusted
+#       enabled: true         # only enabled servers are connected by connectAll
+#     # 14 optional integrations available as presets (all off until enabled):
+#     #   google-calendar, caldav, slack, playwright, puppeteer, brave-search,
+#     #   tavily, redis, postgres, discord, teams, notion, confluence, obsidian

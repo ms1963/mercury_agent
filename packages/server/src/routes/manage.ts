@@ -6,6 +6,7 @@
 import type { FastifyInstance } from 'fastify';
 import { installSkills, insights, redactDeep, setConfigValue, buildTrace, type MercuryEvent } from '@mercury/core';
 import { directToolContext } from '@mercury/runtime';
+import { enablePresetConfig, mcpPreset, mcpPresets } from '@mercury/mcp';
 import { HttpError, publicError, type Ctx } from '../http.js';
 
 type Body = Record<string, unknown>;
@@ -52,6 +53,44 @@ export function registerManageRoutes(app: FastifyInstance, { m, auth, sse }: Ctx
     return m.mcp.connect(String(b.name), b.config as never);
   });
   app.delete('/api/mcp/:name', async (req) => (auth(req, 'tools.manage'), await m.mcp.disconnect(param(req, 'name')), { ok: true }));
+
+  // ---- optional MCP integrations (curated presets, off by default) ----------
+  // Secrets are NOT entered here — they live in ~/.mercury/.env; the UI only toggles enablement and
+  // shows which env vars each preset needs. A restart applies new env values.
+  app.get('/api/integrations', async (req) => {
+    auth(req);
+    const configured = m.config.mcp.servers;
+    const live = new Map(m.mcp.status().map((s) => [s.name, s]));
+    return {
+      presets: mcpPresets().map((p) => {
+        const cfg = configured[p.name];
+        const missingEnv = p.requiredEnv.filter((e) => !process.env[e]);
+        return {
+          name: p.name, description: p.description, provenance: p.provenance, pkg: p.pkg,
+          requiredEnv: p.requiredEnv, notes: p.notes,
+          configured: !!cfg, enabled: cfg?.enabled ?? false, missingEnv,
+          connected: live.get(p.name)?.connected ?? false, tools: live.get(p.name)?.tools?.length ?? 0,
+        };
+      }),
+    };
+  });
+  app.post('/api/integrations/:name/enable', async (req) => {
+    auth(req, 'tools.manage');
+    const name = param(req, 'name');
+    const preset = mcpPreset(name);
+    if (!preset) throw new HttpError(404, `unknown preset "${name}"`);
+    const resolved = enablePresetConfig(preset);
+    setConfigValue(`mcp.servers.${name}`, resolved.config, m.configFile);
+    return { ok: true, name, enabled: true, missingEnv: resolved.missingEnv, note: 'Saved to config (enabled). Set any missing env vars in ~/.mercury/.env, then restart to connect.' };
+  });
+  app.post('/api/integrations/:name/disable', async (req) => {
+    auth(req, 'tools.manage');
+    const name = param(req, 'name');
+    if (!m.config.mcp.servers[name]) throw new HttpError(404, `no configured server "${name}"`);
+    setConfigValue(`mcp.servers.${name}.enabled`, false, m.configFile);
+    await m.mcp.disconnect(name).catch(() => undefined);
+    return { ok: true, name, enabled: false };
+  });
 
   // ---- skills --------------------------------------------------------------
   app.get('/api/skills', async (req) => (auth(req), { skills: m.skills.list().map((s) => ({ ...s.meta, source: s.source, stats: s.stats })) }));

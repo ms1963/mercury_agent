@@ -7,6 +7,41 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-11-25
+
+### Added
+
+- **14 optional MCP integration presets**, all **disabled by default**, on top of the five core
+  presets (`filesystem`, `fetch`, `github`, `git`, `sqlite`). New presets: Google Calendar, CalDAV,
+  Slack, Playwright, Puppeteer, Brave Search, Tavily, Redis, PostgreSQL, Discord, Microsoft Teams,
+  Notion, Confluence and Obsidian. Every backing npm package was verified to resolve with
+  `npm view <pkg> version` — no fabricated or placeholder names. Each preset records its honest
+  provenance (`official` / `official-archived` / `community`) and the exact package it invokes, and
+  carries **no secrets**: credentials are `${ENV_VAR}` placeholders resolved from the environment at
+  connect time (put them in `~/.mercury/.env`).
+- **Runtime toggling from the CLI.** `mercury mcp presets` now shows provenance, package, required
+  env vars and on/off state (`--json` supported); `mercury mcp enable <name> [--name] [--connect]`
+  writes a preset into `mcp.servers` as enabled; the new `mercury mcp disable <server>` sets
+  `enabled: false` and disconnects while keeping the config entry; `mercury mcp status` lists
+  connected and enabled servers.
+- **Runtime toggling from the Web UI.** A new admin **Integrations** panel lists every preset with
+  enable/disable buttons, provenance badges and a warning when a required env var is unset, backed by
+  new `GET /api/integrations`, `POST /api/integrations/:name/enable` and
+  `POST /api/integrations/:name/disable` endpoints.
+- **EN + DE help** `integrations` topic documenting the catalog, enable/disable flow, provenance and
+  required env vars; the `mcp` help topic was extended with the disable command and the
+  disabled-by-default contract.
+- **Wiring tests** (`tests/mcp-integrations.test.ts`) covering catalog completeness, provenance/pkg
+  fields, required env vars, no hardcoded secrets, disabled-by-default, enable/disable round-trip
+  through `ConfigSchema.parse`, `connectAll` skipping disabled servers (mocked transport — no real
+  network), and per-server tool namespacing. Live connectivity requires real credentials and is out
+  of CI scope.
+
+### Changed
+
+- MCP presets are now **disabled by default** (`server()` helper defaults `enabled: false`);
+  enabling is always an explicit user action via CLI or Web UI.
+
 ## [1.7.0] - 2026-11-23
 
 ### Performance & throughput

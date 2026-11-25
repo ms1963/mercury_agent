@@ -8,16 +8,20 @@ Mercury ist sowohl ein MCP-**Client** als auch ein MCP-**Server**.
 
 ## Kuratierte Presets
 
-Mercury liefert kuratierte Connector-Presets mit, damit Sie sich keine Befehlszeilen merken müssen:
-`filesystem`, `fetch`, `github`, `git`, `sqlite`. Auflisten und prüfen:
+Mercury liefert kuratierte Connector-Presets mit, damit Sie sich keine Befehlszeilen merken müssen.
+Die Kern-Presets sind `filesystem`, `fetch`, `github`, `git`, `sqlite`, und v1.8.0 fügt **14 optionale
+Integrationen** hinzu — siehe das eigene Hilfethema `integrations`. Verwaltung:
 
-- `mercury mcp presets` — listet die Presets und die jeweils benötigten Umgebungsvariablen auf.
-- `mercury mcp status` — zeigt konfigurierte Server und ob sie verbunden sind.
-- `mercury mcp enable <preset> [--name myname]` — fügt ein Preset zu `mcp.servers` in der Konfiguration hinzu.
+- `mercury mcp presets` — listet jedes Preset mit Herkunft, benötigten Umgebungsvariablen und Zustand auf.
+- `mercury mcp status` — zeigt verbundene Server sowie welche konfigurierten Server aktiviert sind.
+- `mercury mcp enable <preset> [--name myname] [--connect]` — schreibt ein Preset in `mcp.servers`
+  und markiert es als **aktiviert**.
+- `mercury mcp disable <server>` — setzt `enabled: false` und trennt die Verbindung (die Konfiguration bleibt erhalten).
 
-Presets enthalten niemals Geheimnisse. Sie verweisen auf Platzhalter wie `${GITHUB_TOKEN}`,
-`${MCP_FS_ROOT}`, `${MCP_GIT_REPO}` und `${MCP_SQLITE_DB}`, die beim Verbinden aus der Umgebung
-aufgelöst werden. `mercury mcp enable` meldet alle erforderlichen Variablen, die nicht gesetzt sind,
-damit Sie sie vor dem Verbinden exportieren können. Alle Preset-Server werden als `untrusted`
-registriert — ihre Tool-Ausgabe gilt als nicht vertrauenswürdig und unterliegt weiterhin
-Richtlinie/Freigabe.
+Jedes Preset ist **standardmäßig deaktiviert** — das Aktivieren ist immer eine ausdrückliche Aktion,
+und `connectAll` überspringt jeden Server, dessen `enabled` false ist. Presets enthalten niemals
+Geheimnisse. Sie verweisen auf Platzhalter wie `${GITHUB_TOKEN}`, `${SLACK_BOT_TOKEN}` oder
+`${POSTGRES_URL}`, die beim Verbinden aus der Umgebung aufgelöst werden; legen Sie sie in
+`~/.mercury/.env` ab. `mercury mcp enable` meldet alle erforderlichen Variablen, die nicht gesetzt
+sind. Alle Preset-Server werden als `untrusted` registriert — ihre Tool-Ausgabe gilt als nicht
+vertrauenswürdig und unterliegt weiterhin Richtlinie/Freigabe.

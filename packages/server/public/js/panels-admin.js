@@ -71,8 +71,27 @@ export const renderScheduler = (view) => panel(view, t('scheduler.title'), async
 
 export const renderIntegrations = (view) => panel(view, t('integrations.title'), async (reload) => {
   const r = await api('/api/gateway');
+  const ints = await api('/api/integrations').catch(() => ({ presets: [] }));
   const code = field('ABC123');
+  const provBadge = (p) => h(`span.badge.${p === 'official' ? 'on' : p === 'community' ? 'off' : ''}`, {}, p);
+  const toggleInt = (name, enable) => safe(async () => {
+    await api(`/api/integrations/${encodeURIComponent(name)}/${enable ? 'enable' : 'disable'}`, { body: {} });
+    toast(enable ? t('integrations.enabled', 'Enabled — set any missing env vars in ~/.mercury/.env, then restart') : t('integrations.disabled', 'Disabled'));
+    reload();
+  });
   return [
+    card(t('integrations.mcp', 'MCP integrations'),
+      h('p.small.muted', {}, t('integrations.mcpIntro', 'Optional connectors (Slack, Notion, Postgres, Playwright, …). All OFF by default. Toggling writes the preset into your config; secrets are NOT entered here — set the listed env vars in ~/.mercury/.env, then restart to connect.')),
+      table((ints.presets || []).filter((p) => p.requiredEnv !== undefined && ['google-calendar','caldav','slack','playwright','puppeteer','brave-search','tavily','redis','postgres','discord','teams','notion','confluence','obsidian'].includes(p.name)), [
+        [t('common.name'), (p) => h('span', {}, h('b', {}, p.name), h('div.small.muted', {}, p.description))],
+        ['Package', (p) => h('code.small', {}, p.pkg)],
+        ['Source', (p) => provBadge(p.provenance)],
+        [t('common.status'), (p) => badge(p.enabled, p.connected ? 'connected' : 'enabled', 'off')],
+        ['Env vars', (p) => h('span.small', {}, p.requiredEnv.join(', ') || '(none)', p.enabled && p.missingEnv && p.missingEnv.length ? h('div.small', { style: 'color:#c0392b' }, '⚠ missing: ' + p.missingEnv.join(', ')) : null)],
+        ['', (p) => isAdmin() ? (p.enabled
+          ? h('button.danger', { onclick: toggleInt(p.name, false) }, t('common.disable', 'Disable'))
+          : h('button.primary', { onclick: toggleInt(p.name, true) }, t('common.enable', 'Enable'))) : null],
+      ])),
     card(t('integrations.adapters'), r.enabled ? null : h('p.muted', {}, 'gateway.enabled = false — set it in config to start adapters.'),
       table(r.adapters, [[t('common.name'), (a) => a.name], ['Type', (a) => a.type], [t('common.status'), (a) => badge(a.status.connected, 'connected', 'offline')], ['Detail', (a) => h('span.small', {}, a.status.error || a.status.detail || '')], ['Last activity', (a) => when(a.status.lastActivity)]]),
       h('p.small.muted', {}, 'Webhook URL pattern: ', h('code', {}, `${location.origin}/webhooks/<adapter>`))),

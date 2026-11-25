@@ -1177,22 +1177,30 @@ mercury chat "Use the filesystem tools to list my projects folder"
 ```
 
 **Curated presets — the shortcut for well-known servers.** Rather than hand-writing the config for a
-popular reference server, Mercury ships ready-to-use **presets** for `filesystem`, `fetch`, `github`,
-`git` and `sqlite`. Each has a safe default policy (`trust: untrusted`, sampling off) and holds **no
-secrets** — anything sensitive is an `${ENV_VAR}` placeholder you set in the environment first.
+popular reference server, Mercury ships ready-to-use **presets**. The core presets are `filesystem`,
+`fetch`, `github`, `git` and `sqlite`; **v1.8.0 adds 14 optional integrations** (Google Calendar,
+CalDAV, Slack, Playwright, Puppeteer, Brave Search, Tavily, Redis, PostgreSQL, Discord, Microsoft
+Teams, Notion, Confluence, Obsidian). **Every preset is disabled by default.** Each has a safe default
+policy (`trust: untrusted`, sampling off) and holds **no secrets** — anything sensitive is an
+`${ENV_VAR}` placeholder you set in the environment first (`~/.mercury/.env`). Each preset records its
+provenance (`official` / `official-archived` / `community`) and the npm package it invokes; every
+package was verified with `npm view`.
 
 ```bash
-mercury mcp status                 # connected servers + tool counts (the default sub-command)
-mercury mcp presets                # list the curated presets and the env vars each needs
+mercury mcp status                 # connected servers + which configured servers are enabled
+mercury mcp presets                # list presets with provenance, package, env vars and on/off state
 export MCP_FS_ROOT=/home/me/projects
-mercury mcp enable filesystem                 # resolve ${MCP_FS_ROOT}, write it into mcp.servers.filesystem
+mercury mcp enable filesystem                 # resolve ${MCP_FS_ROOT}, write it into mcp.servers.filesystem (enabled)
 mercury mcp enable github --name gh --connect # custom server name; connect immediately after saving
+mercury mcp disable github                    # set enabled: false and disconnect (config retained)
 ```
 
 `mercury mcp enable <preset>` substitutes the placeholders from your environment and writes the
-resulting config under `mcp.servers.<name>` (the preset itself never stores the secret value); if a
-required env var is still unset it warns you and leaves the placeholder in place. From there the server
-behaves exactly like any server you defined by hand above. See [docs/help/mcp.md](help/mcp.md).
+resulting config under `mcp.servers.<name>` **with `enabled: true`** (the preset itself never stores the
+secret value); if a required env var is still unset it warns you and leaves the placeholder in place.
+`connectAll` only connects servers whose `enabled` is true. From there the server behaves exactly like
+any server you defined by hand above. See [docs/help/mcp.md](help/mcp.md) and
+[docs/help/integrations.md](help/integrations.md).
 
 ## 7.6 MCP server — lending Mercury's tools to others
 
@@ -1637,7 +1645,7 @@ Invoke as `mercury <command>` (after `npm link` or the published bin) or `node p
 | `learn` | Inspect learning from runs (experience hints, auto-tuned routing, failure playbooks) | `stats [bucket]`, `hints <task…>`, `playbooks`; `--json`, `--limit <n>` |
 | `config` | Inspect/edit config | `path`, `get <key>`, `set <key> <value>` |
 | `gateway` | Messaging gateway & pairing | `status`, `start`, `pending`, `pair <CODE>` |
-| `mcp` | MCP client/server helpers & curated presets | `status` (default), `presets`, `enable <preset>` (`--name`, `--connect`), `list`, `serve` |
+| `mcp` | MCP client/server helpers & curated presets (incl. 14 optional integrations) | `status` (default), `presets` (`--json`), `enable <preset>` (`--name`, `--connect`), `disable <server>`, `list`, `serve` |
 | `user` | User admin (admin only) | `list`, `add`, `passwd`, `role`, `delete` |
 | `token` | API tokens | `list`, `create <name> --scopes …`, `revoke <id>` |
 | `audit` | Hash-chained audit log (admin) | `list` (filters), `verify` |
