@@ -7,6 +7,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-11-25
+
+### Changed
+
+- Bumped the root package and all seven workspace packages (`core`, `tools`, `mcp`, `gateway`,
+  `runtime`, `server`, `cli`) to `1.8.1`.
+- Updated `docs/HANDBOOK.md` and `docs/GUIDE.md` version labels (headers, `mercury version` sample
+  output, command tables and the "Version note" blocks) to the `1.8.1` release.
+
 ## [1.8.0] - 2026-11-25
 
 ### Added
