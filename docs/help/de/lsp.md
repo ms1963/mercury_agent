@@ -64,7 +64,7 @@ den Text. Geöffnete Dokumente werden ab `didOpen` verfolgt und bei `didClose` v
     "textDocumentSync": { "openClose": true, "change": 1 },
     "executeCommandProvider": { "commands": ["mercury.prompt", "mercury.tools.list", "mercury.tools.call"] }
   },
-  "serverInfo": { "name": "mercury", "version": "1.9.0" }
+  "serverInfo": { "name": "mercury", "version": "2.0.0" }
 }
 ```
 

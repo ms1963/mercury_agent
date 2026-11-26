@@ -3,7 +3,7 @@
 # Mercury vs Hermes Agent — Capability Gaps
 
 **What this document is.** A grounded, command-level diff between **Hermes Agent** (Nous Research;
-the real installation present on this machine) and **Mercury Agent** (this repository at **v1.9.0**).
+the real installation present on this machine) and **Mercury Agent** (this repository at **v2.0.0**).
 
 **How it was produced (honesty note).**
 
@@ -306,5 +306,5 @@ Ordered by value-to-effort for a self-hosted agentic platform. Each tier is inde
   without a dedicated command).
 - The Hermes side is the Nous Research Hermes Agent installed on this host at the time of writing; a
   different Hermes version may expose a different command set.
-- The Mercury side is this repository at **v1.9.0**. Re-run `hermes --help` and `mercury help` to
+- The Mercury side is this repository at **v2.0.0**. Re-run `hermes --help` and `mercury help` to
   refresh this diff after either side changes.

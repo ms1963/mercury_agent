@@ -1,15 +1,44 @@
-# Mercury — Build Status (honest snapshot, 2026-11-25, through v1.8.0)
+# Mercury — Build Status (honest snapshot, 2026-11-26, through v2.0.0)
 
 **Overall:** all 8 packages compile. From a clean build, `npm install && npm run build && npm test`
-passes (41 files, **549 passed / 2 skipped**, offline — up from 537 after the v1.8.0 optional MCP
-integration tests in `tests/mcp-integrations.test.ts`). The v1.4.0 subsystems — multi-agent teams/orchestration
+passes (**55 files, 955 passed / 2 skipped**, offline — up from 549 at v1.8.0 as the v1.9.0 and v2.0.0
+subsystems landed with their own offline suites). The v1.4.0 subsystems — multi-agent teams/orchestration
 and the governed long-term memory & knowledge/RAG layer — are covered by the offline suite
 (`tests/teams.test.ts`, `tests/memory.test.ts`). `npx eslint .` exits 0. The CLI, HTTP server and web UI
 run end-to-end with the offline mock LLM and mock decision provider. **The core agent loop has now
 also been exercised against real LLMs** — see §0. The Jev API and chat platforms remain offline/mock-only.
 (Note: one test, `security-gaps-residual.test.ts` SC-24, fails **only on the live deployment host**
 because that host carries an untracked `deploy/<host>.conf` nginx vhost; the repository ships no such
-file, so CI is green.)
+file, so CI is green — the latest CI run on v2.0.0 passes build & test on node 22 and node 24 plus the
+docker image build.)
+
+## 0c. New since v1.8.0 — v1.9.0 and v2.0.0 subsystems (offline-tested)
+
+These subsystems shipped after the v1.8.0 snapshot above and are each covered by the offline vitest
+suite. Like the rest of §1, "tested" means offline/deterministic coverage, not validation against real
+external editors/clients:
+
+- **v1.9.0 — Plugin lifecycle (`mercury plugins install|update|remove|list`)** — install from a local
+  path or git URL with install-manifest tracking, update via git pull / re-copy, gated removal; covered
+  by `tests/plugins-manage.test.ts`.
+- **v1.9.0 — Agent Client Protocol server (`mercury acp serve`)** — ACP over stdio (newline-delimited
+  JSON-RPC 2.0) exposing the same agent + tool surface as the MCP server to editors/IDEs; covered by
+  `tests/acp.test.ts`.
+- **v1.9.0 — Insights (`mercury insights`)** — usage/cost/latency rollups over the runs table; covered
+  by `tests/insights.test.ts`.
+- **v1.9.0 — Memory graph & journey timeline (`mercury memory-graph`, `mercury journey`)** — graph and
+  chronological views over stored memory; covered by `tests/memgraph.test.ts`.
+- **v2.0.0 — Shell-script lifecycle hooks (`mercury hooks list|events|add|remove|run`)** — run a
+  configured shell command at real lifecycle events, routed through the existing approvals layer before
+  the command is spawned; 35 offline tests in `tests/hooks.test.ts`.
+- **v2.0.0 — Language Server Protocol server (`mercury lsp serve`)** — LSP over stdio (JSON-RPC 2.0 with
+  Content-Length framing) exposing the same agent + tool surface to LSP-capable editors; 47 offline
+  tests in `tests/lsp.test.ts`.
+- **v2.0.0 — Operator conveniences (`mercury completion|logs|prompt-size|migrate|console`)** —
+  shell-completion generation, read-only log views over the runs table, assembled-prompt size report,
+  migration status/apply over the existing runner, and an operator REPL banner; covered by
+  `tests/operator.test.ts`. **Untested live:** these are exercised offline only; the LSP/ACP servers
+  have not been driven by a real editor/IDE client (see §2).
 
 ## 0a. Document/spreadsheet generation + voice, verified end-to-end (2026-11-23, v1.6.0)
 

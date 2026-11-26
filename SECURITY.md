@@ -2,13 +2,13 @@
 
 ## Supported versions
 
-Mercury's current release is `1.4.0`. Security fixes are applied to the latest `main` and the most
+Mercury's current release is `2.0.0`. Security fixes are applied to the latest `main` and the most
 recent release.
 
 | Version | Supported |
 | ------- | --------- |
-| 1.4.x   | ✅        |
-| < 1.4   | ❌        |
+| 2.0.x   | ✅        |
+| < 2.0   | ❌        |
 
 ## Reporting a vulnerability
 
