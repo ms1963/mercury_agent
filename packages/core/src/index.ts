@@ -65,6 +65,7 @@ export * from './memory/lift.js';
 export * from './memory/manager.js';
 export * from './moa/moa.js';
 export * from './sessions/manage.js';
+export * from './hooks/hooks.js';
 export * from './insights/insights.js';
 export * from './memgraph/memgraph.js';
 export * from './memory/providers.js';

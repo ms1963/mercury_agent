@@ -94,6 +94,9 @@ import {
   discoverPlugins,
   errorMessage,
   installConfiguredHooks,
+  installShellHooks,
+  parseHookDefs,
+  defaultHookRunner,
   loadConfig,
   loadPlugin,
   secretResolverFromConfig,
@@ -555,6 +558,33 @@ export class Mercury {
     this.proactive.register(new WebhookSource());
     this.services.extra.platforms = () => this.gateway.platforms();
     installConfiguredHooks(config, this.hooks, this.logger);
+    // Shell hooks: fire user-configured commands at real lifecycle events, gated by approvals.
+    try {
+      const shellDefs = parseHookDefs(config.hooks);
+      let ownerUserId = 'system';
+      try {
+        ownerUserId = this.principalFor().userId;
+      } catch {
+        // No users yet (fresh install): fall back to the system principal for the approval meta.
+      }
+      installShellHooks(
+        this.hooks,
+        shellDefs,
+        {
+          runner: defaultHookRunner,
+          approver: (req, meta) => this.approvals.request(req, meta),
+          defaultUserId: ownerUserId,
+          defaultPlatform: 'hooks',
+        },
+        (results) => {
+          for (const r of results) {
+            if (r.status !== 'ok') this.logger.warn(`shell hook "${r.name}" (${r.event}): ${r.status}`, { code: r.code, error: r.error });
+          }
+        },
+      );
+    } catch (err) {
+      this.logger.warn(`shell hooks disabled: ${errorMessage(err)}`);
+    }
   }
 
   /**

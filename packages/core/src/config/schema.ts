@@ -994,7 +994,22 @@ export const ConfigSchema = z.object({
 
   plugins: z.array(z.string()).default([]),
   hooks: z
-    .array(z.object({ event: z.string(), type: z.enum(['log', 'webhook']).default('log'), url: z.string().optional() }))
+    .array(
+      z.object({
+        event: z.string(),
+        type: z.enum(['log', 'webhook', 'shell']).default('log'),
+        /** webhook target (type: webhook). */
+        url: z.string().optional(),
+        /** Shell-hook identifier (type: shell). */
+        name: z.string().optional(),
+        /** Shell command to run (type: shell). */
+        command: z.string().optional(),
+        /** Shell hooks only: disable without removing. */
+        enabled: z.boolean().default(true),
+        /** Shell hooks only: gate the command through the approvals layer before spawning. */
+        requiresApproval: z.boolean().default(true),
+      }),
+    )
     .default([]),
 });
 

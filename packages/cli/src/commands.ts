@@ -4,7 +4,7 @@ import { cpSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'no
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ACP_PROTOCOL_VERSION, auditCoordinates, errorMessage, buildArchive, buildSessionExport, checkArchiveCompat, collectDataDir, exitCodeFor, extractNpmCoordinates, fetchHttpClient, filterSessions, findSession, activeProjectName, createProject, getPath, buildInsights, resolveInsightsRange, formatTokens, formatCost, type InsightsGroupBy, type InsightsReport, buildMemGraphFromDb, memGraphToDot, buildJourney, resolveJourneyRange, type MemGraph, type JourneyTimeline, type JourneyEventKind, installPlugin, installSkills, listInstalled, listProjects, loadOrCreateAuditKey, mcpServerCoordinates, mercuryHome, planRestore, runMoa, type MoaStrategy, type MoaResult, pluginCoordinates, projectDataDirEntryCount, readArchiveFile, removePlugin, removeProject, renderSessionMarkdown, resolveVoicePreset, restoreArchive, runEvalSuite, scaffold, scaffoldAddin, selectEvals, selectPrune, setConfigValue, showProject, updatePlugin, useProject, verifyArchive, verifyArchiveIntegrity, voicePresets, workingDirOf, writeArchiveFile, secretResolverFromConfig, scanSecretRefs, unwrapSecretRef, maskSecret, defaultSecretRunner, activeProfileName, createProfile, listProfiles, profileHomeEntryCount, profileRegistryDir, removeProfile, showProfile, useProfile, DEFAULT_PROFILE_NAME, PROFILE_ENV_VAR, type BackupArchive, type Coordinate, type EvalObservation, type ExtensionKind, type PackageJsonLike, type PluginPkg, type ProfileListEntry, type ProjectListEntry, type SecretResolver, type Session, type VoiceKind } from '@mercury/core';
+import { ACP_PROTOCOL_VERSION, auditCoordinates, errorMessage, buildArchive, buildSessionExport, checkArchiveCompat, collectDataDir, exitCodeFor, extractNpmCoordinates, fetchHttpClient, filterSessions, findSession, activeProjectName, createProject, getPath, buildInsights, resolveInsightsRange, formatTokens, formatCost, type InsightsGroupBy, type InsightsReport, buildMemGraphFromDb, memGraphToDot, buildJourney, resolveJourneyRange, type MemGraph, type JourneyTimeline, type JourneyEventKind, parseHookDefs, validateHookDef, buildHookPlan, runHookPlan, defaultHookRunner, formatHookList, formatHookResult, HOOKS_EVENTS, type HookConfigEntry, type HooksEventName, installPlugin, installSkills, listInstalled, listProjects, loadOrCreateAuditKey, mcpServerCoordinates, mercuryHome, planRestore, runMoa, type MoaStrategy, type MoaResult, pluginCoordinates, projectDataDirEntryCount, readArchiveFile, removePlugin, removeProject, renderSessionMarkdown, resolveVoicePreset, restoreArchive, runEvalSuite, scaffold, scaffoldAddin, selectEvals, selectPrune, setConfigValue, showProject, updatePlugin, useProject, verifyArchive, verifyArchiveIntegrity, voicePresets, workingDirOf, writeArchiveFile, secretResolverFromConfig, scanSecretRefs, unwrapSecretRef, maskSecret, defaultSecretRunner, activeProfileName, createProfile, listProfiles, profileHomeEntryCount, profileRegistryDir, removeProfile, showProfile, useProfile, DEFAULT_PROFILE_NAME, PROFILE_ENV_VAR, type BackupArchive, type Coordinate, type EvalObservation, type ExtensionKind, type PackageJsonLike, type PluginPkg, type ProfileListEntry, type ProjectListEntry, type SecretResolver, type Session, type VoiceKind } from '@mercury/core';
 import type { Mercury } from '@mercury/runtime';
 import { enablePresetConfig, mcpPreset, mcpPresets } from '@mercury/mcp';
 import { flag, type Args } from './args.js';
@@ -2058,5 +2058,142 @@ export async function sessionsCmd(m: Mercury, a: Args): Promise<void> {
 
     default:
       return out(SESSIONS_HELP);
+  }
+}
+
+const HOOKS_HELP = `usage: mercury hooks list [--json]
+       mercury hooks events [--json]
+       mercury hooks add <name> --event <event> --command <cmd> [--no-approval] [--disabled]
+       mercury hooks remove <name> [--force]
+       mercury hooks run <name> [--json]
+
+Shell hooks run a configured shell command at a real lifecycle event (run start/end, tool
+calls, memory writes, …). Every hook that shells out is routed through the approvals layer
+BEFORE the command is spawned, unless you explicitly opt out with --no-approval.
+
+The command receives context as environment variables: MERCURY_HOOK_EVENT and MERCURY_HOOK_TS are
+always set; MERCURY_RUN_ID, MERCURY_SESSION_ID, MERCURY_USER_ID, MERCURY_TOOL, MERCURY_MODEL,
+MERCURY_STATUS and MERCURY_PLATFORM are populated when the firing event carries them. Hooks are
+stored in the config file under "hooks:" (type: shell).
+
+  list                        List configured shell hooks (name, event, enabled, approval, command).
+    --json                    Emit as JSON.
+  events                      List the supported lifecycle event names a hook may bind to.
+    --json                    Emit as JSON.
+  add <name>                  Register (or overwrite) a shell hook.
+    --event <event>           Lifecycle event to bind to (or "*" for every event). Required.
+    --command <cmd>           Shell command to run. Required.
+    --no-approval             Do NOT gate this hook through approvals (runs immediately).
+    --disabled                Register the hook disabled (won't fire until re-enabled).
+  remove <name>               Remove a shell hook (requires --force).
+    --force                   Confirm removal.
+  run <name>                  Manually fire a hook now for testing (still approval-gated).
+    --json                    Emit the run result as JSON.
+
+SAFETY: shell hooks execute arbitrary commands on the host. Approval gating is ON by default;
+--no-approval disables it for a single hook — use only for trusted, non-destructive commands.`;
+
+/** Shell lifecycle hooks: list / events / add / remove / run. */
+export async function hooksCmd(m: Mercury, a: Args): Promise<void> {
+  const sub = a._[1];
+  if (!sub || a.flags.help) return out(HOOKS_HELP);
+  const json = !!a.flags.json;
+  const entries = [...((m.config.hooks ?? []) as HookConfigEntry[])];
+  const persist = (next: HookConfigEntry[]): string => setConfigValue('hooks', next, m.configFile);
+
+  switch (sub) {
+    // ── events ───────────────────────────────────────────────────────────────
+    case 'events': {
+      if (json) return out([...HOOKS_EVENTS], true);
+      return out([...HOOKS_EVENTS, '*'].map((e) => `  ${e}`).join('\n'));
+    }
+
+    // ── list ───────────────────────────────────────────────────────────────
+    case 'list': {
+      const defs = parseHookDefs(entries);
+      if (json) return out(defs, true);
+      return out(formatHookList(defs));
+    }
+
+    // ── add / set ───────────────────────────────────────────────────────────────
+    case 'add':
+    case 'set': {
+      const name = need(a._[2], 'mercury hooks add <name> --event <event> --command <cmd>');
+      const event = need(flag(a, 'event'), 'mercury hooks add <name> --event <event> --command <cmd>');
+      const command = need(flag(a, 'command'), 'mercury hooks add <name> --event <event> --command <cmd>');
+      const entry: HookConfigEntry = {
+        type: 'shell',
+        name,
+        event,
+        command,
+        enabled: !a.flags.disabled,
+        requiresApproval: !a.flags['no-approval'],
+      };
+      const v = validateHookDef(entry);
+      if (!v.ok) {
+        process.exitCode = 1;
+        throw new Error(`invalid hook: ${v.errors.join('; ')}`);
+      }
+      const idx = entries.findIndex((e) => e.type === 'shell' && e.name === name);
+      if (idx >= 0) entries[idx] = entry;
+      else entries.push(entry);
+      const file = persist(entries);
+      if (json) return out({ saved: file, hook: v.def, overwritten: idx >= 0 }, true);
+      return out(`✓ ${idx >= 0 ? 'updated' : 'added'} shell hook "${name}" (${event}) → ${file}`);
+    }
+
+    // ── remove ───────────────────────────────────────────────────────────────
+    case 'remove':
+    case 'rm': {
+      const name = need(a._[2], 'mercury hooks remove <name> --force');
+      const idx = entries.findIndex((e) => e.type === 'shell' && e.name === name);
+      if (idx < 0) {
+        process.exitCode = 1;
+        throw new Error(`no shell hook named "${name}"`);
+      }
+      if (!a.flags.force) {
+        return out(`refusing to remove shell hook "${name}" without --force (re-run with --force to confirm)`);
+      }
+      entries.splice(idx, 1);
+      const file = persist(entries);
+      if (json) return out({ removed: name, saved: file }, true);
+      return out(`✓ removed shell hook "${name}" → ${file}`);
+    }
+
+    // ── run / test ───────────────────────────────────────────────────────────────
+    case 'run':
+    case 'test': {
+      const name = need(a._[2], 'mercury hooks run <name>');
+      const defs = parseHookDefs(entries);
+      const def = defs.find((d) => d.name === name);
+      if (!def) {
+        process.exitCode = 1;
+        throw new Error(`no shell hook named "${name}"`);
+      }
+      const event: HooksEventName = def.event === '*' ? 'run_start' : def.event;
+      let userId = 'system';
+      try {
+        userId = m.principalFor().userId;
+      } catch {
+        // No users yet: run under the system principal.
+      }
+      const plan = buildHookPlan(def, event, { userId, platform: 'cli' });
+      const result = await runHookPlan(plan, {
+        runner: defaultHookRunner,
+        approver: (req, meta) => m.approvals.request(req, meta),
+        defaultUserId: userId,
+        defaultPlatform: 'cli',
+      });
+      if (result.status !== 'ok') process.exitCode = 1;
+      if (json) return out(result, true);
+      const lines = [formatHookResult(result)];
+      if (result.stdout) lines.push(`--- stdout ---\n${result.stdout.trimEnd()}`);
+      if (result.stderr) lines.push(`--- stderr ---\n${result.stderr.trimEnd()}`);
+      return out(lines.join('\n'));
+    }
+
+    default:
+      out(HOOKS_HELP);
+      process.exitCode = 1;
   }
 }

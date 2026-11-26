@@ -29,7 +29,7 @@ the real installation present on this machine) and **Mercury Agent** (this repos
 | 4 | **Isolated profiles** | `profile` (multiple fully isolated instances) | ✅ **Done** — `mercury profile list\|create\|use\|show\|current\|remove` (multiple fully isolated instances, each its own `MERCURY_HOME` → own config, memory DB, skills, plugins, audit key; built-in `default` → `~/.mercury` so existing setups are unaffected; registry at `~/.config/mercury/profiles.json`; `use` persists the selection AND prints the `export MERCURY_PROFILE=<name>` line for the current shell; `MERCURY_HOME` wins, else `MERCURY_PROFILE` overrides stored active; `--home`/`--desc`/`--use`, gated `remove --force` with extra `--purge`; `--json`) | Closed |
 | 5 | **Projects / workspaces** | `project` (named, multi-folder workspaces) | ✅ **Done** — `mercury project list\|create\|use\|show\|current\|remove` (named workspaces each with their own data dir, scoping config + memory via the existing data-dir indirection; registry at `~/.mercury/projects.json`, `MERCURY_PROJECT` env override; `--dir`/`--folder`/`--desc`/`--use`, gated `remove --force` with extra `--purge`; `--json`) | Closed |
 | 6 | **Kanban board** | `kanban` (tasks, links, comments) | — | Missing |
-| 7 | **Shell hooks** | `hooks` (shell-script lifecycle hooks) | — | Missing |
+| 7 | **Shell hooks** | `hooks` (shell-script lifecycle hooks) | ✅ **Done** — `mercury hooks list\|events\|add\|remove\|run` run a configured shell command at a **real lifecycle event** (the curated HookManager interception points: `run_start`/`run_end`, `before_llm_call`/`after_llm_call`, `before_tool_call`/`after_tool_call`, `message_received`/`message_sent`, `output`, `memory_write`, `attachment_scan`, `error`, or `*` for all). Every hook that shells out is routed through the **existing approvals layer (`m.approvals`) BEFORE the command is spawned** — the same gate used by every other shell-out — unless opted out per-hook with `--no-approval`. The command gets lifecycle context as `MERCURY_*` env vars (event, run/session/user ids, tool, model, status, platform). Hooks persist in the config `hooks:` array (`type: shell`); the runtime fires them automatically, and `hooks run <name>` fires one manually (still gated). Pure logic in `packages/core/src/hooks/hooks.ts` (parse/validate, event matching, env + plan building, approval-gated dispatch, result formatting — all testable with injected runner/approver/clock) plus a thin `defaultHookRunner` IO layer; 35 offline tests in `tests/hooks.test.ts` | Closed |
 | 8 | **External secret stores** | `secrets` (Bitwarden, 1Password) | ✅ **Done** — `mercury secrets backends\|list\|get\|resolve` (pluggable `SecretBackend` abstraction: always-on `env` backend plus opt-in Bitwarden `bw get password` / 1Password `op read` adapters via an injected command runner; `${SECRET:backend:key}`/`${SECRET:key}` references resolved at connect time for MCP server configs, coexisting with the preset `${ENV_VAR}` substitution; values masked by default, raw only via `get --reveal`; `--json`; `secrets.*` config section) | Closed |
 | 9 | **Supply-chain audit** | `security` (OSV.dev scan of venv, plugins, MCP servers) | ✅ **Done** — `mercury security audit` (OSV.dev scan of npm deps, configured MCP servers, installed plugins; `--json`, `--npm`/`--mcp`/`--plugins`, `--lockfile`; CI-usable exit codes) | Closed |
 | 10 | **Backup / restore** | `backup`, `import`, `dump`, `checkpoints` | ✅ **Done** — `mercury backup` / `mercury import` (full `~/.mercury` archive to a signed, integrity-checked `.mbak`; `backup inspect`, secret-exclusion default with `--include-secrets`, safe restore with `--force` + auto pre-restore backup; `--json`) | Closed |
@@ -262,8 +262,34 @@ Ordered by value-to-effort for a self-hosted agentic platform. Each tier is inde
     cases; EN/DE help in `docs/help/memory-graph.md` + `docs/help/journey.md` (and `docs/help/de/…`).
     **NOT implemented:** the external pluggable `memory` provider (a `MemoryProvider` abstraction already
     exists in the memory layer, but no concrete external backend was added as part of this gap).
-12. **Shell hooks (`mercury hooks`)** — lifecycle shell-script hooks with approval gating (reuse the
-    existing approvals/guardrails layer).
+12. ✅ **Done — Shell hooks (`mercury hooks`)** — run a configured **shell command at a real lifecycle
+    event**. Hooks bind to the curated HookManager interception points that already fire in the runtime
+    (`run_start`/`run_end`, `before_llm_call`/`after_llm_call`, `before_tool_call`/`after_tool_call`,
+    `message_received`/`message_sent`, `output`, `memory_write`, `attachment_scan`, `error`) or to `*`
+    for every event — no new events were invented; each bound event has a real trigger. **Every hook that
+    shells out is routed through the existing approvals layer (`m.approvals`) BEFORE the command is
+    spawned**, consistent with every other shell-out in the codebase; `--no-approval` opts a single
+    trusted hook out of the gate. The command runs via `sh -c` with the lifecycle context injected as
+    `MERCURY_*` environment variables (`MERCURY_HOOK_EVENT`/`MERCURY_HOOK_TS` always, plus
+    run/session/user ids, tool, model, status, platform when the firing event carries them). Hooks are
+    declared in the config `hooks:` array (`type: shell`, with `name`/`event`/`command`/`enabled`/
+    `requiresApproval`); the runtime wires them into the live `HookManager` at startup
+    (`installShellHooks`) so they fire in practice, and `mercury hooks run <name>` fires one manually for
+    testing (still approval-gated). CLI: `hooks list` (readable table + `--json`), `hooks events` (list
+    supported lifecycle names), `hooks add <name> --event --command [--no-approval] [--disabled]`,
+    `hooks remove <name> --force`, `hooks run <name>`. Core logic lives in
+    `packages/core/src/hooks/hooks.ts`, split into PURE functions (`validateHookDef`, `parseHookDefs`,
+    `matchHooks`, `buildHookEnv`, `contextFromPayload`, `buildHookPlan`, `buildHookApprovalRequest`,
+    `runHookPlan`, `dispatchHooks`, `formatHookResult`/`formatHookList` — all unit-testable with an
+    injected command runner, approver and clock) plus a thin `defaultHookRunner` IO layer that actually
+    spawns via `node:child_process`. New boolean flags `--no-approval` and `--disabled` registered in
+    `args.ts`. Offline deterministic tests in `tests/hooks.test.ts` (35 tests) cover parse/validate,
+    event matching, env + plan building, approval gating (approved / denied / bypass-when-not-required),
+    the runner being invoked with the correct env, non-zero-exit and throwing-runner handling,
+    `installShellHooks` firing against a real `HookManager`, and the formatting + empty cases; EN/DE help
+    in `docs/help/hooks.md` + `docs/help/de/hooks.md`. **Honesty:** the pure parse/match/plan/format and
+    the approval-gating + dispatch paths are exercised against injected stubs; **real shell execution
+    against the host OS (`defaultHookRunner`) is NOT exercised in the tests.**
 
 ### Tier 4 — Niche / low priority
 

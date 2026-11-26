@@ -88,6 +88,8 @@ Usage: mercury <command> [options]
                             Graph view over stored memory (facts, skills, runs, sessions, knowledge)
   journey [--since <dur|ISO>] [--until <dur|ISO>] [--limit n] [--kind k1,k2] [--json]
                             Chronological timeline of memory/skill/run/learn events
+  hooks <list|events|add|remove|run> [...]
+                            Shell-script lifecycle hooks (approval-gated). See: mercury hooks
   eval [--tag <tag>] [--json]   Run the built-in self-evaluation suite (offline) with token/cost accounting
   doctor                    Check the environment
   update                    git pull + npm install + build
@@ -292,6 +294,8 @@ async function main(argv: string[]): Promise<void> {
         return cmd.memoryGraphCmd(m, a);
       case 'journey':
         return cmd.journeyCmd(m, a);
+      case 'hooks':
+        return await cmd.hooksCmd(m, a);
       case 'eval':
         return await cmd.evalCmd(m, a);
       case 'help':
