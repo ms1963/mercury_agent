@@ -4,7 +4,7 @@ import { cpSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'no
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { auditCoordinates, buildArchive, buildSessionExport, checkArchiveCompat, collectDataDir, exitCodeFor, extractNpmCoordinates, fetchHttpClient, filterSessions, findSession, getPath, installSkills, loadOrCreateAuditKey, mcpServerCoordinates, mercuryHome, planRestore, pluginCoordinates, readArchiveFile, renderSessionMarkdown, resolveVoicePreset, restoreArchive, runEvalSuite, scaffold, scaffoldAddin, selectEvals, selectPrune, setConfigValue, verifyArchive, verifyArchiveIntegrity, voicePresets, workingDirOf, writeArchiveFile, type BackupArchive, type Coordinate, type EvalObservation, type ExtensionKind, type PackageJsonLike, type PluginPkg, type Session, type VoiceKind } from '@mercury/core';
+import { auditCoordinates, buildArchive, buildSessionExport, checkArchiveCompat, collectDataDir, exitCodeFor, extractNpmCoordinates, fetchHttpClient, filterSessions, findSession, getPath, installPlugin, installSkills, listInstalled, loadOrCreateAuditKey, mcpServerCoordinates, mercuryHome, planRestore, pluginCoordinates, readArchiveFile, removePlugin, renderSessionMarkdown, resolveVoicePreset, restoreArchive, runEvalSuite, scaffold, scaffoldAddin, selectEvals, selectPrune, setConfigValue, updatePlugin, verifyArchive, verifyArchiveIntegrity, voicePresets, workingDirOf, writeArchiveFile, type BackupArchive, type Coordinate, type EvalObservation, type ExtensionKind, type PackageJsonLike, type PluginPkg, type Session, type VoiceKind } from '@mercury/core';
 import type { Mercury } from '@mercury/runtime';
 import { enablePresetConfig, mcpPreset, mcpPresets } from '@mercury/mcp';
 import { flag, type Args } from './args.js';
@@ -255,9 +255,96 @@ export async function updateCmd(m: Mercury): Promise<void> {
   out('Updated. Config migrations run automatically on next start.');
 }
 
-export function pluginsCmd(m: Mercury): void {
-  const dir = join(m.config.dataDir, 'plugins');
-  out(m.plugins.length ? m.plugins.map((p) => `${p.name} ${p.version ?? ''} ${p.error ? `ERROR: ${p.error}` : ''}`).join('\n') : `(no plugins; put them in ${dir}${existsSync(dir) ? `, found: ${readdirSync(dir).join(', ')}` : ''})`);
+const PLUGINS_HELP = `usage: mercury plugins [list|install|update|remove]
+
+  list                         List loaded plugins (default; bare 'plugins')
+  install <path|git-url>       Install a plugin from a local path or git URL into ~/.mercury/plugins
+      [--name <name>]          Override the derived install name
+      [--force]                Overwrite an existing install of the same name
+      [--build]                Run 'npm install && npm run build' if the plugin declares a build script
+  update <name>                Update a plugin from its recorded source (git pull or re-copy)
+      [--all]                  Update every managed plugin instead of one
+  remove <name> --force        Remove an installed plugin directory (requires --force or --yes)
+
+  --json                       Machine-readable output (install/update/remove/list)`;
+
+export async function pluginsCmd(m: Mercury, a: Args): Promise<void> {
+  const json = flag(a, 'json') !== undefined || a.flags.json === true;
+  const pluginsDir = join(m.config.dataDir, 'plugins');
+  const sub = a._[1];
+
+  switch (sub) {
+    case undefined:
+    case 'list': {
+      if (json) {
+        out(listInstalled(pluginsDir), true);
+        return;
+      }
+      out(
+        m.plugins.length
+          ? m.plugins.map((p) => `${p.name} ${p.version ?? ''} ${p.error ? `ERROR: ${p.error}` : ''}`.trim()).join('\n')
+          : `(no plugins; put them in ${pluginsDir}${existsSync(pluginsDir) ? `, found: ${readdirSync(pluginsDir).join(', ')}` : ''})`,
+      );
+      return;
+    }
+
+    case 'install': {
+      const source = need(a._[2], 'mercury plugins install <path|git-url> [--name n] [--force] [--build]');
+      const res = installPlugin(pluginsDir, source, {
+        name: flag(a, 'name'),
+        force: a.flags.force === true,
+        build: a.flags.build === true,
+      });
+      if (json) out(res, true);
+      else
+        out(
+          `Installed plugin "${res.name}" (${res.source.type}) at ${res.dir}` +
+            `${res.version ? ` v${res.version}` : ''}${res.reinstalled ? ' (reinstalled)' : ''}${res.built ? ' [built]' : ''}.\n` +
+            `Restart Mercury (or the server) to load it.`,
+        );
+      return;
+    }
+
+    case 'update': {
+      if (a.flags.all === true) {
+        const installed = listInstalled(pluginsDir).filter((p) => p.managed);
+        const results = [] as Array<{ name: string; ok: boolean; method?: string; error?: string }>;
+        for (const p of installed) {
+          try {
+            const r = updatePlugin(pluginsDir, p.name);
+            results.push({ name: r.name, ok: true, method: r.method });
+          } catch (err) {
+            process.exitCode = 1;
+            results.push({ name: p.name, ok: false, error: (err as Error).message });
+          }
+        }
+        if (json) out(results, true);
+        else if (results.length === 0) out('(no managed plugins to update)');
+        else out(results.map((r) => (r.ok ? `Updated "${r.name}" (${r.method})` : `FAILED "${r.name}": ${r.error}`)).join('\n'));
+        return;
+      }
+      const name = need(a._[2], 'mercury plugins update <name>|--all');
+      const res = updatePlugin(pluginsDir, name);
+      if (json) out(res, true);
+      else out(`Updated plugin "${res.name}" (${res.method})${res.version ? ` v${res.version}` : ''}. Restart Mercury to reload it.`);
+      return;
+    }
+
+    case 'remove': {
+      const name = need(a._[2], 'mercury plugins remove <name> --force');
+      if (a.flags.force !== true && a.flags.yes !== true) {
+        throw new Error(`refusing to remove plugin "${name}" without --force (or --yes)`);
+      }
+      const res = removePlugin(pluginsDir, name);
+      if (json) out(res, true);
+      else out(`Removed plugin "${res.name}" (${res.dir}). Restart Mercury to unload it.`);
+      return;
+    }
+
+    default:
+      out(PLUGINS_HELP);
+      process.exitCode = 1;
+  }
 }
 
 export function copyAssets(from: string, to: string): void {

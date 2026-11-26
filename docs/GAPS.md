@@ -34,7 +34,7 @@ the real installation present on this machine) and **Mercury Agent** (this repos
 | 9 | **Supply-chain audit** | `security` (OSV.dev scan of venv, plugins, MCP servers) | ✅ **Done** — `mercury security audit` (OSV.dev scan of npm deps, configured MCP servers, installed plugins; `--json`, `--npm`/`--mcp`/`--plugins`, `--lockfile`; CI-usable exit codes) | Closed |
 | 10 | **Backup / restore** | `backup`, `import`, `dump`, `checkpoints` | ✅ **Done** — `mercury backup` / `mercury import` (full `~/.mercury` archive to a signed, integrity-checked `.mbak`; `backup inspect`, secret-exclusion default with `--include-secrets`, safe restore with `--force` + auto pre-restore backup; `--json`) | Closed |
 | 11 | **Session management** | `sessions` (list/rename/export/prune/delete) | ✅ **Done** — `mercury sessions list\|rename\|export\|delete\|prune` over the existing persisted sessions (readable table + `--json`, `--limit`/`--search`; export to JSON or markdown with `--out`; destructive delete/prune gated behind `--force`/`--yes`; `prune` is a dry run by default with `--older-than`/`--keep`/`--empty`) | Closed |
-| 12 | **Plugin lifecycle** | `plugins` install/update/remove/list | `plugins` **list-only** (+ `new plugin` scaffold) | Partial — no install/update/remove |
+| 12 | **Plugin lifecycle** | `plugins` install/update/remove/list | ✅ **Done** — `mercury plugins install\|update\|remove` (install from a local path or git URL, with install-manifest tracking; `update <name>` / `--all` via git pull or re-copy; gated `remove --force`; `list`/`--json`) on top of the existing loader + `new plugin` scaffold | Closed |
 | 13 | **Skill curator** | `curator` (background skill maintenance: run/pause/pin) | Self-distill + `learn`, no curator loop | Missing maintenance loop |
 | 14 | **Memory graph & timeline** | `memory-graph`, `journey` timeline, external `memory` provider | Layered memory + `learn` | No graph/timeline/external provider |
 | 15 | **Usage insights** | `insights` (analytics) | Token/cost accounting + `/metrics` | No insights command |
@@ -102,8 +102,20 @@ Ordered by value-to-effort for a self-hosted agentic platform. Each tier is inde
    Pure selection/filtering/export logic in `packages/core/src/sessions/manage.ts` (fully unit-testable
    with injected data + clock) over a read-only `EpisodicStore.listAll()`; offline deterministic tests in
    `tests/sessions.test.ts`.
-4. **Full plugin lifecycle (`mercury plugins install|update|remove`)** — Mercury already *loads*
-   plugins and scaffolds them; close the loop with install/update/remove from path or git.
+4. ✅ **Done — Full plugin lifecycle (`mercury plugins install|update|remove`)** — Mercury already
+   *loads* and discovers plugins (`packages/core/src/plugins/plugin.ts`) and scaffolds them
+   (`mercury new plugin`); this closes the loop with install / update / remove from a **local path** or a
+   **git URL**, extending the previously list-only `plugins` command. `install <path|git-url>` resolves
+   the source (git vs path), derives a safe install name (or `--name`), validates a local source *before*
+   touching the destination, copies a directory / single `.js` file or `git clone`s the repo into
+   `~/.mercury/plugins/<name>/`, writes a `.mercury-plugin.json` install manifest (source, version,
+   timestamps), and optionally `--build`s when the plugin declares a build script; `--force` overwrites.
+   `update <name>` (or `--all`) refreshes from the recorded source — `git pull --ff-only` for git,
+   re-copy for a path — and `remove <name>` is gated behind `--force`/`--yes`. `list` keeps the loaded
+   view and adds `--json` over the on-disk installs. Pure/testable logic plus a thin fs layer with an
+   **injected command runner + clock** (so tests never shell out or hit the network) in
+   `packages/core/src/plugins/manage.ts`; offline deterministic tests in `tests/plugins-manage.test.ts`;
+   EN/DE help in `docs/help/plugins.md` / `docs/help/de/plugins.md`.
 
 ### Tier 2 — High value, higher effort
 

@@ -57,7 +57,9 @@ Usage: mercury <command> [options]
   sessions [list|rename|export|delete|prune]   Manage persisted chat sessions
                             list [--limit n] [--search t]; rename <id> <title>; export <id> [--format md] [--out f];
                             delete <id> --force; prune [--older-than 30d] [--keep n] [--empty] [--force]  (--json everywhere)
-  plugins                   List loaded plugins
+  plugins [list|install|update|remove]   Manage plugins (list loaded; install/update/remove from path or git)
+                            install <path|git-url> [--name n] [--force] [--build]; update <name>|--all;
+                            remove <name> --force   (--json everywhere)
   import-agent [~/.hermes]  Import memories, profile and skills from Hermes Agent
   new <tool|skill|workflow|adapter|plugin> <name> [--lang python|js|go|cpp|java]
   replay <runId>            Print the recorded event trace of a run
@@ -197,7 +199,7 @@ async function main(argv: string[]): Promise<void> {
       case 'sessions':
         return await cmd.sessionsCmd(m, a);
       case 'plugins':
-        return cmd.pluginsCmd(m);
+        return await cmd.pluginsCmd(m, a);
       case 'import-agent':
         return await cmd.importAgent(m, a);
       case 'doctor':
