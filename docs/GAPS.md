@@ -36,7 +36,7 @@ the real installation present on this machine) and **Mercury Agent** (this repos
 | 11 | **Session management** | `sessions` (list/rename/export/prune/delete) | ✅ **Done** — `mercury sessions list\|rename\|export\|delete\|prune` over the existing persisted sessions (readable table + `--json`, `--limit`/`--search`; export to JSON or markdown with `--out`; destructive delete/prune gated behind `--force`/`--yes`; `prune` is a dry run by default with `--older-than`/`--keep`/`--empty`) | Closed |
 | 12 | **Plugin lifecycle** | `plugins` install/update/remove/list | ✅ **Done** — `mercury plugins install\|update\|remove` (install from a local path or git URL, with install-manifest tracking; `update <name>` / `--all` via git pull or re-copy; gated `remove --force`; `list`/`--json`) on top of the existing loader + `new plugin` scaffold | Closed |
 | 13 | **Skill curator** | `curator` (background skill maintenance: run/pause/pin) | Self-distill + `learn`, no curator loop | Missing maintenance loop |
-| 14 | **Memory graph & timeline** | `memory-graph`, `journey` timeline, external `memory` provider | Layered memory + `learn` | No graph/timeline/external provider |
+| 14 | **Memory graph & timeline** | `memory-graph`, `journey` timeline, external `memory` provider | ✅ **Done** — `mercury memory-graph` (read-only graph over the stored memory layers: nodes for facts / distilled skills / runs / sessions / knowledge sources; edges grounded in real columns only — `skill→run` from `distilled_skills.source_runs`, `run→session` from `runs.session_id`, `run→run` from `parent_run_id`, `fact→run\|session` from `facts.source` when it equals a known id; readable summary + `--json` nodes/edges + Graphviz `--dot` export; `--since`/`--until`/`--limit`/`--top`) and `mercury journey` (newest-first timeline over existing events: memory formation, skill distillation, knowledge ingestion, runs, learn/reflection outcomes, session starts; `--since`/`--until`/`--limit`/`--kind`, `--json`). Pure, offline-tested; the **external `memory` provider** is NOT implemented. | Partial — graph + timeline done; external memory provider pending |
 | 15 | **Usage insights** | `insights` (analytics) | ✅ **Done** — `mercury insights` (read-only analytics over the recorded `usage` token/cost ledger joined to `runs`: totals + breakdowns `--by day\|model\|agent\|session`, `--since`/`--until` range, `--top <n>`, `--limit`; readable token/cost formatting; `--json`; clean "no usage recorded" on an empty ledger) | Closed |
 | 16 | **Agent Client Protocol** | `acp` (ACP server) | ✅ **Done** — `mercury acp serve` (ACP server over stdio, newline-delimited JSON-RPC 2.0) exposing the SAME agent + tool surface as the MCP server to external clients (editors/IDEs). Implements `initialize` (version/capability negotiation, no auth advertised), `session/new`, `session/list`, `session/prompt` (streams `session/update` agent-message + tool-call notifications, answers a `stopReason`), the `session/cancel` notification, and vendor extensions `_mercury/tools/list` / `_mercury/tools/call`; `session/load` + `auth/*` are deliberately unsupported (loadSession=false). Pure dispatch/parse layer in `packages/core/src/acp/acp.ts` (unit-testable with injected agent stub + notification sink) + thin stdio transport; runtime adapter `m.acpAgent(principal)` binds a principal via closure; `mercury acp info\|methods` print the protocol surface (`--json`) | Closed |
 | 17 | **Language Server Protocol** | `lsp` | — | Missing |
@@ -239,8 +239,29 @@ Ordered by value-to-effort for a self-hosted agentic platform. Each tier is inde
     the fan-out, synthesize/vote aggregation, validation and graceful-degradation paths are exercised
     offline against an injected model-call stub; the engine has **not** been run against real models here
     (the live runner is wired to the LLM gateway and needs provider credentials).
-11. **Memory graph & journey timeline** — a graph view and chronological timeline over the existing
-    memory/skill-distillation events.
+11. ✅ **Done — Memory graph & journey timeline (`mercury memory-graph`, `mercury journey`)** — two
+    **read-only** views over data Mercury already records; they add NO instrumentation and NO schema.
+    `mercury memory-graph` builds a graph whose **nodes** are the existing memory entities (facts /
+    distilled skills / runs / sessions / knowledge sources) and whose **edges are grounded in real
+    stored columns only** — none are invented, and an edge is emitted only when BOTH endpoints exist in
+    the view: `skill --distilled_from--> run` (`distilled_skills.source_runs`), `run --in_session-->
+    session` (`runs.session_id`), `run --spawned--> run` (`runs.parent_run_id`, parent → child), and
+    `fact --sourced_from--> run|session` (`facts.source`, only when it exactly equals a known id).
+    Output is a readable summary (node/edge counts by kind, most-connected nodes), a machine-readable
+    `--json` (`{ nodes, edges, summary }`), and a standard Graphviz `--dot` export; `--since`/`--until`/
+    `--limit`/`--top` scope it. `mercury journey` is a newest-first timeline over existing events
+    (memory formation, skill distillation, knowledge ingestion, runs, learn/reflection outcomes, session
+    starts) with `--since`/`--until`/`--limit`/`--kind` and `--json`. Reflection/`learn` records feed the
+    timeline but NOT graph edges (their `skill` column is a free-text name, not a stored id, so an edge
+    would be guesswork). Core logic lives in `packages/core/src/memgraph/memgraph.ts`, split into PURE
+    functions (`buildMemGraph`, `memGraphToDot`, `journeyEventsFrom`, `buildJourneyTimeline` — all
+    unit-testable with injected rows + an injected clock) plus a thin read-only DB layer
+    (`queryMemGraphInput` / `queryJourneyEvents`); CLI `memoryGraphCmd` / `journeyCmd` wired in `bin.ts`;
+    offline deterministic tests in `tests/memgraph.test.ts` (19 tests) cover node/edge construction,
+    grounded-edge dropping, DOT export, timeline ordering + range/kind/limit filtering, and the empty
+    cases; EN/DE help in `docs/help/memory-graph.md` + `docs/help/journey.md` (and `docs/help/de/…`).
+    **NOT implemented:** the external pluggable `memory` provider (a `MemoryProvider` abstraction already
+    exists in the memory layer, but no concrete external backend was added as part of this gap).
 12. **Shell hooks (`mercury hooks`)** — lifecycle shell-script hooks with approval gating (reuse the
     existing approvals/guardrails layer).
 

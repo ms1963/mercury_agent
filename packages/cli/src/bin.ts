@@ -84,6 +84,10 @@ Usage: mercury <command> [options]
                             Event triggers, interrupt-vs-defer priority, digest queue
   insights [--by day|model|agent|session] [--since <dur|ISO>] [--until <dur|ISO>] [--top n] [--limit n] [--json]
                             Usage analytics aggregated from the recorded token/cost ledger
+  memory-graph [--since <dur|ISO>] [--until <dur|ISO>] [--limit n] [--top n] [--dot] [--json]
+                            Graph view over stored memory (facts, skills, runs, sessions, knowledge)
+  journey [--since <dur|ISO>] [--until <dur|ISO>] [--limit n] [--kind k1,k2] [--json]
+                            Chronological timeline of memory/skill/run/learn events
   eval [--tag <tag>] [--json]   Run the built-in self-evaluation suite (offline) with token/cost accounting
   doctor                    Check the environment
   update                    git pull + npm install + build
@@ -284,6 +288,10 @@ async function main(argv: string[]): Promise<void> {
       }
       case 'insights':
         return cmd.insightsCmd(m, a);
+      case 'memory-graph':
+        return cmd.memoryGraphCmd(m, a);
+      case 'journey':
+        return cmd.journeyCmd(m, a);
       case 'eval':
         return await cmd.evalCmd(m, a);
       case 'help':

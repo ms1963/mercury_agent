@@ -4,7 +4,7 @@ import { cpSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'no
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ACP_PROTOCOL_VERSION, auditCoordinates, errorMessage, buildArchive, buildSessionExport, checkArchiveCompat, collectDataDir, exitCodeFor, extractNpmCoordinates, fetchHttpClient, filterSessions, findSession, activeProjectName, createProject, getPath, buildInsights, resolveInsightsRange, formatTokens, formatCost, type InsightsGroupBy, type InsightsReport, installPlugin, installSkills, listInstalled, listProjects, loadOrCreateAuditKey, mcpServerCoordinates, mercuryHome, planRestore, runMoa, type MoaStrategy, type MoaResult, pluginCoordinates, projectDataDirEntryCount, readArchiveFile, removePlugin, removeProject, renderSessionMarkdown, resolveVoicePreset, restoreArchive, runEvalSuite, scaffold, scaffoldAddin, selectEvals, selectPrune, setConfigValue, showProject, updatePlugin, useProject, verifyArchive, verifyArchiveIntegrity, voicePresets, workingDirOf, writeArchiveFile, secretResolverFromConfig, scanSecretRefs, unwrapSecretRef, maskSecret, defaultSecretRunner, activeProfileName, createProfile, listProfiles, profileHomeEntryCount, profileRegistryDir, removeProfile, showProfile, useProfile, DEFAULT_PROFILE_NAME, PROFILE_ENV_VAR, type BackupArchive, type Coordinate, type EvalObservation, type ExtensionKind, type PackageJsonLike, type PluginPkg, type ProfileListEntry, type ProjectListEntry, type SecretResolver, type Session, type VoiceKind } from '@mercury/core';
+import { ACP_PROTOCOL_VERSION, auditCoordinates, errorMessage, buildArchive, buildSessionExport, checkArchiveCompat, collectDataDir, exitCodeFor, extractNpmCoordinates, fetchHttpClient, filterSessions, findSession, activeProjectName, createProject, getPath, buildInsights, resolveInsightsRange, formatTokens, formatCost, type InsightsGroupBy, type InsightsReport, buildMemGraphFromDb, memGraphToDot, buildJourney, resolveJourneyRange, type MemGraph, type JourneyTimeline, type JourneyEventKind, installPlugin, installSkills, listInstalled, listProjects, loadOrCreateAuditKey, mcpServerCoordinates, mercuryHome, planRestore, runMoa, type MoaStrategy, type MoaResult, pluginCoordinates, projectDataDirEntryCount, readArchiveFile, removePlugin, removeProject, renderSessionMarkdown, resolveVoicePreset, restoreArchive, runEvalSuite, scaffold, scaffoldAddin, selectEvals, selectPrune, setConfigValue, showProject, updatePlugin, useProject, verifyArchive, verifyArchiveIntegrity, voicePresets, workingDirOf, writeArchiveFile, secretResolverFromConfig, scanSecretRefs, unwrapSecretRef, maskSecret, defaultSecretRunner, activeProfileName, createProfile, listProfiles, profileHomeEntryCount, profileRegistryDir, removeProfile, showProfile, useProfile, DEFAULT_PROFILE_NAME, PROFILE_ENV_VAR, type BackupArchive, type Coordinate, type EvalObservation, type ExtensionKind, type PackageJsonLike, type PluginPkg, type ProfileListEntry, type ProjectListEntry, type SecretResolver, type Session, type VoiceKind } from '@mercury/core';
 import type { Mercury } from '@mercury/runtime';
 import { enablePresetConfig, mcpPreset, mcpPresets } from '@mercury/mcp';
 import { flag, type Args } from './args.js';
@@ -415,6 +415,133 @@ export function insightsCmd(m: Mercury, a: Args): void {
   if (json) return out(report, true);
   if (report.empty) return out('no usage recorded');
   return out(renderInsights(report));
+}
+
+export const MEMORY_GRAPH_HELP = `mercury memory-graph — a graph view over the memory Mercury already records
+
+Builds a graph of memory entities (facts, distilled skills, runs, sessions, knowledge sources) and the
+REAL relationships stored between them. Read-only; adds no instrumentation. Edges are grounded in
+stored columns — none are invented:
+  skill  --distilled_from--> run        (distilled_skills.source_runs)
+  run    --in_session------> session    (runs.session_id)
+  run    --spawned---------> run         (runs.parent_run_id — parent → child)
+  fact   --sourced_from----> run|session (facts.source, only when it equals a known id)
+
+Usage:
+  mercury memory-graph [--since <dur|ISO>] [--until <dur|ISO>] [--limit <n>] [--top <n>] [--dot] [--json]
+
+Flags:
+  --since <d>   Only entities created at/after this time — a duration (30d, 12h, 2w) or ISO date
+  --until <d>   Only entities created before this time — duration or ISO date
+  --limit <n>   Read at most N rows per source table (most-recent first)
+  --top <n>     How many most-connected nodes to list in the summary (default 10)
+  --dot         Emit Graphviz DOT (pipe to \`dot -Tsvg\` to render)
+  --json        Emit the full graph ({ nodes, edges, summary }) as JSON
+
+An empty memory prints "memory graph is empty" and exits 0.`;
+
+/** Render a memory graph as a readable summary (counts + top connected nodes). */
+function renderMemGraph(g: MemGraph): string {
+  const s = g.summary;
+  const lines: string[] = [];
+  lines.push(`Memory graph  ${s.nodeCount} nodes, ${s.edgeCount} edges`);
+  lines.push(
+    `  nodes: ${Object.entries(s.nodesByKind).filter(([, n]) => n > 0).map(([k, n]) => `${n} ${k}`).join(', ') || '(none)'}`,
+  );
+  lines.push(
+    `  edges: ${Object.entries(s.edgesByRel).filter(([, n]) => n > 0).map(([r, n]) => `${n} ${r}`).join(', ') || '(none)'}`,
+  );
+  if (s.topConnected.length) {
+    lines.push('');
+    lines.push('Most connected:');
+    for (const d of s.topConnected) lines.push(`  ${String(d.degree).padStart(3)}  [${d.kind}] ${d.label}`);
+  }
+  return lines.join('\n');
+}
+
+/**
+ * `mercury memory-graph` — project the stored memory layers into a graph. Pure graph construction +
+ * DOT export live in @mercury/core; this only parses flags, fetches rows read-only and renders.
+ */
+export function memoryGraphCmd(m: Mercury, a: Args): void {
+  if (a.flags.help) return out(MEMORY_GRAPH_HELP);
+  const top = flag(a, 'top') !== undefined ? Math.max(0, Number(flag(a, 'top'))) : undefined;
+  const limit = flag(a, 'limit') !== undefined ? Math.max(0, Number(flag(a, 'limit'))) : undefined;
+  if (top !== undefined && Number.isNaN(top)) throw new Error('invalid --top (expected a number)');
+  if (limit !== undefined && Number.isNaN(limit)) throw new Error('invalid --limit (expected a number)');
+  const { sinceIso, untilIso } = resolveJourneyRange({ since: flag(a, 'since'), until: flag(a, 'until') });
+  const graph = buildMemGraphFromDb(m.db, { range: { sinceIso, untilIso, limit }, top });
+  if (a.flags.dot) return out(memGraphToDot(graph));
+  if (a.flags.json) return out(graph, true);
+  if (graph.summary.empty) return out('memory graph is empty');
+  return out(renderMemGraph(graph));
+}
+
+export const JOURNEY_HELP = `mercury journey — a chronological timeline of the agent's significant events
+
+A newest-first timeline built from events Mercury already records: memory formation (facts), skill
+distillation, knowledge ingestion, runs, learn/reflection outcomes, and session starts. Read-only;
+adds no instrumentation.
+
+Usage:
+  mercury journey [--since <dur|ISO>] [--until <dur|ISO>] [--limit <n>] [--kind <k1,k2>] [--json]
+
+Flags:
+  --since <d>   Only events at/after this time — a duration (30d, 12h, 2w) or ISO date
+  --until <d>   Only events before this time — duration or ISO date
+  --limit <n>   Show at most N (most-recent) events
+  --kind <k>    Comma-separated event kinds: memory, skill, knowledge, run, learn, session
+  --json        Emit the full timeline ({ events, counts, total, ... }) as JSON
+
+An empty history prints "no journey events recorded" and exits 0.`;
+
+const JOURNEY_GLYPH: Record<JourneyEventKind, string> = {
+  memory: 'M',
+  skill: 'S',
+  knowledge: 'K',
+  run: 'R',
+  learn: 'L',
+  session: '·',
+};
+
+/** Render a journey timeline as a readable, newest-first list. */
+function renderJourney(t: JourneyTimeline): string {
+  const lines: string[] = [];
+  const range = t.firstTs && t.lastTs ? `${t.firstTs.slice(0, 10)} → ${t.lastTs.slice(0, 10)}` : '(all time)';
+  const shown = t.events.length < t.total ? `${t.events.length} of ${t.total}` : `${t.total}`;
+  lines.push(`Journey  ${range}  (${shown} events)`);
+  lines.push(
+    `  ${Object.entries(t.counts).filter(([, n]) => n > 0).map(([k, n]) => `${n} ${k}`).join(', ') || '(none)'}`,
+  );
+  lines.push('');
+  for (const e of t.events) {
+    lines.push(`${e.ts.slice(0, 19).replace('T', ' ')}  [${JOURNEY_GLYPH[e.kind]}] ${e.title}`);
+  }
+  return lines.join('\n');
+}
+
+const VALID_JOURNEY_KINDS: JourneyEventKind[] = ['memory', 'skill', 'knowledge', 'run', 'learn', 'session'];
+
+/**
+ * `mercury journey` — a chronological timeline over the recorded memory/skill/run/learn events. Pure
+ * assembly lives in @mercury/core; this only parses flags, fetches rows read-only and renders.
+ */
+export function journeyCmd(m: Mercury, a: Args): void {
+  if (a.flags.help) return out(JOURNEY_HELP);
+  const limit = flag(a, 'limit') !== undefined ? Math.max(0, Number(flag(a, 'limit'))) : undefined;
+  if (limit !== undefined && Number.isNaN(limit)) throw new Error('invalid --limit (expected a number)');
+  let kinds: JourneyEventKind[] | undefined;
+  const kindRaw = flag(a, 'kind');
+  if (kindRaw) {
+    kinds = kindRaw.split(',').map((k) => k.trim().toLowerCase()).filter(Boolean) as JourneyEventKind[];
+    const bad = kinds.filter((k) => !VALID_JOURNEY_KINDS.includes(k));
+    if (bad.length) throw new Error(`invalid --kind "${bad.join(', ')}" (use: ${VALID_JOURNEY_KINDS.join(', ')})`);
+  }
+  const { sinceIso, untilIso } = resolveJourneyRange({ since: flag(a, 'since'), until: flag(a, 'until') });
+  const timeline = buildJourney(m.db, { options: { sinceIso, untilIso, limit, kinds } });
+  if (a.flags.json) return out(timeline, true);
+  if (timeline.empty) return out('no journey events recorded');
+  return out(renderJourney(timeline));
 }
 
 const PROJECT_HELP = `usage: mercury project list [--json]
