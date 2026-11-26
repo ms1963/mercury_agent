@@ -8,6 +8,9 @@ Mercury's original goal, stated in its own README, was *"feature parity with Her
 Jev decision engine."* This document records where Mercury now goes **beyond** that parity baseline
 with real, implemented, and — where marked — **deterministically tested** capabilities.
 
+> For the opposite view — a command-level diff of what Mercury **still lacks** relative to the real
+> Hermes installation, plus a prioritized roadmap to close those gaps — see **[GAPS.md](GAPS.md)**.
+
 Honesty rules this table obeys:
 
 - The **Mercury** column describes only code that exists in **this repository**. The **Tested** column

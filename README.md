@@ -139,7 +139,8 @@ differentiators:
   rates) recorded to the usage ledger, emitted as events, and surfaced per-run by `mercury eval`.
 
 See **[docs/COMPARISON.md](docs/COMPARISON.md)** for the full, honestly-scoped feature-by-feature
-table (and [STATUS.md](STATUS.md) for what is tested vs not yet run against real services).
+table, **[docs/GAPS.md](docs/GAPS.md)** for the command-level gap analysis vs Hermes plus a
+prioritized roadmap, and [STATUS.md](STATUS.md) for what is tested vs not yet run against real services.
 
 ## Architecture
 
@@ -201,6 +202,7 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 | [docs/ADDINS.md](docs/ADDINS.md) | **Add-Ins** — add tools, personalities and permission profiles by dropping declarative files into `<dataDir>/addins/`, no source edits; manifest format, layout, the `mercury addin` CLI |
 | [docs/PERMISSIONS.md](docs/PERMISSIONS.md) | **Per-agent/personality permission profiles** — the effective-policy merge (intersection / most-restrictive) semantics with a worked example, and the `mercury perms` CLI |
 | [docs/COMPARISON.md](docs/COMPARISON.md) | **Mercury vs Hermes Agent** — what Mercury adds beyond the parity baseline, honestly marked tested-vs-untested |
+| [docs/GAPS.md](docs/GAPS.md) | **Capability gaps vs Hermes** — command-level diff (real Hermes install vs this repo) of what Mercury still lacks, with a prioritized roadmap |
 | [STATUS.md](STATUS.md) | Honest tested-vs-untested status of every subsystem |
 
 > This README is also available as a [PDF](README.pdf).
