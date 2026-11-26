@@ -11,6 +11,6 @@
     }
   },
   "dependencies": {
-    "@mercury/core": "^1.4.0"
+    "@mercury/core": "^2.0.0"
   }
 }

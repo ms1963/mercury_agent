@@ -11,9 +11,9 @@
     }
   },
   "dependencies": {
-    "@mercury/core": "^1.4.0",
-    "@mercury/tools": "^1.4.0",
-    "@mercury/mcp": "^1.4.0",
-    "@mercury/gateway": "^1.4.0"
+    "@mercury/core": "^2.0.0",
+    "@mercury/tools": "^2.0.0",
+    "@mercury/mcp": "^2.0.0",
+    "@mercury/gateway": "^2.0.0"
   }
 }
