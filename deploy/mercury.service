@@ -10,6 +10,10 @@ User=ubuntu
 WorkingDirectory=/home/ubuntu/mercury
 # HOME must be set so Mercury finds ~/.mercury (.env, config.yaml, mercury.db).
 Environment=HOME=/home/ubuntu
+# Scheduler evaluates cron/natural-language times in the process's local time zone.
+# The VM clock is UTC, so without this "5pm" would be scheduled as 17:00 UTC (18:00 CET).
+# Set to the operator's time zone so "at 5pm" means 5pm local. Override as needed.
+Environment=TZ=Europe/Berlin
 ExecStart=/usr/bin/node /home/ubuntu/mercury/packages/cli/dist/bin.js serve --host 127.0.0.1 --port 3000
 Restart=on-failure
 RestartSec=3

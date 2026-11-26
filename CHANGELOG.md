@@ -7,6 +7,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Scheduler time zone** — the cron/natural-language scheduler evaluates times in the process's
+  local time zone, but the deployment VM's clock is UTC, so `"every day at 5pm"` was scheduled as
+  17:00 UTC (shown as 18:00 to a CET operator). The `deploy/mercury.service` unit now sets
+  `Environment=TZ=Europe/Berlin` so natural-language times resolve in the operator's local zone;
+  override the value for other time zones.
+
 ## [2.0.0] - 2026-11-26
 
 ### Added
