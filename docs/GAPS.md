@@ -1,0 +1,127 @@
+![Mercury Agent](../assets/mercury_agent.png)
+
+# Mercury vs Hermes Agent — Capability Gaps
+
+**What this document is.** A grounded, command-level diff between **Hermes Agent** (Nous Research;
+the real installation present on this machine) and **Mercury Agent** (this repository at **v1.8.1**).
+
+**How it was produced (honesty note).**
+
+- The **Hermes** side is the actual `hermes --help` command surface of the installed Hermes Agent
+  (Nous Research) — its subcommands, read directly from the binary on this host.
+- The **Mercury** side is the actual `mercury help` command surface of this repository at HEAD.
+- This is a **presence-of-capability diff** (does a command/subsystem exist), **not** a measurement of
+  depth or quality of each implementation, and **not** a runtime benchmark. No Hermes internals were
+  inspected beyond its public CLI surface.
+- This complements [COMPARISON.md](COMPARISON.md). That document is written against a "parity
+  positioning reference"; **this** document is written against the real Hermes CLI, so where the two
+  disagree, trust this one for *what is missing*.
+
+---
+
+## 1. Genuine functional gaps (Hermes has it; Mercury lacks it or has only a partial form)
+
+| # | Area | Hermes command/feature | Mercury today | Gap |
+|---|---|---|---|---|
+| 1 | **Native desktop app** | `desktop` / `gui` (build & launch native app) + `serve` headless backend powering it | Web UI (`serve`) only | Missing native desktop shell |
+| 2 | **Computer Use / GUI automation** | `computer-use` (cua-driver; macOS/Windows/Linux) | Untested Playwright browser backend only | No OS-level GUI control |
+| 3 | **Mixture-of-Agents** | `moa` (aggregate answers across several model slots) | Router + teams, no MoA aggregation | Missing MoA provider |
+| 4 | **Isolated profiles** | `profile` (multiple fully isolated instances) | Multi-user RBAC in one instance | No instance isolation |
+| 5 | **Projects / workspaces** | `project` (named, multi-folder workspaces) | Single data dir | No project workspaces |
+| 6 | **Kanban board** | `kanban` (tasks, links, comments) | — | Missing |
+| 7 | **Shell hooks** | `hooks` (shell-script lifecycle hooks) | — | Missing |
+| 8 | **External secret stores** | `secrets` (Bitwarden, 1Password) | `.env` / env vars only | No managed secret backends |
+| 9 | **Supply-chain audit** | `security` (OSV.dev scan of venv, plugins, MCP servers) | Security test suite, but no CVE audit | Missing dependency CVE audit |
+| 10 | **Backup / restore** | `backup`, `import`, `dump`, `checkpoints` | `bundle` packages config only | No full-home backup/restore |
+| 11 | **Session management** | `sessions` (list/rename/export/prune/delete) | Sessions persist, no dedicated CLI | Partial — no session CLI |
+| 12 | **Plugin lifecycle** | `plugins` install/update/remove/list | `plugins` **list-only** (+ `new plugin` scaffold) | Partial — no install/update/remove |
+| 13 | **Skill curator** | `curator` (background skill maintenance: run/pause/pin) | Self-distill + `learn`, no curator loop | Missing maintenance loop |
+| 14 | **Memory graph & timeline** | `memory-graph`, `journey` timeline, external `memory` provider | Layered memory + `learn` | No graph/timeline/external provider |
+| 15 | **Usage insights** | `insights` (analytics) | Token/cost accounting + `/metrics` | No insights command |
+| 16 | **Agent Client Protocol** | `acp` (ACP server) | — | Missing |
+| 17 | **Language Server Protocol** | `lsp` | — | Missing |
+| 18 | **OAuth→OpenAI proxy** | `proxy` (local OpenAI-compatible proxy to OAuth providers) | — | Missing |
+| 19 | **Pooled provider auth / fallback** | `auth` (pooled credentials), `fallback` providers | Fallback chain exists; no pooled-credential manager | Partial |
+| 20 | **Operator conveniences** | `completion`, `logs`, `prompt-size`, `migrate`, `console`, `pairing` | `gateway pair` exists; others absent | Several small gaps |
+
+---
+
+## 2. Already at parity (NOT gaps)
+
+Mercury matches these Hermes capabilities today: interactive `chat` + headless `serve`; chat-platform
+gateways (Mercury ships 19 adapters); **task scheduling** (`schedule`, cron-style — Hermes `cron`);
+multi-agent **workflows** and **teams**; **persistent memory** (working/episodic/semantic/procedural);
+**skills** in agentskills.io format; **bundles**; **MCP client and server** (+ 14 optional integration
+presets as of v1.8.0); **voice** STT/TTS; **auth / tokens / RBAC / audit log**; `doctor`; `update`.
+
+**Mercury-only extras** (beyond the Hermes surface): the **Jev decision engine**, the `eval`
+self-evaluation harness, the reliability/efficiency toolkit (circuit breaker, saga, TTL cache,
+single-flight), the **LLM Wiki**, declarative **add-ins**, per-agent **permission profiles**,
+**proactive** event triggers, and run **replay**. It also ships `import-agent` to migrate from Hermes.
+
+---
+
+## 3. Vendor-specific (out of scope — match only if you choose to)
+
+`portal` (Nous Portal login/model/tool-gateway), `claw` (OpenClaw migration), `pets` / petdex
+(cosmetic animated pets), `whatsapp-cloud` (WhatsApp Business Cloud specifics). These are tied to
+Nous Research's ecosystem or are cosmetic; they are not parity obligations.
+
+---
+
+## 4. Prioritized roadmap to close the gaps
+
+Ordered by value-to-effort for a self-hosted agentic platform. Each tier is independent.
+
+### Tier 1 — High value, moderate effort (do first)
+
+1. **Supply-chain audit (`mercury security audit`)** — wrap OSV.dev over `package-lock.json`, installed
+   plugins and configured MCP servers. High security value, self-contained, aligns with Mercury's
+   existing security posture.
+2. **Backup / restore (`mercury backup` / `mercury import`)** — zip `~/.mercury` (config, memory DB,
+   skills, add-ins) and restore it. Extends the existing `bundle` machinery; critical for real
+   deployments.
+3. **Session management CLI (`mercury sessions list|rename|export|prune|delete`)** — sessions already
+   persist; this only adds a management surface over existing data.
+4. **Full plugin lifecycle (`mercury plugins install|update|remove`)** — Mercury already *loads*
+   plugins and scaffolds them; close the loop with install/update/remove from path or git.
+
+### Tier 2 — High value, higher effort
+
+5. **Projects / workspaces (`mercury project`)** — named, multi-folder workspaces with per-project
+   config and memory scoping. Pairs naturally with the existing data-dir and memory namespaces.
+6. **External secret stores (`mercury secrets`)** — pluggable backend interface (Bitwarden, 1Password)
+   resolving `${SECRET:...}` references at connect time; reuses the MCP preset `${ENV_VAR}` pattern.
+7. **Isolated profiles (`mercury profile`)** — multiple isolated instances via `MERCURY_HOME`
+   switching; mostly orchestration over the existing home-dir indirection.
+8. **Usage insights (`mercury insights`)** — aggregate the token/cost ledger and run events already
+   recorded into a reportable analytics view.
+
+### Tier 3 — Strategic / ecosystem
+
+9. **ACP server (`mercury acp`)** — expose Mercury over the Agent Client Protocol so external clients
+   (editors, IDEs) can drive it; complements the existing MCP server.
+10. **Mixture-of-Agents (`mercury moa`)** — aggregate/vote across model slots; a natural extension of
+    the Jev router and teams.
+11. **Memory graph & journey timeline** — a graph view and chronological timeline over the existing
+    memory/skill-distillation events.
+12. **Shell hooks (`mercury hooks`)** — lifecycle shell-script hooks with approval gating (reuse the
+    existing approvals/guardrails layer).
+
+### Tier 4 — Niche / low priority
+
+13. Native desktop app (`desktop`), Computer-Use backend (`computer-use`), LSP (`lsp`), OAuth proxy
+    (`proxy`), Kanban (`kanban`), operator conveniences (`completion`, `logs`, `prompt-size`,
+    `migrate`). Useful but either heavy (desktop/computer-use) or low-frequency.
+
+---
+
+## 5. Caveats
+
+- This is a **CLI-surface** comparison: a command's presence does not prove equivalent depth, and its
+  absence in one column does not prove the capability is wholly missing (it may exist as a library
+  without a dedicated command).
+- The Hermes side is the Nous Research Hermes Agent installed on this host at the time of writing; a
+  different Hermes version may expose a different command set.
+- The Mercury side is this repository at **v1.8.1**. Re-run `hermes --help` and `mercury help` to
+  refresh this diff after either side changes.
