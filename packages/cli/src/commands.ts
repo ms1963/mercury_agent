@@ -4,10 +4,11 @@ import { cpSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'no
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ACP_PROTOCOL_VERSION, LSP_PROTOCOL, LSP_COMMANDS, auditCoordinates, errorMessage, buildArchive, buildSessionExport, checkArchiveCompat, collectDataDir, exitCodeFor, extractNpmCoordinates, fetchHttpClient, filterSessions, findSession, activeProjectName, createProject, getPath, buildInsights, resolveInsightsRange, formatTokens, formatCost, type InsightsGroupBy, type InsightsReport, buildMemGraphFromDb, memGraphToDot, buildJourney, resolveJourneyRange, type MemGraph, type JourneyTimeline, type JourneyEventKind, parseHookDefs, validateHookDef, buildHookPlan, runHookPlan, defaultHookRunner, formatHookList, formatHookResult, HOOKS_EVENTS, type HookConfigEntry, type HooksEventName, installPlugin, installSkills, listInstalled, listProjects, loadOrCreateAuditKey, mcpServerCoordinates, mercuryHome, planRestore, runMoa, type MoaStrategy, type MoaResult, pluginCoordinates, projectDataDirEntryCount, readArchiveFile, removePlugin, removeProject, renderSessionMarkdown, resolveVoicePreset, restoreArchive, runEvalSuite, scaffold, scaffoldAddin, selectEvals, selectPrune, setConfigValue, showProject, updatePlugin, useProject, verifyArchive, verifyArchiveIntegrity, voicePresets, workingDirOf, writeArchiveFile, secretResolverFromConfig, scanSecretRefs, unwrapSecretRef, maskSecret, defaultSecretRunner, activeProfileName, createProfile, listProfiles, profileHomeEntryCount, profileRegistryDir, removeProfile, showProfile, useProfile, DEFAULT_PROFILE_NAME, PROFILE_ENV_VAR, type BackupArchive, type Coordinate, type EvalObservation, type ExtensionKind, type PackageJsonLike, type PluginPkg, type ProfileListEntry, type ProjectListEntry, type SecretResolver, type Session, type VoiceKind } from '@mercury/core';
+import { ACP_PROTOCOL_VERSION, LSP_PROTOCOL, LSP_COMMANDS, auditCoordinates, errorMessage, buildArchive, buildSessionExport, checkArchiveCompat, collectDataDir, exitCodeFor, extractNpmCoordinates, fetchHttpClient, filterSessions, findSession, activeProjectName, createProject, getPath, buildInsights, resolveInsightsRange, formatTokens, formatCost, type InsightsGroupBy, type InsightsReport, buildMemGraphFromDb, memGraphToDot, buildJourney, resolveJourneyRange, type MemGraph, type JourneyTimeline, type JourneyEventKind, generateCompletion, COMPLETION_SHELLS, type CompletionShell, queryOperatorLogs, formatOperatorLogs, resolveOperatorLogRange, computePromptSize, formatPromptSize, readMigrationStatus, applyPendingMigrations, operatorBanner, INSTRUCTION_HIERARCHY, parseHookDefs, validateHookDef, buildHookPlan, runHookPlan, defaultHookRunner, formatHookList, formatHookResult, HOOKS_EVENTS, type HookConfigEntry, type HooksEventName, installPlugin, installSkills, listInstalled, listProjects, loadOrCreateAuditKey, mcpServerCoordinates, mercuryHome, planRestore, runMoa, type MoaStrategy, type MoaResult, pluginCoordinates, projectDataDirEntryCount, readArchiveFile, removePlugin, removeProject, renderSessionMarkdown, resolveVoicePreset, restoreArchive, runEvalSuite, scaffold, scaffoldAddin, selectEvals, selectPrune, setConfigValue, showProject, updatePlugin, useProject, verifyArchive, verifyArchiveIntegrity, voicePresets, workingDirOf, writeArchiveFile, secretResolverFromConfig, scanSecretRefs, unwrapSecretRef, maskSecret, defaultSecretRunner, activeProfileName, createProfile, listProfiles, profileHomeEntryCount, profileRegistryDir, removeProfile, showProfile, useProfile, DEFAULT_PROFILE_NAME, PROFILE_ENV_VAR, type BackupArchive, type Coordinate, type EvalObservation, type ExtensionKind, type PackageJsonLike, type PluginPkg, type ProfileListEntry, type ProjectListEntry, type SecretResolver, type Session, type VoiceKind } from '@mercury/core';
 import type { Mercury } from '@mercury/runtime';
 import { enablePresetConfig, mcpPreset, mcpPresets } from '@mercury/mcp';
 import { flag, type Args } from './args.js';
+import { repl } from './repl.js';
 
 const out = (v: unknown, json?: boolean) => console.log(json || typeof v !== 'string' ? JSON.stringify(v, null, 2) : v);
 const need = (v: string | undefined, usage: string): string => {
@@ -2294,4 +2295,148 @@ export async function hooksCmd(m: Mercury, a: Args): Promise<void> {
       out(HOOKS_HELP);
       process.exitCode = 1;
   }
+}
+
+
+// ───────────────────────────── operator conveniences (gap #20) ─────────────────────────────
+
+export const COMPLETION_HELP = `mercury completion <bash|zsh|fish> — print a shell-completion script
+
+Generates a completion script (from the real command list) and prints it to stdout, so you can source it
+or save it where your shell loads completions from.
+
+Usage:
+  mercury completion bash > /etc/bash_completion.d/mercury      # or source from ~/.bashrc
+  mercury completion zsh  > "\${fpath[1]}/_mercury"               # then restart your shell
+  mercury completion fish > ~/.config/fish/completions/mercury.fish
+
+Completes top-level commands and the common subcommands of each.`;
+
+export function completionCmd(_m: Mercury, a: Args): void {
+  if (a.flags.help) return out(COMPLETION_HELP);
+  const shell = (a._[1] ?? '').toLowerCase() as CompletionShell;
+  if (!COMPLETION_SHELLS.includes(shell)) {
+    throw new Error(`usage: mercury completion <${COMPLETION_SHELLS.join('|')}>`);
+  }
+  console.log(generateCompletion(shell));
+}
+
+export const LOGS_HELP = `mercury logs — view recent Mercury activity
+
+Reads the activity Mercury already records in the 'runs' table (one row per chat/run). Read-only; adds no
+new log store.
+
+Usage:
+  mercury logs [--limit <n>] [--since <dur|ISO>] [--until <dur|ISO>] [--json]
+
+Flags:
+  --limit <n>    Show at most N rows, most-recent first (default 20)
+  --since <d>    Only activity at/after this time — a duration (30d, 12h, 90m, 2w) or ISO date
+  --until <d>    Only activity before this time — duration or ISO date
+  --json         Emit the rows as JSON
+
+Note: this is a point-in-time view; there is no live --follow tail (runs are persisted after they finish).
+An empty result prints "no activity recorded" and exits 0.`;
+
+export function logsCmd(m: Mercury, a: Args): void {
+  if (a.flags.help) return out(LOGS_HELP);
+  const json = !!a.flags.json;
+  const limit = flag(a, 'limit') !== undefined ? Math.max(0, Number(flag(a, 'limit'))) : undefined;
+  if (limit !== undefined && Number.isNaN(limit)) throw new Error('invalid --limit (expected a number)');
+  const { sinceIso, untilIso } = resolveOperatorLogRange({ since: flag(a, 'since'), until: flag(a, 'until') });
+  const rows = queryOperatorLogs(m.db, { sinceIso, untilIso, limit });
+  if (json) return out(rows, true);
+  return out(formatOperatorLogs(rows));
+}
+
+export const PROMPT_SIZE_HELP = `mercury prompt-size — estimate the size of the assembled system prompt/context
+
+Measures the real, offline-available components of the system prompt the agent assembles (persona, the
+security instruction hierarchy, and the skills/tools index) and reports characters plus an approximate
+token count per component.
+
+Usage:
+  mercury prompt-size [--json]
+
+Approximation note: token counts are a heuristic (~4 characters per token), NOT a tokenizer, and the
+session-dependent pieces (conversation memory, retrieved context, per-turn hints) are shown as 0 here
+because they only exist during a live run. Treat the totals as a lower-bound estimate of the static base
+prompt, not an exact per-request figure.`;
+
+export function promptSizeCmd(m: Mercury, a: Args): void {
+  if (a.flags.help) return out(PROMPT_SIZE_HELP);
+  const json = !!a.flags.json;
+  const persona = m.personalities.get(m.config.agent.personality).prompt;
+  const skillsIndex = m.skills.index('cli');
+  const report = computePromptSize([
+    { name: 'system prompt (persona)', text: persona },
+    { name: 'instruction hierarchy', text: INSTRUCTION_HIERARCHY },
+    { name: 'skills/tools index', text: skillsIndex },
+    { name: 'memory/context (live only)', text: '' },
+  ]);
+  if (json) return out(report, true);
+  out(formatPromptSize(report));
+  out('\n(approximate: ~4 chars/token; memory & retrieved context are live-run only. See: mercury prompt-size --help)');
+}
+
+export const MIGRATE_HELP = `mercury migrate — report or apply database migrations
+
+Reuses the existing migration runner and the append-only migration list; adds no new migrations.
+
+Usage:
+  mercury migrate [status] [--json]   Show applied vs pending migrations
+  mercury migrate up [--json]         Apply any pending migrations
+
+Note: the database runs its migrations automatically when Mercury starts, so in normal operation nothing
+is pending and 'migrate up' simply confirms the schema is current.`;
+
+export function migrateCmd(m: Mercury, a: Args): void {
+  if (a.flags.help) return out(MIGRATE_HELP);
+  const json = !!a.flags.json;
+  const sub = a._[1] ?? 'status';
+  if (sub === 'up') {
+    const appliedNow = applyPendingMigrations(m.db);
+    const status = readMigrationStatus(m.db);
+    if (json) return out({ applied: appliedNow, status }, true);
+    if (!appliedNow.length) return out(`already up to date (${status.current}/${status.total} migrations applied)`);
+    return out(`applied ${appliedNow.length} migration(s): ${appliedNow.join(', ')} (now ${status.current}/${status.total})`);
+  }
+  if (sub !== 'status') throw new Error('usage: mercury migrate [status|up] [--json]');
+  const status = readMigrationStatus(m.db);
+  if (json) return out(status, true);
+  const lines = [
+    `migrations: ${status.applied.length} applied, ${status.pending.length} pending (of ${status.total})`,
+    `current version: ${status.current}`,
+  ];
+  if (status.pending.length) lines.push(`pending: ${status.pending.join(', ')}`);
+  else lines.push('status: up to date');
+  return out(lines.join('\n'));
+}
+
+export const CONSOLE_HELP = `mercury console — a lightweight operator REPL
+
+Launches the interactive chat REPL with an operator banner (version, user, data dir, database path and a
+config summary). Equivalent to 'mercury chat' plus the banner; all REPL slash-commands (/help, /model,
+/usage, ...) are available.
+
+Usage:
+  mercury console [--user <name>] [--model <id>] [--session <id>] [--pattern <name>]`;
+
+export async function consoleCmd(m: Mercury, a: Args): Promise<void> {
+  if (a.flags.help) return out(CONSOLE_HELP);
+  const principal = flag(a, 'user') ? m.principalFor(flag(a, 'user')) : await m.localPrincipal();
+  const opts = { model: flag(a, 'model'), sessionId: flag(a, 'session'), pattern: flag(a, 'pattern') };
+  console.log(
+    operatorBanner({
+      version: cliVersion(),
+      dbPath: m.db.file,
+      dataDir: m.config.dataDir || '(default)',
+      model: opts.model ?? m.config.llm.defaultModel,
+      personality: m.config.agent.personality,
+      pattern: opts.pattern,
+      user: principal.username,
+    }),
+  );
+  await repl(m, principal, opts);
+  await m.agent.idle();
 }

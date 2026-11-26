@@ -94,6 +94,12 @@ Usage: mercury <command> [options]
   hooks <list|events|add|remove|run> [...]
                             Shell-script lifecycle hooks (approval-gated). See: mercury hooks
   eval [--tag <tag>] [--json]   Run the built-in self-evaluation suite (offline) with token/cost accounting
+  completion <bash|zsh|fish>    Print a shell-completion script for mercury (source/save it)
+  logs [--limit n] [--since <dur|ISO>] [--until <dur|ISO>] [--json]
+                            View recent activity from the recorded runs (read-only)
+  prompt-size [--json]      Estimate the size (chars + approx tokens) of the assembled system prompt
+  migrate [status|up] [--json]   Report or apply database migrations (reuses the existing runner)
+  console                   Operator REPL (chat + a banner: version, user, data dir, db path, config)
   doctor                    Check the environment
   update                    git pull + npm install + build
   help [topic]              Show help (topics: mercury help)
@@ -308,6 +314,16 @@ async function main(argv: string[]): Promise<void> {
         return await cmd.hooksCmd(m, a);
       case 'eval':
         return await cmd.evalCmd(m, a);
+      case 'completion':
+        return cmd.completionCmd(m, a);
+      case 'logs':
+        return cmd.logsCmd(m, a);
+      case 'prompt-size':
+        return cmd.promptSizeCmd(m, a);
+      case 'migrate':
+        return cmd.migrateCmd(m, a);
+      case 'console':
+        return await cmd.consoleCmd(m, a);
       case 'help':
         if (a._[1]) return console.log(m.help.get(a._[1]) ?? `No help topic "${a._[1]}". Topics:\n${m.help.index()}`);
         return console.log(`${HELP}\nHelp topics:\n${m.help.index()}`);

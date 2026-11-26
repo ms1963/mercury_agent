@@ -69,6 +69,7 @@ export * from './sessions/manage.js';
 export * from './hooks/hooks.js';
 export * from './insights/insights.js';
 export * from './memgraph/memgraph.js';
+export * from './operator/operator.js';
 export * from './memory/providers.js';
 export * from './memory/user-model.js';
 export * from './profiles/manage.js';
