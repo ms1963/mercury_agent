@@ -954,6 +954,24 @@ export const ConfigSchema = z.object({
     .prefault({}),
 
   /**
+   * Mixture-of-Agents ("moa"): send the SAME prompt to several proposer model slots in parallel, then
+   * aggregate — either `synthesize` (an aggregator model writes the final answer from all proposals) or
+   * `vote` (majority / self-consistency selection). A natural extension of the Jev router + teams that
+   * reuses the existing model-slot / LLM-gateway call path. These are defaults; `mercury moa` flags
+   * override them per query. Empty `proposers` falls back to the default model at call time.
+   */
+  moa: z
+    .object({
+      /** Default proposer model slots ("<provider>/<model>" or "auto"). Empty → use the default model. */
+      proposers: z.array(z.string()).default([]),
+      /** Default aggregator model slot for the synthesize strategy. */
+      aggregator: z.string().default('auto'),
+      /** Default aggregation strategy. */
+      strategy: z.enum(['synthesize', 'vote']).default('synthesize'),
+    })
+    .prefault({}),
+
+  /**
    * External secret stores. `${SECRET:backend:key}` / `${SECRET:key}` references embedded in config values
    * (e.g. MCP server env/headers/args) are resolved to real values at connect time through a pluggable
    * backend, so no plaintext secret is written into the config file. The `env` backend is always present;

@@ -25,7 +25,7 @@ the real installation present on this machine) and **Mercury Agent** (this repos
 |---|---|---|---|---|
 | 1 | **Native desktop app** | `desktop` / `gui` (build & launch native app) + `serve` headless backend powering it | Web UI (`serve`) only | Missing native desktop shell |
 | 2 | **Computer Use / GUI automation** | `computer-use` (cua-driver; macOS/Windows/Linux) | Untested Playwright browser backend only | No OS-level GUI control |
-| 3 | **Mixture-of-Agents** | `moa` (aggregate answers across several model slots) | Router + teams, no MoA aggregation | Missing MoA provider |
+| 3 | **Mixture-of-Agents** | `moa` (aggregate answers across several model slots) | ✅ **Done** — `mercury moa "<prompt>"` fans the SAME prompt out to several proposer model slots in parallel, collects their proposals, and produces one final answer by `synthesize` (an aggregator model slot writes the final answer from all proposals) or `vote` (majority / self-consistency; ties broken by first appearance). A natural extension of the Jev router + teams: it reuses the existing model-slot / LLM-gateway call path (routing, RBAC, budgets, usage ledger) via an injected runner (`m.moaModelCall`) rather than adding a second LLM mechanism. Proposer/aggregator slots and strategy are configurable via flags or the new `moa.*` config section; a failing proposer is captured (not fatal) and the run proceeds with the survivors; `--show-proposals`/`--json`. Pure logic in `packages/core/src/moa/moa.ts`, 23 offline tests in `tests/moa.test.ts` | Closed |
 | 4 | **Isolated profiles** | `profile` (multiple fully isolated instances) | ✅ **Done** — `mercury profile list\|create\|use\|show\|current\|remove` (multiple fully isolated instances, each its own `MERCURY_HOME` → own config, memory DB, skills, plugins, audit key; built-in `default` → `~/.mercury` so existing setups are unaffected; registry at `~/.config/mercury/profiles.json`; `use` persists the selection AND prints the `export MERCURY_PROFILE=<name>` line for the current shell; `MERCURY_HOME` wins, else `MERCURY_PROFILE` overrides stored active; `--home`/`--desc`/`--use`, gated `remove --force` with extra `--purge`; `--json`) | Closed |
 | 5 | **Projects / workspaces** | `project` (named, multi-folder workspaces) | ✅ **Done** — `mercury project list\|create\|use\|show\|current\|remove` (named workspaces each with their own data dir, scoping config + memory via the existing data-dir indirection; registry at `~/.mercury/projects.json`, `MERCURY_PROJECT` env override; `--dir`/`--folder`/`--desc`/`--use`, gated `remove --force` with extra `--purge`; `--json`) | Closed |
 | 6 | **Kanban board** | `kanban` (tasks, links, comments) | — | Missing |
@@ -217,8 +217,28 @@ Ordered by value-to-effort for a self-hosted agentic platform. Each tier is inde
    `docs/help/de/acp.md`. **Honesty:** every handler, the JSON-RPC framing and the error paths are
    exercised offline against stubs; it has **not** been exercised against a real external ACP client
    (e.g. Zed).
-10. **Mixture-of-Agents (`mercury moa`)** — aggregate/vote across model slots; a natural extension of
-    the Jev router and teams.
+10. ✅ **Done — Mixture-of-Agents (`mercury moa`)** — `mercury moa "<prompt>"` sends the SAME prompt to
+    several **proposer** model slots in parallel, collects their proposals, and produces one final
+    answer by one of two strategies: `synthesize` (hand every proposal to an **aggregator** model slot
+    that writes the final answer) or `vote` (majority / self-consistency — the answer backed by the most
+    proposers wins, ties broken by first appearance; no aggregator call). This is a natural extension of
+    the Jev router and teams: a "model slot" is the same `"<provider>/<model>"` id (or `"auto"`) the
+    router/registry already resolve, and every proposer/aggregator call flows through the SAME
+    `LLMService.complete` gateway (routing, RBAC, budgets, retries, usage ledger) via an injected runner
+    — MoA layers aggregation on top rather than inventing a second LLM path. Core logic lives in
+    `packages/core/src/moa/moa.ts`, split into PURE functions (prompt building, `tallyVotes`, validation,
+    `runProposers` fan-out, `runMoa` orchestration — all unit-testable with an injected `MoaModelCall`
+    stub) plus the injected runner; the runtime adapter is `m.moaModelCall(principal)`. A proposer that
+    errors is captured (status `error`) and the run proceeds with whatever succeeded (graceful
+    degradation, mirroring teams); if EVERY proposer fails the command errors. Proposer/aggregator slots
+    and strategy are configurable via flags (`--proposers a,b`, `--aggregator x`, `--strategy
+    synthesize|vote`, `--system`, `--show-proposals`, `--json`) or the new `moa.*` config section (empty
+    `proposers` → default model). CLI `moaCmd` wired in `bin.ts`; offline deterministic tests in
+    `tests/moa.test.ts` (23 tests) cover fan-out, both aggregation strategies, voting, validation and the
+    all-failed/empty edge cases; EN/DE help in `docs/help/moa.md` / `docs/help/de/moa.md`. **Honesty:**
+    the fan-out, synthesize/vote aggregation, validation and graceful-degradation paths are exercised
+    offline against an injected model-call stub; the engine has **not** been run against real models here
+    (the live runner is wired to the LLM gateway and needs provider credentials).
 11. **Memory graph & journey timeline** — a graph view and chronological timeline over the existing
     memory/skill-distillation events.
 12. **Shell hooks (`mercury hooks`)** — lifecycle shell-script hooks with approval gating (reuse the

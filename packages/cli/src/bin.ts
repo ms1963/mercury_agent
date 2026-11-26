@@ -36,6 +36,9 @@ Usage: mercury <command> [options]
                             Governed long-term memory & knowledge layer
   team [list|create <name>|show <id>|delete <id>|run <id> <task>|runs]
                             Multi-agent orchestration (teams)
+  moa "<prompt>"            Mixture-of-Agents: fan a prompt out to several proposer model slots and
+                            aggregate (--strategy synthesize|vote --proposers a,b --aggregator x
+                            --show-proposals --json)
   perms [list|show <personality>]   Inspect per-agent/personality permission profiles
   config [path|get <key>|set <key> <value>]
   voice [presets|show|use <stt|tts> <preset>]
@@ -189,6 +192,8 @@ async function main(argv: string[]): Promise<void> {
         return await cmd.memoryCmd(m, a);
       case 'team':
         return await cmd.teamCmd(m, a);
+      case 'moa':
+        return await cmd.moaCmd(m, a);
       case 'perms':
         return await cmd.permsCmd(m, a);
       case 'config':

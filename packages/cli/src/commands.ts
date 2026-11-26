@@ -4,7 +4,7 @@ import { cpSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'no
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ACP_PROTOCOL_VERSION, auditCoordinates, errorMessage, buildArchive, buildSessionExport, checkArchiveCompat, collectDataDir, exitCodeFor, extractNpmCoordinates, fetchHttpClient, filterSessions, findSession, activeProjectName, createProject, getPath, buildInsights, resolveInsightsRange, formatTokens, formatCost, type InsightsGroupBy, type InsightsReport, installPlugin, installSkills, listInstalled, listProjects, loadOrCreateAuditKey, mcpServerCoordinates, mercuryHome, planRestore, pluginCoordinates, projectDataDirEntryCount, readArchiveFile, removePlugin, removeProject, renderSessionMarkdown, resolveVoicePreset, restoreArchive, runEvalSuite, scaffold, scaffoldAddin, selectEvals, selectPrune, setConfigValue, showProject, updatePlugin, useProject, verifyArchive, verifyArchiveIntegrity, voicePresets, workingDirOf, writeArchiveFile, secretResolverFromConfig, scanSecretRefs, unwrapSecretRef, maskSecret, defaultSecretRunner, activeProfileName, createProfile, listProfiles, profileHomeEntryCount, profileRegistryDir, removeProfile, showProfile, useProfile, DEFAULT_PROFILE_NAME, PROFILE_ENV_VAR, type BackupArchive, type Coordinate, type EvalObservation, type ExtensionKind, type PackageJsonLike, type PluginPkg, type ProfileListEntry, type ProjectListEntry, type SecretResolver, type Session, type VoiceKind } from '@mercury/core';
+import { ACP_PROTOCOL_VERSION, auditCoordinates, errorMessage, buildArchive, buildSessionExport, checkArchiveCompat, collectDataDir, exitCodeFor, extractNpmCoordinates, fetchHttpClient, filterSessions, findSession, activeProjectName, createProject, getPath, buildInsights, resolveInsightsRange, formatTokens, formatCost, type InsightsGroupBy, type InsightsReport, installPlugin, installSkills, listInstalled, listProjects, loadOrCreateAuditKey, mcpServerCoordinates, mercuryHome, planRestore, runMoa, type MoaStrategy, type MoaResult, pluginCoordinates, projectDataDirEntryCount, readArchiveFile, removePlugin, removeProject, renderSessionMarkdown, resolveVoicePreset, restoreArchive, runEvalSuite, scaffold, scaffoldAddin, selectEvals, selectPrune, setConfigValue, showProject, updatePlugin, useProject, verifyArchive, verifyArchiveIntegrity, voicePresets, workingDirOf, writeArchiveFile, secretResolverFromConfig, scanSecretRefs, unwrapSecretRef, maskSecret, defaultSecretRunner, activeProfileName, createProfile, listProfiles, profileHomeEntryCount, profileRegistryDir, removeProfile, showProfile, useProfile, DEFAULT_PROFILE_NAME, PROFILE_ENV_VAR, type BackupArchive, type Coordinate, type EvalObservation, type ExtensionKind, type PackageJsonLike, type PluginPkg, type ProfileListEntry, type ProjectListEntry, type SecretResolver, type Session, type VoiceKind } from '@mercury/core';
 import type { Mercury } from '@mercury/runtime';
 import { enablePresetConfig, mcpPreset, mcpPresets } from '@mercury/mcp';
 import { flag, type Args } from './args.js';
@@ -1365,6 +1365,86 @@ export async function teamCmd(m: Mercury, a: Args): Promise<void> {
     default:
       throw new Error('usage: mercury team <list | create <name> --members ... | show <id> | delete <id> | run <id> <task> | runs> [--json]');
   }
+}
+
+
+export const MOA_HELP = `usage: mercury moa "<prompt>" [--proposers a,b,c] [--aggregator <slot>]
+                    [--strategy synthesize|vote] [--system <text>] [--show-proposals] [--json]
+
+Mixture-of-Agents — send the SAME prompt to several proposer model slots in parallel, collect their
+proposals, then produce one final answer. A natural extension of the Jev router + teams: it reuses the
+existing model-slot / LLM-gateway call path (routing, RBAC, budgets, usage ledger) rather than adding a
+second LLM mechanism.
+
+Strategies:
+  synthesize   An aggregator model slot reads every proposal and writes the final answer (default).
+  vote         Majority / self-consistency: the answer backed by the most proposers wins (ties broken
+               by first appearance). No aggregator call is made.
+
+Flags:
+  --proposers a,b,c   Comma-separated proposer model slots ("<provider>/<model>" or "auto").
+                      Defaults to config moa.proposers, else the default model. The same slot may be
+                      repeated (useful for vote / self-consistency sampling).
+  --aggregator <slot> Aggregator model slot for synthesize (default: config moa.aggregator).
+  --strategy <s>      synthesize (default) or vote. Default: config moa.strategy.
+  --system <text>     Optional system prompt prepended to every proposer.
+  --show-proposals    Also print each proposer's answer (and failures) before the final answer.
+  --json              Emit the full structured result (proposals, votes, counts, final answer).
+
+A proposer that errors is captured (not fatal); the run proceeds with whatever succeeded. If EVERY
+proposer fails, the command errors (exit nonzero). Note: proposer/aggregator calls hit real models when
+run live — nothing is mocked here.`;
+
+/** Render a human summary of an MoA result. */
+function renderMoa(r: MoaResult, showProposals: boolean): string {
+  const lines: string[] = [];
+  if (showProposals) {
+    lines.push('Proposals:');
+    for (const p of r.proposals) {
+      const detail = p.status === 'ok' ? String(p.answer).replace(/\s+/g, ' ').slice(0, 200) : `ERROR: ${p.error ?? 'unknown'}`;
+      lines.push(`  ${`${p.slot}#${p.index}`.padEnd(28)} [${p.status}] ${detail}`);
+    }
+    lines.push('');
+  }
+  if (r.strategy === 'vote' && r.votes) {
+    const winner = r.votes[0];
+    lines.push(`vote — ${r.usedProposers} proposer(s) answered, ${r.votes.length} distinct answer(s); winner: ${winner?.count ?? 0} vote(s) [${(winner?.voters ?? []).join(', ')}]`);
+  } else {
+    lines.push(`synthesize — ${r.usedProposers} proposal(s) via ${r.aggregator}${r.failedProposers ? ` (${r.failedProposers} proposer(s) failed)` : ''}`);
+  }
+  lines.push('');
+  lines.push(r.answer);
+  return lines.join('\n');
+}
+
+/**
+ * `mercury moa "<prompt>"` — run a Mixture-of-Agents query. Proposer/aggregator slots and strategy come
+ * from flags, falling back to the `moa.*` config section, then the default model. The real model-call
+ * runner is supplied by the runtime (`m.moaModelCall`), so every call flows through the normal LLM
+ * gateway. Pure aggregation/voting logic lives in @mercury/core.
+ */
+export async function moaCmd(m: Mercury, a: Args): Promise<void> {
+  if (a.flags.help) return out(MOA_HELP);
+  const json = !!a.flags.json;
+  const prompt = a._.slice(1).join(' ').trim();
+  if (!prompt) throw new Error('usage: mercury moa "<prompt>" [--proposers a,b] [--aggregator <slot>] [--strategy synthesize|vote] [--show-proposals] [--json]');
+
+  const cfg = m.config.moa;
+  const flagProposers = flag(a, 'proposers');
+  const listed = (flagProposers !== undefined ? flagProposers.split(',') : cfg.proposers).map((s) => s.trim()).filter(Boolean);
+  const proposers = listed.length ? listed : [m.config.llm.defaultModel];
+  const strategyRaw = (flag(a, 'strategy') ?? cfg.strategy).toLowerCase();
+  if (strategyRaw !== 'synthesize' && strategyRaw !== 'vote') throw new Error(`invalid --strategy "${strategyRaw}" (use: synthesize, vote)`);
+  const strategy = strategyRaw as MoaStrategy;
+  const aggregator = flag(a, 'aggregator') ?? cfg.aggregator ?? m.config.llm.defaultModel;
+
+  const principal = m.principalFor(flag(a, 'user'));
+  const result = await runMoa(
+    { prompt, proposers, strategy, aggregator, system: flag(a, 'system') },
+    m.moaModelCall(principal),
+  );
+  if (json) return out(result, true);
+  return out(renderMoa(result, !!a.flags['show-proposals']));
 }
 
 

@@ -107,6 +107,7 @@ import {
   type Plugin,
   type Principal,
   type ToolServices,
+  type MoaModelCall,
 } from '@mercury/core';
 import { registerBuiltinTools, registerPolyglotTools } from '@mercury/tools';
 import { McpClientManager } from '@mercury/mcp';
@@ -745,6 +746,21 @@ export class Mercury {
   /** ACP agent adapter bound to one principal (Mercury exposed as an ACP server). */
   acpAgent(principal: Principal) {
     return createAcpAgent(this, principal);
+  }
+
+  /**
+   * Model-call runner for Mixture-of-Agents (`mercury moa`). Each proposer/aggregator model call flows
+   * through the SAME `LLMService.complete` gateway everything else uses (routing, RBAC, budgets,
+   * retries, usage ledger) — MoA layers aggregation on top rather than inventing a second LLM path.
+   * The slot id is passed as the explicit model, so `"auto"` routes via Jev and a concrete
+   * `"<provider>/<model>"` targets that slot. Charged to the caller's budget.
+   */
+  moaModelCall(principal: Principal): MoaModelCall {
+    return async (req) =>
+      (await this.llm.complete(principal, req.messages.map((msg) => ({ role: msg.role, content: msg.content })), {
+        model: req.slot,
+        kind: 'moa',
+      })).content;
   }
 
   /** Resolve a user principal by username (CLI helpers). */
