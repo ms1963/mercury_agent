@@ -8,7 +8,7 @@ import { createLogger, setConfigValue, SYSTEM_PRINCIPAL } from '@mercury/core';
 import { createMercury, type Mercury } from '@mercury/runtime';
 import { startServer } from '@mercury/server';
 import { serveStdio } from '@mercury/mcp';
-import { serveAcpStdio } from '@mercury/core';
+import { serveAcpStdio, serveLspStdio } from '@mercury/core';
 import { flag, parseArgs, type Args } from './args.js';
 import { chatOnce, repl } from './repl.js';
 import * as cmd from './commands.js';
@@ -53,6 +53,9 @@ Usage: mercury <command> [options]
   acp [serve|info|methods]  Expose Mercury over the Agent Client Protocol (ACP) for editors/IDEs.
                             'serve' runs the stdio JSON-RPC server (launched by an ACP client);
                             'info'/'methods' show the protocol surface. Complements 'mcp serve'.
+  lsp [serve|info|methods]  Expose Mercury over the Language Server Protocol (LSP) for editors/IDEs.
+                            'serve' runs the stdio JSON-RPC server (Content-Length framed, launched by
+                            an LSP client); 'info'/'methods' show the protocol surface.
   user [list|add|passwd|role|delete]
   token [list|create <name> --scopes chat,mcp|revoke <id>]
   audit [list|verify] [--actor id] [--action token] [--since ISO] [--limit n] [--json]
@@ -150,7 +153,7 @@ async function main(argv: string[]): Promise<void> {
   if (command === 'new') return cmd.newCmd(a);
   if (command === 'version' || a.flags.v) return console.log(`mercury ${pkgVersion()}`);
 
-  const serve = command === 'serve' || (command === 'mcp' && a._[1] === 'serve') || (command === 'acp' && a._[1] === 'serve');
+  const serve = command === 'serve' || (command === 'mcp' && a._[1] === 'serve') || (command === 'acp' && a._[1] === 'serve') || (command === 'lsp' && a._[1] === 'serve');
   const m = await boot(a, serve);
   try {
     switch (command) {
@@ -257,6 +260,13 @@ async function main(argv: string[]): Promise<void> {
           return;
         }
         return await cmd.acpCmd(m, a);
+      case 'lsp':
+        if (a._[1] === 'serve') {
+          const principal = flag(a, 'user') ? m.principalFor(flag(a, 'user')) : await m.localPrincipal();
+          await serveLspStdio(m.lspAgent(principal), undefined, { version: pkgVersion() });
+          return;
+        }
+        return await cmd.lspCmd(m, a);
       case 'replay':
         for (const e of m.recorder.replay(a._[1] ?? '')) console.log(`${e.ts} ${e.type.padEnd(16)} ${JSON.stringify(e.data).slice(0, 160)}`);
         return;

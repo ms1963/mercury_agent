@@ -4,7 +4,7 @@ import { cpSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'no
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ACP_PROTOCOL_VERSION, auditCoordinates, errorMessage, buildArchive, buildSessionExport, checkArchiveCompat, collectDataDir, exitCodeFor, extractNpmCoordinates, fetchHttpClient, filterSessions, findSession, activeProjectName, createProject, getPath, buildInsights, resolveInsightsRange, formatTokens, formatCost, type InsightsGroupBy, type InsightsReport, buildMemGraphFromDb, memGraphToDot, buildJourney, resolveJourneyRange, type MemGraph, type JourneyTimeline, type JourneyEventKind, parseHookDefs, validateHookDef, buildHookPlan, runHookPlan, defaultHookRunner, formatHookList, formatHookResult, HOOKS_EVENTS, type HookConfigEntry, type HooksEventName, installPlugin, installSkills, listInstalled, listProjects, loadOrCreateAuditKey, mcpServerCoordinates, mercuryHome, planRestore, runMoa, type MoaStrategy, type MoaResult, pluginCoordinates, projectDataDirEntryCount, readArchiveFile, removePlugin, removeProject, renderSessionMarkdown, resolveVoicePreset, restoreArchive, runEvalSuite, scaffold, scaffoldAddin, selectEvals, selectPrune, setConfigValue, showProject, updatePlugin, useProject, verifyArchive, verifyArchiveIntegrity, voicePresets, workingDirOf, writeArchiveFile, secretResolverFromConfig, scanSecretRefs, unwrapSecretRef, maskSecret, defaultSecretRunner, activeProfileName, createProfile, listProfiles, profileHomeEntryCount, profileRegistryDir, removeProfile, showProfile, useProfile, DEFAULT_PROFILE_NAME, PROFILE_ENV_VAR, type BackupArchive, type Coordinate, type EvalObservation, type ExtensionKind, type PackageJsonLike, type PluginPkg, type ProfileListEntry, type ProjectListEntry, type SecretResolver, type Session, type VoiceKind } from '@mercury/core';
+import { ACP_PROTOCOL_VERSION, LSP_PROTOCOL, LSP_COMMANDS, auditCoordinates, errorMessage, buildArchive, buildSessionExport, checkArchiveCompat, collectDataDir, exitCodeFor, extractNpmCoordinates, fetchHttpClient, filterSessions, findSession, activeProjectName, createProject, getPath, buildInsights, resolveInsightsRange, formatTokens, formatCost, type InsightsGroupBy, type InsightsReport, buildMemGraphFromDb, memGraphToDot, buildJourney, resolveJourneyRange, type MemGraph, type JourneyTimeline, type JourneyEventKind, parseHookDefs, validateHookDef, buildHookPlan, runHookPlan, defaultHookRunner, formatHookList, formatHookResult, HOOKS_EVENTS, type HookConfigEntry, type HooksEventName, installPlugin, installSkills, listInstalled, listProjects, loadOrCreateAuditKey, mcpServerCoordinates, mercuryHome, planRestore, runMoa, type MoaStrategy, type MoaResult, pluginCoordinates, projectDataDirEntryCount, readArchiveFile, removePlugin, removeProject, renderSessionMarkdown, resolveVoicePreset, restoreArchive, runEvalSuite, scaffold, scaffoldAddin, selectEvals, selectPrune, setConfigValue, showProject, updatePlugin, useProject, verifyArchive, verifyArchiveIntegrity, voicePresets, workingDirOf, writeArchiveFile, secretResolverFromConfig, scanSecretRefs, unwrapSecretRef, maskSecret, defaultSecretRunner, activeProfileName, createProfile, listProfiles, profileHomeEntryCount, profileRegistryDir, removeProfile, showProfile, useProfile, DEFAULT_PROFILE_NAME, PROFILE_ENV_VAR, type BackupArchive, type Coordinate, type EvalObservation, type ExtensionKind, type PackageJsonLike, type PluginPkg, type ProfileListEntry, type ProjectListEntry, type SecretResolver, type Session, type VoiceKind } from '@mercury/core';
 import type { Mercury } from '@mercury/runtime';
 import { enablePresetConfig, mcpPreset, mcpPresets } from '@mercury/mcp';
 import { flag, type Args } from './args.js';
@@ -1317,6 +1317,104 @@ export async function acpCmd(m: Mercury, a: Args): Promise<void> {
       `  serve:            mercury acp serve   (launched by an ACP client over stdio)`,
     ].join('\n'),
   );
+}
+
+export const LSP_HELP = `usage: mercury lsp [serve|info|methods] [--json] [--user <name>]
+
+Expose Mercury over the Language Server Protocol (LSP) so LSP-capable editors/IDEs (VS Code, Neovim,
+Zed, …) can reach the Mercury agent + tool surface through their built-in language-server plumbing. LSP
+complements the MCP and ACP servers: where 'mercury mcp serve' lets MCP clients call Mercury's tools and
+'mercury acp serve' lets an ACP client prompt the agent, 'mercury lsp serve' exposes the same surface to
+an LSP client.
+
+Subcommands:
+  serve       Run the LSP server over stdio (JSON-RPC 2.0 with Content-Length header framing). This is the
+              mode an LSP client launches; it reads framed requests on stdin and writes framed responses +
+              $/progress notifications on stdout. Runs until the client sends 'exit' or stdin closes.
+              Bind a specific user with --user <name> (defaults to the local admin).
+  info        Show protocol version, capabilities and the implemented method surface (default).
+  methods     List the JSON-RPC methods this server handles.
+
+Wire surface (JSON-RPC 2.0 over stdio, Content-Length framed):
+  initialize                  negotiate capabilities -> { capabilities, serverInfo }
+  initialized                 (notification) client ack
+  shutdown                    request a clean shutdown (-> null)
+  exit                        (notification) end the serve loop
+  textDocument/didOpen        track an opened document
+  textDocument/didChange      apply a full-text change to a tracked document
+  textDocument/didClose       stop tracking a document
+  workspace/executeCommand    run a Mercury command: ${LSP_COMMANDS.join(', ')}
+  _mercury/agent/prompt       run one agent prompt turn (vendor extension)
+  _mercury/tools/list         list Mercury tool specs (vendor extension)
+  _mercury/tools/call         invoke one Mercury tool by name (vendor extension)
+
+Note: agent output streams back during a turn as $/progress notifications. Document sync is full
+(textDocumentSync.change = 1).`;
+
+/**
+ * LSP server management. The blocking 'serve' stdio loop is launched from bin.ts (like 'mcp serve' and
+ * 'acp serve'); this command prints the protocol/capability info and method surface.
+ */
+export async function lspCmd(m: Mercury, a: Args): Promise<void> {
+  if (a.flags.help) return out(LSP_HELP);
+  const sub = a._[1] ?? 'info';
+  const methods = [
+    { method: 'initialize', kind: 'request', description: 'Negotiate capabilities; returns serverInfo + capabilities.' },
+    { method: 'initialized', kind: 'notification', description: 'Client acknowledgement after initialize.' },
+    { method: 'shutdown', kind: 'request', description: 'Request a clean shutdown (returns null).' },
+    { method: 'exit', kind: 'notification', description: 'End the serve loop.' },
+    { method: 'textDocument/didOpen', kind: 'notification', description: 'Track an opened document.' },
+    { method: 'textDocument/didChange', kind: 'notification', description: 'Apply a full-text change to a tracked document.' },
+    { method: 'textDocument/didClose', kind: 'notification', description: 'Stop tracking a document.' },
+    { method: 'workspace/executeCommand', kind: 'request', description: `Run a Mercury command (${LSP_COMMANDS.join(', ')}).` },
+    { method: '_mercury/agent/prompt', kind: 'request', description: 'Run one agent prompt turn (vendor extension).' },
+    { method: '_mercury/tools/list', kind: 'request', description: 'List Mercury tool specs (vendor extension).' },
+    { method: '_mercury/tools/call', kind: 'request', description: 'Invoke one Mercury tool by name (vendor extension).' },
+  ];
+  if (sub === 'serve') {
+    return out('Run `mercury lsp serve` as a subprocess of an LSP client; it serves Content-Length-framed JSON-RPC over stdio until the client sends `exit` or stdin closes.');
+  }
+  if (sub === 'methods') {
+    if (a.flags.json) return out(methods, true);
+    return out(methods.map((x) => `${x.method.padEnd(26)} ${x.kind.padEnd(12)} ${x.description}`).join('\n'));
+  }
+  // info (default)
+  const info = {
+    protocolVersion: LSP_PROTOCOL,
+    transport: 'stdio (JSON-RPC 2.0, Content-Length framed)',
+    serverInfo: { name: 'mercury', version: lspPkgVersion() },
+    capabilities: {
+      textDocumentSync: { openClose: true, change: 1 },
+      executeCommandProvider: { commands: [...LSP_COMMANDS] },
+    },
+    toolSurface: (m.tools.specs('mcp') ?? []).map((t) => t.name),
+    methods: methods.map((x) => x.method),
+    serve: 'mercury lsp serve',
+  };
+  if (a.flags.json) return out(info, true);
+  return out(
+    [
+      `Mercury LSP server (Language Server Protocol)`,
+      `  protocol version: ${info.protocolVersion}`,
+      `  transport:        ${info.transport}`,
+      `  serverInfo:       ${info.serverInfo.name} v${info.serverInfo.version}`,
+      `  capabilities:     textDocumentSync(full), executeCommand=[${LSP_COMMANDS.join(', ')}]`,
+      `  methods:          ${info.methods.join(', ')}`,
+      `  tool surface:     ${info.toolSurface.length} tool(s) reachable via _mercury/tools/* and mercury.tools.*`,
+      `  serve:            mercury lsp serve   (launched by an LSP client over stdio)`,
+    ].join('\n'),
+  );
+}
+
+/** Resolve the CLI package version for `serverInfo.version` (never hardcode; mirrors bin.ts). */
+function lspPkgVersion(): string {
+  try {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const pkg = JSON.parse(readFileSync(join(here, '..', 'package.json'), 'utf8')) as { version?: string };
+    return pkg.version ?? '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
 }
 
 /**

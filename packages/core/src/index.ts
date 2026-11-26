@@ -14,6 +14,7 @@ export * from './agent/run-state.js';
 export * from './addins/index.js';
 export * from './attachments/store.js';
 export * from './acp/acp.js';
+export * from './lsp/lsp.js';
 export * from './backup/backup.js';
 export * from './auth/crypto.js';
 export * from './auth/grants.js';

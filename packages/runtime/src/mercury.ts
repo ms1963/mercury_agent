@@ -115,7 +115,7 @@ import {
 import { registerBuiltinTools, registerPolyglotTools } from '@mercury/tools';
 import { McpClientManager } from '@mercury/mcp';
 import { Gateway, registerAdapterType, type Adapter, type HttpTransport } from '@mercury/gateway';
-import { createAcpAgent, createBackend } from './backend.js';
+import { createAcpAgent, createLspAgent, createBackend } from './backend.js';
 
 export interface CreateOptions {
   configFile?: string;
@@ -776,6 +776,15 @@ export class Mercury {
   /** ACP agent adapter bound to one principal (Mercury exposed as an ACP server). */
   acpAgent(principal: Principal) {
     return createAcpAgent(this, principal);
+  }
+
+  /**
+   * LSP agent adapter (`mercury lsp serve`). The LSP server needs the SAME agent-run + tool-call surface
+   * as the ACP server (its `LspAgent` type aliases `AcpAgent`), so it binds the identical closure over a
+   * fixed principal. Kept as a distinct method so the LSP transport can be wired independently.
+   */
+  lspAgent(principal: Principal) {
+    return createLspAgent(this, principal);
   }
 
   /**

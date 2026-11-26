@@ -1,5 +1,5 @@
 /** McpBackend implementation: what external MCP clients can do with Mercury. */
-import { newId, type AcpAgent, type Principal, type ToolContext } from '@mercury/core';
+import { newId, type AcpAgent, type LspAgent, type Principal, type ToolContext } from '@mercury/core';
 import type { McpBackend } from '@mercury/mcp';
 import type { Mercury } from './mercury.js';
 
@@ -65,6 +65,27 @@ export function createAcpAgent(m: Mercury, principal: Principal): AcpAgent {
     async callTool(name, args) {
       const ctx = directToolContext(m, principal, 'acp');
       const r = await m.executor.execute({ id: newId('call'), name, arguments: args }, ctx, { untrustedSeen: true, userRequest: `ACP call ${name}` });
+      return { content: r.result.content, isError: !r.ok };
+    },
+  };
+}
+
+/**
+ * LSP agent adapter: the LSP server (`packages/core/src/lsp`) exposes the same agent + tool surface as
+ * the ACP server to LSP-capable editors/IDEs. `LspAgent` aliases `AcpAgent`, so this binds the identical
+ * closure over one authenticated `principal`; only the platform tag differs (`lsp`) for attribution.
+ */
+export function createLspAgent(m: Mercury, principal: Principal): LspAgent {
+  return {
+    async runPrompt(input, opts) {
+      const r = await m.agent.run({ principal, input, platform: 'lsp', kind: 'mcp', sessionId: opts.sessionId });
+      const stopReason = r.status === 'completed' ? 'end_turn' : r.status === 'stopped' ? 'cancelled' : 'error';
+      return { output: r.output, stopReason };
+    },
+    toolSpecs: () => m.tools.specs('mcp'),
+    async callTool(name, args) {
+      const ctx = directToolContext(m, principal, 'lsp');
+      const r = await m.executor.execute({ id: newId('call'), name, arguments: args }, ctx, { untrustedSeen: true, userRequest: `LSP call ${name}` });
       return { content: r.result.content, isError: !r.ok };
     },
   };
