@@ -33,7 +33,7 @@ the real installation present on this machine) and **Mercury Agent** (this repos
 | 8 | **External secret stores** | `secrets` (Bitwarden, 1Password) | `.env` / env vars only | No managed secret backends |
 | 9 | **Supply-chain audit** | `security` (OSV.dev scan of venv, plugins, MCP servers) | ✅ **Done** — `mercury security audit` (OSV.dev scan of npm deps, configured MCP servers, installed plugins; `--json`, `--npm`/`--mcp`/`--plugins`, `--lockfile`; CI-usable exit codes) | Closed |
 | 10 | **Backup / restore** | `backup`, `import`, `dump`, `checkpoints` | ✅ **Done** — `mercury backup` / `mercury import` (full `~/.mercury` archive to a signed, integrity-checked `.mbak`; `backup inspect`, secret-exclusion default with `--include-secrets`, safe restore with `--force` + auto pre-restore backup; `--json`) | Closed |
-| 11 | **Session management** | `sessions` (list/rename/export/prune/delete) | Sessions persist, no dedicated CLI | Partial — no session CLI |
+| 11 | **Session management** | `sessions` (list/rename/export/prune/delete) | ✅ **Done** — `mercury sessions list\|rename\|export\|delete\|prune` over the existing persisted sessions (readable table + `--json`, `--limit`/`--search`; export to JSON or markdown with `--out`; destructive delete/prune gated behind `--force`/`--yes`; `prune` is a dry run by default with `--older-than`/`--keep`/`--empty`) | Closed |
 | 12 | **Plugin lifecycle** | `plugins` install/update/remove/list | `plugins` **list-only** (+ `new plugin` scaffold) | Partial — no install/update/remove |
 | 13 | **Skill curator** | `curator` (background skill maintenance: run/pause/pin) | Self-distill + `learn`, no curator loop | Missing maintenance loop |
 | 14 | **Memory graph & timeline** | `memory-graph`, `journey` timeline, external `memory` provider | Layered memory + `learn` | No graph/timeline/external provider |
@@ -91,8 +91,17 @@ Ordered by value-to-effort for a self-hosted agentic platform. Each tier is inde
    `--force` first writes a reversible pre-restore safety backup; integrity is verified before any write).
    Engine in `packages/core/src/backup/backup.ts` (pure + thin fs layer); offline deterministic tests in
    `tests/backup.test.ts`.
-3. **Session management CLI (`mercury sessions list|rename|export|prune|delete`)** — sessions already
-   persist; this only adds a management surface over existing data.
+3. ✅ **Done — Session management CLI (`mercury sessions list|rename|export|delete|prune`)** — a
+   read/manage surface over the sessions Mercury already persists in the SQLite memory DB; it does not
+   change the write path or schema. `list` prints a most-recent-first table (short id, updated time,
+   message count, title, model/cwd) with `--limit`, `--search` and `--json`; `rename <id> <title>` sets a
+   session title (id may be a unique prefix); `export <id>` emits the session + messages as JSON (default)
+   or a markdown transcript (`--format md`) to stdout or `--out <path>`; `delete <id>` is gated behind
+   `--force`/`--yes`; `prune` is a DRY RUN by default (`--older-than <dur|ISO>`, `--keep <n>`, `--empty`,
+   union semantics with keep-N protecting the most-recent N) and only deletes with `--force`/`--yes`.
+   Pure selection/filtering/export logic in `packages/core/src/sessions/manage.ts` (fully unit-testable
+   with injected data + clock) over a read-only `EpisodicStore.listAll()`; offline deterministic tests in
+   `tests/sessions.test.ts`.
 4. **Full plugin lifecycle (`mercury plugins install|update|remove`)** — Mercury already *loads*
    plugins and scaffolds them; close the loop with install/update/remove from path or git.
 

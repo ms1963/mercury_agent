@@ -62,6 +62,7 @@ export * from './memory/governance.js';
 export * from './memory/knowledge.js';
 export * from './memory/lift.js';
 export * from './memory/manager.js';
+export * from './sessions/manage.js';
 export * from './memory/providers.js';
 export * from './memory/user-model.js';
 export * from './plugins/builtin-hooks.js';

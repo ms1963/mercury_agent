@@ -4,7 +4,7 @@ import { cpSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'no
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { auditCoordinates, buildArchive, checkArchiveCompat, collectDataDir, exitCodeFor, extractNpmCoordinates, fetchHttpClient, getPath, installSkills, loadOrCreateAuditKey, mcpServerCoordinates, mercuryHome, planRestore, pluginCoordinates, readArchiveFile, resolveVoicePreset, restoreArchive, runEvalSuite, scaffold, scaffoldAddin, selectEvals, setConfigValue, verifyArchive, verifyArchiveIntegrity, voicePresets, writeArchiveFile, type BackupArchive, type Coordinate, type EvalObservation, type ExtensionKind, type PackageJsonLike, type PluginPkg, type VoiceKind } from '@mercury/core';
+import { auditCoordinates, buildArchive, buildSessionExport, checkArchiveCompat, collectDataDir, exitCodeFor, extractNpmCoordinates, fetchHttpClient, filterSessions, findSession, getPath, installSkills, loadOrCreateAuditKey, mcpServerCoordinates, mercuryHome, planRestore, pluginCoordinates, readArchiveFile, renderSessionMarkdown, resolveVoicePreset, restoreArchive, runEvalSuite, scaffold, scaffoldAddin, selectEvals, selectPrune, setConfigValue, verifyArchive, verifyArchiveIntegrity, voicePresets, workingDirOf, writeArchiveFile, type BackupArchive, type Coordinate, type EvalObservation, type ExtensionKind, type PackageJsonLike, type PluginPkg, type Session, type VoiceKind } from '@mercury/core';
 import type { Mercury } from '@mercury/runtime';
 import { enablePresetConfig, mcpPreset, mcpPresets } from '@mercury/mcp';
 import { flag, type Args } from './args.js';
@@ -1017,4 +1017,188 @@ export async function restoreCmd(m: Mercury, a: Args): Promise<void> {
     `  Restart Mercury to pick up the restored config and data.`,
   ];
   return out(lines.join('\n'));
+}
+
+
+
+const SESSIONS_HELP = `usage: mercury sessions list [--limit <n>] [--search <text>] [--json]
+       mercury sessions rename <id> <new-title> [--json]
+       mercury sessions export <id> [--format json|md] [--out <path>] [--json]
+       mercury sessions delete <id> [--force|--yes] [--json]
+       mercury sessions prune [--older-than <dur|ISO>] [--keep <n>] [--empty] [--force|--yes] [--json]
+
+Manage the chat sessions already persisted in the Mercury memory DB (${'~/.mercury'}/mercury.db). This is a
+read/manage surface over EXISTING session data — it never changes how sessions are written.
+
+  list                        List persisted sessions, most-recent-first (id, title, updated, messages, model).
+    --limit <n>               Show at most n sessions.
+    --search <text>           Keep only sessions whose title contains <text> (case-insensitive).
+    --json                    Emit the sessions as JSON.
+  rename <id> <new-title>     Set/replace a session's title. <id> may be a unique id prefix.
+  export <id>                 Export one session (metadata + messages) to stdout or a file.
+    --format json|md          json (default) or a markdown transcript.
+    --out <path>              Write to <path> instead of stdout.
+    --json                    With --out, print the result summary as JSON.
+  delete <id>                 Delete one session (and its messages). Requires --force/--yes.
+    --force, --yes            Confirm the deletion (destructive).
+  prune                       Bulk cleanup. DRY RUN by default — prints what WOULD be deleted.
+    --older-than <dur|ISO>    Select sessions older than a duration (30d/12h/90m/2w) or ISO date.
+    --keep <n>                Protect the n most-recent sessions; with no other criterion, select the rest.
+    --empty                   Select sessions with zero messages.
+    --force, --yes            Actually delete the selected sessions (otherwise it is a dry run).
+    --json                    Emit the selection/result as JSON.
+
+Ids shown in the table are shortened; you may pass the short id (a unique prefix) to any subcommand.`;
+
+/** Short id for tables (first 12 chars), mirroring how other commands abbreviate ids. */
+const shortId = (id: string): string => (id.length > 12 ? id.slice(0, 12) : id);
+
+/** A session's recency timestamp, trimmed to minutes for the human table. */
+const sessionRow = (s: Session): string => {
+  const updated = (s.updatedAt || s.createdAt || '').slice(0, 16).replace('T', ' ');
+  const msgs = String(s.messageCount ?? 0).padStart(5);
+  const model = s.model ? `  ${s.model}` : '';
+  const cwd = workingDirOf(s);
+  return `${shortId(s.id).padEnd(13)} ${updated.padEnd(17)} ${msgs}  ${(s.title || 'New chat').slice(0, 48).padEnd(48)}${model}${cwd ? `  ${cwd}` : ''}`;
+};
+
+/**
+ * Resolve a session by exact id or unique prefix, setting a non-zero exit code and throwing a readable
+ * error for not-found / ambiguous (consistent with the rest of the CLI).
+ */
+function resolveSession(all: Session[], idOrPrefix: string): Session {
+  const found = findSession(all, idOrPrefix);
+  if (found === 'ambiguous') {
+    process.exitCode = 2;
+    throw new Error(`session id "${idOrPrefix}" is ambiguous; use a longer prefix or the full id`);
+  }
+  if (!found) {
+    process.exitCode = 2;
+    throw new Error(`session not found: ${idOrPrefix}`);
+  }
+  return found;
+}
+
+/**
+ * `mercury sessions <list|rename|export|delete|prune>` — management surface over the EXISTING persisted
+ * sessions. Mirrors the shape/quality of `backupCmd` / `securityCmd` (bare command prints help, --json
+ * everywhere, destructive ops gated behind --force/--yes, non-zero exit on not-found).
+ */
+export async function sessionsCmd(m: Mercury, a: Args): Promise<void> {
+  const sub = a._[1];
+  if (!sub || a.flags.help) return out(SESSIONS_HELP);
+  const json = !!a.flags.json;
+  const force = !!a.flags.force || !!a.flags.yes;
+  const store = m.memory.episodic;
+
+  switch (sub) {
+    // ── list ───────────────────────────────────────────────────────────────
+    case 'list': {
+      const all = store.listAll();
+      const limit = flag(a, 'limit') !== undefined ? Math.max(0, Number(flag(a, 'limit'))) : undefined;
+      const search = flag(a, 'search');
+      const rows = filterSessions(all, { limit, search });
+      if (json) return out(rows, true);
+      if (!rows.length) return out('(no sessions)');
+      const header = `${'ID'.padEnd(13)} ${'UPDATED'.padEnd(17)} ${'MSGS'.padStart(5)}  ${'TITLE'.padEnd(48)}  MODEL/CWD`;
+      return out([header, ...rows.map(sessionRow)].join('\n'));
+    }
+
+    // ── rename ───────────────────────────────────────────────────────────────
+    case 'rename': {
+      const idArg = need(a._[2], 'mercury sessions rename <id> <new-title>');
+      const title = a._.slice(3).join(' ');
+      if (!title) throw new Error('usage: mercury sessions rename <id> <new-title>');
+      const target = resolveSession(store.listAll(), idArg);
+      const updated = store.updateSession(target.id, { title });
+      if (!updated) {
+        process.exitCode = 2;
+        throw new Error(`session not found: ${idArg}`);
+      }
+      if (json) return out({ id: updated.id, title: updated.title }, true);
+      return out(`✓ renamed ${shortId(updated.id)} → "${updated.title}"`);
+    }
+
+    // ── export ───────────────────────────────────────────────────────────────
+    case 'export': {
+      const idArg = need(a._[2], 'mercury sessions export <id> [--format json|md] [--out <path>]');
+      const target = resolveSession(store.listAll(), idArg);
+      const messages = store.messages(target.id, 100000);
+      const format = (flag(a, 'format') ?? 'json').toLowerCase();
+      if (format !== 'json' && format !== 'md' && format !== 'markdown') {
+        throw new Error(`unknown --format "${format}" (use json or md)`);
+      }
+      const isMd = format === 'md' || format === 'markdown';
+      const body = isMd
+        ? renderSessionMarkdown(target, messages)
+        : JSON.stringify(buildSessionExport(target, messages), null, 2);
+      const outPath = flag(a, 'out');
+      if (outPath) {
+        writeFileSync(outPath, body);
+        if (json) return out({ id: target.id, path: outPath, format: isMd ? 'md' : 'json', messages: messages.length }, true);
+        return out(`✓ exported ${shortId(target.id)} (${messages.length} message(s), ${isMd ? 'md' : 'json'}) → ${outPath}`);
+      }
+      // stdout: print the raw document (json or markdown) so it is pipe-friendly.
+      return console.log(body);
+    }
+
+    // ── delete ───────────────────────────────────────────────────────────────
+    case 'delete': {
+      const idArg = need(a._[2], 'mercury sessions delete <id> [--force|--yes]');
+      const target = resolveSession(store.listAll(), idArg);
+      if (!force) {
+        throw new Error(
+          `refusing to delete session ${shortId(target.id)} ("${target.title}") without confirmation. ` +
+            `Re-run with --force (or --yes) to proceed.`,
+        );
+      }
+      store.deleteSession(target.id);
+      if (json) return out({ deleted: target.id, title: target.title }, true);
+      return out(`✓ deleted ${shortId(target.id)} ("${target.title}")`);
+    }
+
+    // ── prune ───────────────────────────────────────────────────────────────
+    case 'prune': {
+      const all = store.listAll();
+      const keepStr = flag(a, 'keep');
+      const opts = {
+        olderThan: flag(a, 'older-than'),
+        keep: keepStr !== undefined ? Math.max(0, Number(keepStr)) : undefined,
+        empty: !!a.flags.empty,
+      };
+      if (opts.olderThan === undefined && opts.keep === undefined && !opts.empty) {
+        throw new Error('nothing to prune: pass at least one of --older-than <dur|ISO>, --keep <n>, --empty');
+      }
+      const selection = selectPrune(all, opts, new Date());
+      const dryRun = !force;
+
+      if (!dryRun) for (const d of selection.toDelete) store.deleteSession(d.session.id);
+
+      if (json) {
+        return out(
+          {
+            dryRun,
+            criteria: opts,
+            wouldDelete: selection.toDelete.map((d) => ({ id: d.session.id, title: d.session.title, messages: d.session.messageCount ?? 0, reasons: d.reasons })),
+            deleted: dryRun ? [] : selection.toDelete.map((d) => d.session.id),
+            keptCount: selection.kept.length,
+          },
+          true,
+        );
+      }
+      const lines: string[] = [];
+      lines.push(
+        dryRun
+          ? `DRY RUN — ${selection.toDelete.length} session(s) would be deleted, ${selection.kept.length} kept. Re-run with --force to apply.`
+          : `✓ deleted ${selection.toDelete.length} session(s), ${selection.kept.length} kept.`,
+      );
+      for (const d of selection.toDelete) {
+        lines.push(`  ${shortId(d.session.id)}  ${(d.session.title || 'New chat').slice(0, 40).padEnd(40)}  [${d.reasons.join(', ')}]`);
+      }
+      return out(lines.join('\n'));
+    }
+
+    default:
+      return out(SESSIONS_HELP);
+  }
 }

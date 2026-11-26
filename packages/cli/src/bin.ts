@@ -54,6 +54,9 @@ Usage: mercury <command> [options]
   backup [--out f] [--include-secrets]  Back up the full Mercury home (~/.mercury) to a .mbak archive
   backup inspect <file>     Verify a backup archive (digest, hashes, signature) without restoring
   import <file> [--force]   Restore a .mbak archive into the Mercury home (alias: restore)
+  sessions [list|rename|export|delete|prune]   Manage persisted chat sessions
+                            list [--limit n] [--search t]; rename <id> <title>; export <id> [--format md] [--out f];
+                            delete <id> --force; prune [--older-than 30d] [--keep n] [--empty] [--force]  (--json everywhere)
   plugins                   List loaded plugins
   import-agent [~/.hermes]  Import memories, profile and skills from Hermes Agent
   new <tool|skill|workflow|adapter|plugin> <name> [--lang python|js|go|cpp|java]
@@ -191,6 +194,8 @@ async function main(argv: string[]): Promise<void> {
       case 'import':
       case 'restore':
         return await cmd.restoreCmd(m, a);
+      case 'sessions':
+        return await cmd.sessionsCmd(m, a);
       case 'plugins':
         return cmd.pluginsCmd(m);
       case 'import-agent':

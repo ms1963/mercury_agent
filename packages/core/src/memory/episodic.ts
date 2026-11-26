@@ -89,6 +89,16 @@ export class EpisodicStore {
       .map(toSession);
   }
 
+  /**
+   * List EVERY session across all users, most-recent-first. Read-only; used by the `mercury sessions`
+   * management CLI (which operates instance-wide, not per-user). Does not change the write path.
+   */
+  listAll(limit = 1000, offset = 0): Session[] {
+    return this.db
+      .all<SessionRow>('SELECT s.*, (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id) AS n FROM sessions s ORDER BY updated_at DESC LIMIT ? OFFSET ?', limit, offset)
+      .map(toSession);
+  }
+
   deleteSession(id: string): void {
     this.db.run('DELETE FROM messages_fts WHERE session_id = ?', id);
     this.db.run('DELETE FROM sessions WHERE id = ?', id);
