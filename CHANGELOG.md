@@ -7,6 +7,36 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-26
+
+### Added
+
+- **`mercury acp`** (Tier-3 gap #9) — an Agent Client Protocol server over stdio (newline-delimited
+  JSON-RPC 2.0) that exposes the same agent and tool surface as the MCP server to external clients
+  (editors/IDEs): `initialize`, `session/new|list|prompt` (streaming `session/update` notifications),
+  `session/cancel`, and vendor `_mercury/tools/list|call`; plus `acp info|methods`.
+- **`mercury moa`** (Tier-3 gap #10) — Mixture-of-Agents aggregation that fans a prompt across
+  configured model slots and synthesizes an aggregated answer.
+- **`mercury memory-graph` and `mercury journey`** (Tier-3 gap #11) — a read-only graph over the stored
+  memory layers (facts, distilled skills, runs, sessions, knowledge sources) with `--json` and Graphviz
+  `--dot` export, and a newest-first journey timeline over existing events; both with
+  `--since`/`--until`/`--limit` scoping.
+- **`mercury hooks`** (Tier-3 gap #12) — shell-script lifecycle hooks (`list|events|add|remove|run`) that
+  run configured shell commands at real lifecycle events, routed through the existing approvals layer
+  before any command is spawned, with lifecycle context passed as `MERCURY_*` env vars.
+- **`mercury lsp`** (Tier-4 gap #17) — a Language Server Protocol server over stdio (JSON-RPC 2.0 with
+  Content-Length framing) exposing Mercury's agent/tool surface to LSP editors: `initialize`,
+  `shutdown`/`exit`, `textDocument/didOpen|didChange|didClose`, `workspace/executeCommand`, and vendor
+  `_mercury/agent/prompt`, `_mercury/tools/list|call`; plus `lsp info|methods`.
+- **Operator conveniences** (Tier-4 gap #20) — `mercury completion <bash|zsh|fish>`, `mercury logs`,
+  `mercury prompt-size`, `mercury migrate status|up`, and `mercury console`.
+- EN + DE help topics for every new command above, and comprehensive offline test coverage for all
+  new features.
+
+### Changed
+
+- Version bumped to 2.0.0 across all workspace packages.
+
 ## [1.9.0] - 2026-11-26
 
 ### Added
