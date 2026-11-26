@@ -75,6 +75,8 @@ Usage: mercury <command> [options]
                             Per-agent SLOs, record/replay regression, chaos status
   proactive [rules|events|digest|emit <source> <kind>|flush|poll]
                             Event triggers, interrupt-vs-defer priority, digest queue
+  insights [--by day|model|agent|session] [--since <dur|ISO>] [--until <dur|ISO>] [--top n] [--limit n] [--json]
+                            Usage analytics aggregated from the recorded token/cost ledger
   eval [--tag <tag>] [--json]   Run the built-in self-evaluation suite (offline) with token/cost accounting
   doctor                    Check the environment
   update                    git pull + npm install + build
@@ -264,6 +266,8 @@ async function main(argv: string[]): Promise<void> {
         if (sub === 'poll') return console.log(`polled ${(await m.proactive.poll()).polled} event(s)`);
         return console.log('usage: mercury proactive <rules | events | digest | emit <source> <kind> [--title T] [--body B] | flush | poll>');
       }
+      case 'insights':
+        return cmd.insightsCmd(m, a);
       case 'eval':
         return await cmd.evalCmd(m, a);
       case 'help':

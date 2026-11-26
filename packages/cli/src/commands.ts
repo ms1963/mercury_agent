@@ -4,7 +4,7 @@ import { cpSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'no
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { auditCoordinates, errorMessage, buildArchive, buildSessionExport, checkArchiveCompat, collectDataDir, exitCodeFor, extractNpmCoordinates, fetchHttpClient, filterSessions, findSession, activeProjectName, createProject, getPath, installPlugin, installSkills, listInstalled, listProjects, loadOrCreateAuditKey, mcpServerCoordinates, mercuryHome, planRestore, pluginCoordinates, projectDataDirEntryCount, readArchiveFile, removePlugin, removeProject, renderSessionMarkdown, resolveVoicePreset, restoreArchive, runEvalSuite, scaffold, scaffoldAddin, selectEvals, selectPrune, setConfigValue, showProject, updatePlugin, useProject, verifyArchive, verifyArchiveIntegrity, voicePresets, workingDirOf, writeArchiveFile, secretResolverFromConfig, scanSecretRefs, unwrapSecretRef, maskSecret, defaultSecretRunner, activeProfileName, createProfile, listProfiles, profileHomeEntryCount, profileRegistryDir, removeProfile, showProfile, useProfile, DEFAULT_PROFILE_NAME, PROFILE_ENV_VAR, type BackupArchive, type Coordinate, type EvalObservation, type ExtensionKind, type PackageJsonLike, type PluginPkg, type ProfileListEntry, type ProjectListEntry, type SecretResolver, type Session, type VoiceKind } from '@mercury/core';
+import { auditCoordinates, errorMessage, buildArchive, buildSessionExport, checkArchiveCompat, collectDataDir, exitCodeFor, extractNpmCoordinates, fetchHttpClient, filterSessions, findSession, activeProjectName, createProject, getPath, buildInsights, resolveInsightsRange, formatTokens, formatCost, type InsightsGroupBy, type InsightsReport, installPlugin, installSkills, listInstalled, listProjects, loadOrCreateAuditKey, mcpServerCoordinates, mercuryHome, planRestore, pluginCoordinates, projectDataDirEntryCount, readArchiveFile, removePlugin, removeProject, renderSessionMarkdown, resolveVoicePreset, restoreArchive, runEvalSuite, scaffold, scaffoldAddin, selectEvals, selectPrune, setConfigValue, showProject, updatePlugin, useProject, verifyArchive, verifyArchiveIntegrity, voicePresets, workingDirOf, writeArchiveFile, secretResolverFromConfig, scanSecretRefs, unwrapSecretRef, maskSecret, defaultSecretRunner, activeProfileName, createProfile, listProfiles, profileHomeEntryCount, profileRegistryDir, removeProfile, showProfile, useProfile, DEFAULT_PROFILE_NAME, PROFILE_ENV_VAR, type BackupArchive, type Coordinate, type EvalObservation, type ExtensionKind, type PackageJsonLike, type PluginPkg, type ProfileListEntry, type ProjectListEntry, type SecretResolver, type Session, type VoiceKind } from '@mercury/core';
 import type { Mercury } from '@mercury/runtime';
 import { enablePresetConfig, mcpPreset, mcpPresets } from '@mercury/mcp';
 import { flag, type Args } from './args.js';
@@ -349,6 +349,72 @@ export async function pluginsCmd(m: Mercury, a: Args): Promise<void> {
 
 export function copyAssets(from: string, to: string): void {
   cpSync(from, to, { recursive: true, errorOnExist: false });
+}
+
+export const INSIGHTS_HELP = `mercury insights — usage analytics over the recorded token/cost ledger
+
+Aggregates the usage ledger Mercury already records (the 'usage' table written on every model
+call, joined to 'runs' for session attribution). Read-only; adds no instrumentation.
+
+Usage:
+  mercury insights [--by day|model|agent|session] [--since <dur|ISO>] [--until <dur|ISO>]
+                   [--top <n>] [--limit <n>] [--json]
+
+Flags:
+  --by <dim>       Breakdown dimension: day (default), model, agent (user), or session
+  --since <d>      Only usage at/after this time — a duration (30d, 12h, 90m, 2w) or ISO date
+  --until <d>      Only usage before this time — duration or ISO date
+  --top <n>        Keep only the N costliest buckets (model/agent/session groupings)
+  --limit <n>      Read at most N ledger rows (most-recent first) before aggregating
+  --json           Emit the full report as JSON
+
+An empty ledger prints "no usage recorded" and exits 0.`;
+
+/** Render an insights report as a human table (totals + grouped breakdown). */
+function renderInsights(r: InsightsReport): string {
+  const t = r.totals;
+  const lines: string[] = [];
+  const range = r.firstTs && r.lastTs ? `${r.firstTs.slice(0, 10)} → ${r.lastTs.slice(0, 10)}` : '(all time)';
+  lines.push(`Usage insights  ${range}`);
+  lines.push(
+    `  totals: ${t.calls.toLocaleString('en-US')} calls, ${formatTokens(t.tokens)} tokens ` +
+      `(${formatTokens(t.inputTokens)} in / ${formatTokens(t.outputTokens)} out), ${formatCost(t.cost)}`,
+  );
+  lines.push('');
+  const label = r.by === 'agent' ? 'AGENT' : r.by.toUpperCase();
+  lines.push(`${label.padEnd(24)} ${'CALLS'.padStart(8)} ${'TOKENS'.padStart(10)} ${'COST'.padStart(10)}`);
+  for (const b of r.buckets) {
+    lines.push(
+      `${b.key.slice(0, 24).padEnd(24)} ${b.calls.toLocaleString('en-US').padStart(8)} ` +
+        `${formatTokens(b.tokens).padStart(10)} ${formatCost(b.cost).padStart(10)}`,
+    );
+  }
+  return lines.join('\n');
+}
+
+/**
+ * `mercury insights` — aggregate the recorded usage ledger into a reportable analytics view. Pure
+ * aggregation lives in @mercury/core; this only parses flags, fetches rows read-only and renders.
+ */
+export function insightsCmd(m: Mercury, a: Args): void {
+  if (a.flags.help) return out(INSIGHTS_HELP);
+  const json = !!a.flags.json;
+  const byRaw = (flag(a, 'by') ?? 'day').toLowerCase();
+  const valid: InsightsGroupBy[] = ['day', 'model', 'agent', 'session'];
+  if (!valid.includes(byRaw as InsightsGroupBy)) {
+    throw new Error(`invalid --by "${byRaw}" (use: ${valid.join(', ')})`);
+  }
+  const by = byRaw as InsightsGroupBy;
+  const top = flag(a, 'top') !== undefined ? Math.max(0, Number(flag(a, 'top'))) : undefined;
+  const limit = flag(a, 'limit') !== undefined ? Math.max(0, Number(flag(a, 'limit'))) : undefined;
+  if (top !== undefined && Number.isNaN(top)) throw new Error('invalid --top (expected a number)');
+  if (limit !== undefined && Number.isNaN(limit)) throw new Error('invalid --limit (expected a number)');
+  const { sinceIso, untilIso } = resolveInsightsRange({ since: flag(a, 'since'), until: flag(a, 'until') });
+
+  const report = buildInsights(m.db, { range: { sinceIso, untilIso, limit }, by, top });
+  if (json) return out(report, true);
+  if (report.empty) return out('no usage recorded');
+  return out(renderInsights(report));
 }
 
 const PROJECT_HELP = `usage: mercury project list [--json]

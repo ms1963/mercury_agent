@@ -37,7 +37,7 @@ the real installation present on this machine) and **Mercury Agent** (this repos
 | 12 | **Plugin lifecycle** | `plugins` install/update/remove/list | ✅ **Done** — `mercury plugins install\|update\|remove` (install from a local path or git URL, with install-manifest tracking; `update <name>` / `--all` via git pull or re-copy; gated `remove --force`; `list`/`--json`) on top of the existing loader + `new plugin` scaffold | Closed |
 | 13 | **Skill curator** | `curator` (background skill maintenance: run/pause/pin) | Self-distill + `learn`, no curator loop | Missing maintenance loop |
 | 14 | **Memory graph & timeline** | `memory-graph`, `journey` timeline, external `memory` provider | Layered memory + `learn` | No graph/timeline/external provider |
-| 15 | **Usage insights** | `insights` (analytics) | Token/cost accounting + `/metrics` | No insights command |
+| 15 | **Usage insights** | `insights` (analytics) | ✅ **Done** — `mercury insights` (read-only analytics over the recorded `usage` token/cost ledger joined to `runs`: totals + breakdowns `--by day\|model\|agent\|session`, `--since`/`--until` range, `--top <n>`, `--limit`; readable token/cost formatting; `--json`; clean "no usage recorded" on an empty ledger) | Closed |
 | 16 | **Agent Client Protocol** | `acp` (ACP server) | — | Missing |
 | 17 | **Language Server Protocol** | `lsp` | — | Missing |
 | 18 | **OAuth→OpenAI proxy** | `proxy` (local OpenAI-compatible proxy to OAuth providers) | — | Missing |
@@ -180,8 +180,19 @@ Ordered by value-to-effort for a self-hosted agentic platform. Each tier is inde
    active-profile resolution, home-path resolution) plus a thin fs layer with an **injected clock/env** in
    `packages/core/src/profiles/manage.ts`; offline deterministic tests in `tests/profiles.test.ts`; EN/DE
    help in `docs/help/profile.md` / `docs/help/de/profile.md`.
-8. **Usage insights (`mercury insights`)** — aggregate the token/cost ledger and run events already
-   recorded into a reportable analytics view.
+8. ✅ **Done — Usage insights (`mercury insights`)** — a read-only analytics view over the token/cost
+   data Mercury **already records**: the `usage` ledger (written on every model call by
+   `BudgetService.record`) joined to the `runs` table for session attribution. No new instrumentation or
+   schema. Computes totals (calls, input/output/total tokens, cost) and breakdowns `--by
+   day|model|agent|session`, with `--since`/`--until` time-range filtering (duration or ISO), `--top <n>`
+   for the costliest buckets, and `--limit <n>` on rows read. Readable token (`1,234`/`15.0k`/`2.4M`) and
+   cost formatting; `--json` emits the full report; an empty ledger prints `no usage recorded` and exits
+   `0` (non-zero only on real errors). Pure aggregation + formatting in `packages/core/src/insights/
+   insights.ts` (fully unit-testable over injected rows + injected clock) with a thin read-only DB query
+   layer; CLI `insightsCmd` in `packages/cli/src/commands.ts`; offline deterministic tests in
+   `tests/insights.test.ts`; EN/DE help in `docs/help/insights.md` / `docs/help/de/insights.md`.
+
+**Tier 2 is now complete — all of #5–#8 are done.**
 
 ### Tier 3 — Strategic / ecosystem
 
