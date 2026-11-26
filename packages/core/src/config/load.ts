@@ -8,6 +8,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { ConfigSchema, type MercuryConfig } from './schema.js';
+import { resolveActiveProjectDataDir } from '../projects/manage.js';
 
 export const CONFIG_VERSION = 1;
 
@@ -162,6 +163,13 @@ export function loadConfig(opts: LoadConfigOptions = {}): LoadedConfig {
   }
   if (opts.overrides) merged = deepMerge(merged, opts.overrides);
   const config = ConfigSchema.parse(merged);
+  // Project scoping: when no data dir was set explicitly (no config `dataDir`, no MERCURY_DATA_DIR),
+  // fall back to the active project's data dir. Explicit config/env/flags always win, and isolated
+  // instances (tests) never consult the project registry.
+  if (!config.dataDir && !opts.isolated) {
+    const projectDir = resolveActiveProjectDataDir(mercuryHome());
+    if (projectDir) config.dataDir = projectDir;
+  }
   if (!config.dataDir) config.dataDir = mercuryHome();
   config.dataDir = resolve(config.dataDir);
   mkdirSync(config.dataDir, { recursive: true });

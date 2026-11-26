@@ -4,7 +4,7 @@ import { cpSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'no
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { auditCoordinates, buildArchive, buildSessionExport, checkArchiveCompat, collectDataDir, exitCodeFor, extractNpmCoordinates, fetchHttpClient, filterSessions, findSession, getPath, installPlugin, installSkills, listInstalled, loadOrCreateAuditKey, mcpServerCoordinates, mercuryHome, planRestore, pluginCoordinates, readArchiveFile, removePlugin, renderSessionMarkdown, resolveVoicePreset, restoreArchive, runEvalSuite, scaffold, scaffoldAddin, selectEvals, selectPrune, setConfigValue, updatePlugin, verifyArchive, verifyArchiveIntegrity, voicePresets, workingDirOf, writeArchiveFile, type BackupArchive, type Coordinate, type EvalObservation, type ExtensionKind, type PackageJsonLike, type PluginPkg, type Session, type VoiceKind } from '@mercury/core';
+import { auditCoordinates, buildArchive, buildSessionExport, checkArchiveCompat, collectDataDir, exitCodeFor, extractNpmCoordinates, fetchHttpClient, filterSessions, findSession, activeProjectName, createProject, getPath, installPlugin, installSkills, listInstalled, listProjects, loadOrCreateAuditKey, mcpServerCoordinates, mercuryHome, planRestore, pluginCoordinates, projectDataDirEntryCount, readArchiveFile, removePlugin, removeProject, renderSessionMarkdown, resolveVoicePreset, restoreArchive, runEvalSuite, scaffold, scaffoldAddin, selectEvals, selectPrune, setConfigValue, showProject, updatePlugin, useProject, verifyArchive, verifyArchiveIntegrity, voicePresets, workingDirOf, writeArchiveFile, type BackupArchive, type Coordinate, type EvalObservation, type ExtensionKind, type PackageJsonLike, type PluginPkg, type ProjectListEntry, type Session, type VoiceKind } from '@mercury/core';
 import type { Mercury } from '@mercury/runtime';
 import { enablePresetConfig, mcpPreset, mcpPresets } from '@mercury/mcp';
 import { flag, type Args } from './args.js';
@@ -349,6 +349,144 @@ export async function pluginsCmd(m: Mercury, a: Args): Promise<void> {
 
 export function copyAssets(from: string, to: string): void {
   cpSync(from, to, { recursive: true, errorOnExist: false });
+}
+
+const PROJECT_HELP = `usage: mercury project list [--json]
+       mercury project create <name> [--dir <path>] [--folder <p1,p2>] [--desc <text>] [--use] [--json]
+       mercury project use <name> [--json]
+       mercury project show [name] [--json]
+       mercury project current [--json]
+       mercury project remove <name> [--force|--yes] [--purge] [--json]
+
+Named workspaces, each with its OWN data dir — scoping config AND memory so projects never share state.
+Projects are tracked in a registry (${'~/.mercury'}/projects.json); the active project's data dir is used
+automatically on the next run (an explicit MERCURY_DATA_DIR or MERCURY_PROJECT env var overrides it).
+
+  list                        List all projects (name, active marker, data dir, description).
+    --json                    Emit the projects as JSON.
+  create <name>               Create a project and its data dir under ~/.mercury/projects/<name>.
+    --dir <path>              Use <path> as the data dir instead of the default.
+    --folder <p1,p2>          Extra working folder(s) to associate (comma-separated; created if missing).
+    --desc <text>             A short description.
+    --use                     Make the new project active immediately.
+    --json                    Emit the created project as JSON.
+  use <name>                  Switch the active project (applies on the next run).
+  show [name]                 Show a project's details; with no name, the active project.
+  current                     Print the active project's name (or "(none)").
+  remove <name>               Unregister a project. Requires --force/--yes. The data dir is kept unless:
+    --purge                   ...also delete the project's data dir from disk (extra-destructive).
+    --force, --yes            Confirm the removal.
+    --json                    Emit the result as JSON.
+
+Switching does NOT migrate data; each project keeps its own memory DB, config, plugins and skills.`;
+
+/** One human table row for a project. */
+const projectRow = (p: ProjectListEntry): string => {
+  const marker = p.isActive ? '*' : ' ';
+  const name = (p.name || '').slice(0, 24).padEnd(24);
+  const missing = p.dataDirExists ? '' : '  (data dir missing)';
+  const desc = p.description ? `  ${p.description}` : '';
+  return `${marker} ${name} ${p.dataDir}${missing}${desc}`;
+};
+
+/**
+ * `mercury project <list|create|use|show|current|remove>` — named, multi-folder workspaces that scope the
+ * data/memory dir per project (built on the existing data-dir indirection). Mirrors the shape/quality of
+ * `sessionsCmd` / `pluginsCmd`: bare command prints help, --json everywhere, destructive remove gated
+ * behind --force/--yes.
+ */
+export async function projectCmd(m: Mercury, a: Args): Promise<void> {
+  void m; // project management operates on the Mercury HOME registry, not the (already-scoped) instance.
+  const sub = a._[1];
+  if (!sub || a.flags.help) return out(PROJECT_HELP);
+  const json = !!a.flags.json;
+  const force = !!a.flags.force || !!a.flags.yes;
+  const home = mercuryHome();
+
+  switch (sub) {
+    // ── list ───────────────────────────────────────────────────────────────
+    case 'list': {
+      const rows = listProjects(home);
+      if (json) return out(rows, true);
+      if (!rows.length) return out('(no projects; create one with: mercury project create <name>)');
+      return out(rows.map(projectRow).join('\n'));
+    }
+
+    // ── create ───────────────────────────────────────────────────────────────
+    case 'create': {
+      const name = need(a._[2], 'mercury project create <name> [--dir <path>] [--folder <p1,p2>] [--desc <text>] [--use]');
+      const folderArg = flag(a, 'folder') ?? flag(a, 'folders');
+      const folders = folderArg ? folderArg.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
+      const project = createProject(home, name, {
+        dataDir: flag(a, 'dir'),
+        folders,
+        description: flag(a, 'desc') ?? flag(a, 'description'),
+        use: !!a.flags.use,
+      });
+      if (json) return out(project, true);
+      return out(
+        `Created project "${project.name}" (data dir: ${project.dataDir})` +
+          `${project.folders.length ? `\n  folders: ${project.folders.join(', ')}` : ''}` +
+          `${a.flags.use ? `\n  now active.` : `\n  activate it with: mercury project use ${project.name}`}`,
+      );
+    }
+
+    // ── use ───────────────────────────────────────────────────────────────
+    case 'use': {
+      const name = need(a._[2], 'mercury project use <name>');
+      const project = useProject(home, name);
+      if (json) return out({ active: project.name, dataDir: project.dataDir }, true);
+      return out(`Active project is now "${project.name}" (data dir: ${project.dataDir}). Applies on the next run.`);
+    }
+
+    // ── show ───────────────────────────────────────────────────────────────
+    case 'show': {
+      const details = showProject(home, a._[2]);
+      if (!details) {
+        if (json) return out({ active: null }, true);
+        return out('(no active project; select one with: mercury project use <name>)');
+      }
+      const enriched = { ...details, dataDirEntries: projectDataDirEntryCount(details.dataDir) };
+      if (json) return out(enriched, true);
+      return out(
+        [
+          `name:        ${details.name}${details.isActive ? '  (active)' : ''}`,
+          `data dir:    ${details.dataDir}${details.dataDirExists ? '' : '  (missing)'}`,
+          `entries:     ${enriched.dataDirEntries}`,
+          `folders:     ${details.folders.length ? details.folders.join(', ') : '(none)'}`,
+          `description: ${details.description ?? '(none)'}`,
+          `created:     ${details.createdAt || '(unknown)'}`,
+        ].join('\n'),
+      );
+    }
+
+    // ── current ───────────────────────────────────────────────────────────────
+    case 'current': {
+      const name = activeProjectName(home);
+      if (json) return out({ active: name ?? null }, true);
+      return out(name ?? '(none)');
+    }
+
+    // ── remove ───────────────────────────────────────────────────────────────
+    case 'remove': {
+      const name = need(a._[2], 'mercury project remove <name> [--force|--yes] [--purge]');
+      if (!force) {
+        process.exitCode = 1;
+        throw new Error(`refusing to remove project "${name}" without --force (or --yes)`);
+      }
+      const result = removeProject(home, name, { purge: !!a.flags.purge });
+      if (json) return out(result, true);
+      return out(
+        `Removed project "${result.name}".` +
+          `${result.purged ? ` Deleted its data dir (${result.dataDir}).` : ` Kept its data dir (${result.dataDir}); pass --purge to delete it.`}` +
+          `${result.wasActive ? ` It was the active project; no project is active now.` : ''}`,
+      );
+    }
+
+    default:
+      out(PROJECT_HELP);
+      process.exitCode = 1;
+  }
 }
 
 /**

@@ -69,6 +69,7 @@ export * from './plugins/builtin-hooks.js';
 export * from './plugins/hooks.js';
 export * from './plugins/manage.js';
 export * from './plugins/plugin.js';
+export * from './projects/manage.js';
 export * from './reflection/reflector.js';
 export * from './reliability/index.js';
 export * from './router/router.js';

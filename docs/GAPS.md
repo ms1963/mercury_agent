@@ -27,7 +27,7 @@ the real installation present on this machine) and **Mercury Agent** (this repos
 | 2 | **Computer Use / GUI automation** | `computer-use` (cua-driver; macOS/Windows/Linux) | Untested Playwright browser backend only | No OS-level GUI control |
 | 3 | **Mixture-of-Agents** | `moa` (aggregate answers across several model slots) | Router + teams, no MoA aggregation | Missing MoA provider |
 | 4 | **Isolated profiles** | `profile` (multiple fully isolated instances) | Multi-user RBAC in one instance | No instance isolation |
-| 5 | **Projects / workspaces** | `project` (named, multi-folder workspaces) | Single data dir | No project workspaces |
+| 5 | **Projects / workspaces** | `project` (named, multi-folder workspaces) | ✅ **Done** — `mercury project list\|create\|use\|show\|current\|remove` (named workspaces each with their own data dir, scoping config + memory via the existing data-dir indirection; registry at `~/.mercury/projects.json`, `MERCURY_PROJECT` env override; `--dir`/`--folder`/`--desc`/`--use`, gated `remove --force` with extra `--purge`; `--json`) | Closed |
 | 6 | **Kanban board** | `kanban` (tasks, links, comments) | — | Missing |
 | 7 | **Shell hooks** | `hooks` (shell-script lifecycle hooks) | — | Missing |
 | 8 | **External secret stores** | `secrets` (Bitwarden, 1Password) | `.env` / env vars only | No managed secret backends |
@@ -119,8 +119,23 @@ Ordered by value-to-effort for a self-hosted agentic platform. Each tier is inde
 
 ### Tier 2 — High value, higher effort
 
-5. **Projects / workspaces (`mercury project`)** — named, multi-folder workspaces with per-project
-   config and memory scoping. Pairs naturally with the existing data-dir and memory namespaces.
+5. ✅ **Done — Projects / workspaces (`mercury project list|create|use|show|current|remove`)** — named
+   workspaces, each with its **own data dir**, so different projects never share state. Because Mercury
+   already keys its memory DB, config, plugins, skills and audit key off the resolved data dir, pointing
+   that dir at a per-project folder scopes **config and memory together** — this layers project selection
+   onto the existing `MERCURY_HOME` / `MERCURY_DATA_DIR` indirection rather than inventing a parallel
+   mechanism. Projects live in a registry at `~/.mercury/projects.json` (the Mercury home, above the
+   per-project dirs); each defaults its data dir to `~/.mercury/projects/<name>/` or takes an explicit
+   `--dir`. `loadConfig` resolves the active project's data dir on the next run (an explicit
+   `MERCURY_DATA_DIR`, or a `MERCURY_PROJECT` env var naming a registered project, overrides it; isolated
+   loads are unaffected). CLI: `create <name>` (`--dir`, `--folder <p1,p2>`, `--desc`, `--use`),
+   `use <name>` (switch active), `list` (table + `--json`, active marker + data-dir-exists), `show [name]`
+   (details incl. data-dir entry count; defaults to active), `current` (active name or `(none)`), and a
+   gated `remove <name>` (`--force`/`--yes`; keeps the data dir by default, extra `--purge` deletes it);
+   `--json` everywhere. Pure registry logic (validation, parse/serialize, CRUD, active-project resolution)
+   plus a thin fs layer with an **injected clock** in `packages/core/src/projects/manage.ts`; offline
+   deterministic tests in `tests/projects.test.ts`; EN/DE help in `docs/help/project.md` /
+   `docs/help/de/project.md`.
 6. **External secret stores (`mercury secrets`)** — pluggable backend interface (Bitwarden, 1Password)
    resolving `${SECRET:...}` references at connect time; reuses the MCP preset `${ENV_VAR}` pattern.
 7. **Isolated profiles (`mercury profile`)** — multiple isolated instances via `MERCURY_HOME`
