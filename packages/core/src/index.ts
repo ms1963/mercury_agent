@@ -76,6 +76,7 @@ export * from './router/router.js';
 export * from './scheduler/cron.js';
 export * from './scheduler/natural.js';
 export * from './scheduler/scheduler.js';
+export * from './secrets/secrets.js';
 export * from './security/audit.js';
 export * from './security/commands.js';
 export * from './security/injection.js';

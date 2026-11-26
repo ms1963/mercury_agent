@@ -96,6 +96,9 @@ import {
   installConfiguredHooks,
   loadConfig,
   loadPlugin,
+  secretResolverFromConfig,
+  expandSecretsDeep,
+  defaultSecretRunner,
   type Check,
   type DecisionProvider,
   type LoadedPlugin,
@@ -696,7 +699,20 @@ export class Mercury {
       }
       this.scheduler.start(); // ensure the digest cron fires even if the generic scheduler is off
     }
-    await this.mcp.connectAll(config.mcp.servers).catch((e: unknown) => this.logger.warn('mcp connect failed', { error: String(e) }));
+    // Resolve `${SECRET:...}` references in MCP server configs at connect time (coexists with the preset
+    // `${ENV_VAR}` substitution — this only ever touches `${SECRET:...}`). Never log secret values; on an
+    // unresolved reference, leave it in place and log only the COUNT so the failure is visible.
+    let mcpServers = config.mcp.servers;
+    try {
+      const resolver = secretResolverFromConfig(config.secrets, { runner: defaultSecretRunner });
+      const expanded = expandSecretsDeep(config.mcp.servers, resolver);
+      mcpServers = expanded.value;
+      const unresolved = expanded.refs.filter((r) => !r.resolved).length;
+      if (unresolved > 0) this.logger.warn('mcp secret references unresolved', { count: unresolved });
+    } catch (e) {
+      this.logger.warn('mcp secret resolution failed', { error: String(e) });
+    }
+    await this.mcp.connectAll(mcpServers).catch((e: unknown) => this.logger.warn('mcp connect failed', { error: String(e) }));
     if (config.gateway.enabled) await this.gateway.start();
   }
 

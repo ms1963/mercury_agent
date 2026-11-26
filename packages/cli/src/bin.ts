@@ -63,6 +63,8 @@ Usage: mercury <command> [options]
   project [list|create|use|show|current|remove]   Named workspaces scoping config + memory per project
                             create <name> [--dir p] [--folder p1,p2] [--desc t] [--use]; use <name>;
                             show [name]; current; remove <name> --force [--purge]   (--json everywhere)
+  secrets [backends|list|get|resolve]   External secret stores (${'$'}{SECRET:...} references)
+                            get <ref> [--reveal]; list; backends; resolve [--config p]   (--json everywhere)
   import-agent [~/.hermes]  Import memories, profile and skills from Hermes Agent
   new <tool|skill|workflow|adapter|plugin> <name> [--lang python|js|go|cpp|java]
   replay <runId>            Print the recorded event trace of a run
@@ -205,6 +207,8 @@ async function main(argv: string[]): Promise<void> {
         return await cmd.pluginsCmd(m, a);
       case 'project':
         return await cmd.projectCmd(m, a);
+      case 'secrets':
+        return await cmd.secretsCmd(m, a);
       case 'import-agent':
         return await cmd.importAgent(m, a);
       case 'doctor':

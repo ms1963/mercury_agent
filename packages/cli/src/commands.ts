@@ -4,7 +4,7 @@ import { cpSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'no
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { auditCoordinates, buildArchive, buildSessionExport, checkArchiveCompat, collectDataDir, exitCodeFor, extractNpmCoordinates, fetchHttpClient, filterSessions, findSession, activeProjectName, createProject, getPath, installPlugin, installSkills, listInstalled, listProjects, loadOrCreateAuditKey, mcpServerCoordinates, mercuryHome, planRestore, pluginCoordinates, projectDataDirEntryCount, readArchiveFile, removePlugin, removeProject, renderSessionMarkdown, resolveVoicePreset, restoreArchive, runEvalSuite, scaffold, scaffoldAddin, selectEvals, selectPrune, setConfigValue, showProject, updatePlugin, useProject, verifyArchive, verifyArchiveIntegrity, voicePresets, workingDirOf, writeArchiveFile, type BackupArchive, type Coordinate, type EvalObservation, type ExtensionKind, type PackageJsonLike, type PluginPkg, type ProjectListEntry, type Session, type VoiceKind } from '@mercury/core';
+import { auditCoordinates, errorMessage, buildArchive, buildSessionExport, checkArchiveCompat, collectDataDir, exitCodeFor, extractNpmCoordinates, fetchHttpClient, filterSessions, findSession, activeProjectName, createProject, getPath, installPlugin, installSkills, listInstalled, listProjects, loadOrCreateAuditKey, mcpServerCoordinates, mercuryHome, planRestore, pluginCoordinates, projectDataDirEntryCount, readArchiveFile, removePlugin, removeProject, renderSessionMarkdown, resolveVoicePreset, restoreArchive, runEvalSuite, scaffold, scaffoldAddin, selectEvals, selectPrune, setConfigValue, showProject, updatePlugin, useProject, verifyArchive, verifyArchiveIntegrity, voicePresets, workingDirOf, writeArchiveFile, secretResolverFromConfig, scanSecretRefs, unwrapSecretRef, maskSecret, defaultSecretRunner, type BackupArchive, type Coordinate, type EvalObservation, type ExtensionKind, type PackageJsonLike, type PluginPkg, type ProjectListEntry, type SecretResolver, type Session, type VoiceKind } from '@mercury/core';
 import type { Mercury } from '@mercury/runtime';
 import { enablePresetConfig, mcpPreset, mcpPresets } from '@mercury/mcp';
 import { flag, type Args } from './args.js';
@@ -485,6 +485,150 @@ export async function projectCmd(m: Mercury, a: Args): Promise<void> {
 
     default:
       out(PROJECT_HELP);
+      process.exitCode = 1;
+  }
+}
+
+const SECRETS_HELP = `usage: mercury secrets backends [--json]
+       mercury secrets list [--json]
+       mercury secrets get <ref> [--reveal] [--json]
+       mercury secrets resolve [--config <path>] [--json]
+
+External secret stores. Config values may embed secret REFERENCES instead of plaintext:
+  \${SECRET:backend:key}   resolve <key> through the named <backend>
+  \${SECRET:key}           resolve <key> through the default backend (config secrets.defaultBackend; env)
+These are resolved at connect time (e.g. for MCP server env/args/headers) — coexisting with the MCP
+preset \${ENV_VAR} substitution, which is left untouched.
+
+Backends (configured in config secrets.*):
+  env           Environment variables (always available).
+  bitwarden     Bitwarden CLI — "bw get password <key>" (enable: secrets.bitwarden.enabled).
+  onepassword   1Password CLI — "op read <op://vault/item/field>" (enable: secrets.onepassword.enabled).
+
+  backends                    List configured backends and whether each is available.
+    --json                    Emit as JSON.
+  list                        List \${SECRET:...} references found in the live config, with resolve status.
+    --json                    Emit as JSON.
+  get <ref>                   Resolve a single reference (accepts "backend:key", "key" or a full
+                              "\${SECRET:...}" wrapper). The value is MASKED by default.
+    --reveal                  Print the raw secret value (sensitive — avoid in shared terminals/logs).
+    --json                    Emit as JSON (value masked unless --reveal).
+  resolve [--config <path>]   Scan a config file (or the live config) and report which references resolve.
+    --config <path>           Scan this file instead of the live config.
+    --json                    Emit as JSON.
+
+SAFETY: values are never persisted or logged; output is masked unless you pass --reveal to "get".
+Exit code is non-zero when "get" cannot resolve the reference, or when "list"/"resolve" finds any
+unresolved reference.`;
+
+/** Build a resolver from the live config's secrets section (real runner for external CLIs). */
+const secretsResolver = (m: Mercury): SecretResolver =>
+  secretResolverFromConfig(m.config.secrets, { runner: defaultSecretRunner });
+
+/** A masked status report for one reference spec. Never includes the plaintext value. */
+interface SecretRefReport {
+  ref: string;
+  backend: string;
+  key: string;
+  status: 'resolved' | 'unresolved';
+  value: string; // always masked
+  error?: string;
+}
+
+const reportRef = (resolver: SecretResolver, spec: string): SecretRefReport => {
+  try {
+    const { ref, value } = resolver.resolveRef(spec);
+    return { ref: spec, backend: ref.backend, key: ref.key, status: 'resolved', value: maskSecret(value) };
+  } catch (err) {
+    // Re-parse for display without leaking anything; resolveRef only throws on backend/lookup problems.
+    let backend = resolver.defaultBackend;
+    let key = spec;
+    const colon = spec.indexOf(':');
+    if (colon > 0) {
+      const prefix = spec.slice(0, colon);
+      if (resolver.backendNames().includes(prefix) || ['bw', 'op', '1password'].includes(prefix.toLowerCase())) {
+        backend = prefix;
+        key = spec.slice(colon + 1);
+      }
+    }
+    return { ref: spec, backend, key, status: 'unresolved', value: '', error: errorMessage(err) };
+  }
+};
+
+const refRow = (r: SecretRefReport): string => {
+  const status = r.status === 'resolved' ? 'resolved  ' : 'UNRESOLVED';
+  const ref = `\${SECRET:${r.ref}}`.slice(0, 42).padEnd(42);
+  const val = r.status === 'resolved' ? r.value : `(${r.error ?? 'not resolved'})`;
+  return `${status} ${ref} ${val}`;
+};
+
+/**
+ * `mercury secrets <backends|list|get|resolve>` — pluggable external secret stores. Config values may
+ * embed `${SECRET:backend:key}` / `${SECRET:key}` references that resolve at connect time through the
+ * `env` backend (always on) or the opt-in Bitwarden / 1Password CLIs. Mirrors the shape of the other
+ * subcommands (bare command prints help, --json everywhere); values are masked unless `get --reveal`.
+ */
+export async function secretsCmd(m: Mercury, a: Args): Promise<void> {
+  const sub = a._[1];
+  if (!sub || a.flags.help) return out(SECRETS_HELP);
+  const json = !!a.flags.json;
+  const resolver = secretsResolver(m);
+
+  switch (sub) {
+    // ── backends ───────────────────────────────────────────────────────────────
+    case 'backends': {
+      const rows = resolver.backendNames().map((name) => {
+        const b = resolver.backendFor(name);
+        return { name: b.name, describe: b.describe, available: b.available(), default: b.name === resolver.defaultBackend };
+      });
+      if (json) return out(rows, true);
+      return out(
+        rows
+          .map((r) => `${r.default ? '*' : ' '} ${r.name.padEnd(12)} ${r.available ? 'available    ' : 'unavailable  '} ${r.describe}`)
+          .join('\n'),
+      );
+    }
+
+    // ── list ───────────────────────────────────────────────────────────────
+    case 'list': {
+      const specs = scanSecretRefs(m.config);
+      const reports = specs.map((s) => reportRef(resolver, s));
+      if (reports.some((r) => r.status === 'unresolved')) process.exitCode = 1;
+      if (json) return out(reports, true);
+      if (!reports.length) return out('(no ${SECRET:...} references found in the live config)');
+      return out(reports.map(refRow).join('\n'));
+    }
+
+    // ── get ───────────────────────────────────────────────────────────────
+    case 'get': {
+      const spec = unwrapSecretRef(need(a._[2], 'mercury secrets get <ref> [--reveal]'));
+      const reveal = !!a.flags.reveal;
+      try {
+        const { ref, value } = resolver.resolveRef(spec);
+        const display = reveal ? value : maskSecret(value);
+        if (json) return out({ ref: spec, backend: ref.backend, key: ref.key, status: 'resolved', revealed: reveal, value: display }, true);
+        return out(display);
+      } catch (err) {
+        process.exitCode = 1;
+        if (json) return out({ ref: spec, status: 'unresolved', error: errorMessage(err) }, true);
+        throw err;
+      }
+    }
+
+    // ── resolve ───────────────────────────────────────────────────────────────
+    case 'resolve': {
+      const configPath = flag(a, 'config');
+      const source: unknown = configPath ? readFileSync(configPath, 'utf8') : m.config;
+      const specs = scanSecretRefs(source);
+      const reports = specs.map((s) => reportRef(resolver, s));
+      if (reports.some((r) => r.status === 'unresolved')) process.exitCode = 1;
+      if (json) return out({ source: configPath ?? '(live config)', refs: reports }, true);
+      if (!reports.length) return out(`(no \${SECRET:...} references found in ${configPath ?? 'the live config'})`);
+      return out(`${configPath ?? '(live config)'}:\n${reports.map(refRow).join('\n')}`);
+    }
+
+    default:
+      out(SECRETS_HELP);
       process.exitCode = 1;
   }
 }

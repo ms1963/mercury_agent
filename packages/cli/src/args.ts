@@ -4,7 +4,7 @@ export interface Args {
   flags: Record<string, string | boolean>;
 }
 
-const BOOLEAN = new Set(['json', 'help', 'yes', 'no-services', 'stream', 'watch', 'admin', 'force', 'delta', 'no-llm', 'approve', 'npm', 'mcp', 'plugins', 'include-secrets', 'empty', 'all', 'build', 'use', 'purge']);
+const BOOLEAN = new Set(['json', 'help', 'yes', 'no-services', 'stream', 'watch', 'admin', 'force', 'delta', 'no-llm', 'approve', 'npm', 'mcp', 'plugins', 'include-secrets', 'empty', 'all', 'build', 'use', 'purge', 'reveal']);
 
 export function parseArgs(argv: string[]): Args {
   const out: Args = { _: [], flags: {} };

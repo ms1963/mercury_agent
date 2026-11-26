@@ -953,6 +953,27 @@ export const ConfigSchema = z.object({
     })
     .prefault({}),
 
+  /**
+   * External secret stores. `${SECRET:backend:key}` / `${SECRET:key}` references embedded in config values
+   * (e.g. MCP server env/headers/args) are resolved to real values at connect time through a pluggable
+   * backend, so no plaintext secret is written into the config file. The `env` backend is always present;
+   * Bitwarden / 1Password are opt-in (each shells out to its own CLI through an injected runner).
+   */
+  secrets: z
+    .object({
+      /** Backend used for a bare `${SECRET:key}` reference (no explicit backend). */
+      defaultBackend: z.string().default('env'),
+      /** Bitwarden CLI backend (`bw get password <key>`). */
+      bitwarden: z
+        .object({ enabled: z.boolean().default(false), command: z.string().default('bw') })
+        .prefault({}),
+      /** 1Password CLI backend (`op read <op://...>`). */
+      onepassword: z
+        .object({ enabled: z.boolean().default(false), command: z.string().default('op') })
+        .prefault({}),
+    })
+    .prefault({}),
+
   plugins: z.array(z.string()).default([]),
   hooks: z
     .array(z.object({ event: z.string(), type: z.enum(['log', 'webhook']).default('log'), url: z.string().optional() }))
@@ -964,4 +985,5 @@ export type ProviderConfig = z.infer<typeof ProviderSchema>;
 export type ModelProfile = z.infer<typeof ModelProfileSchema>;
 export type McpServerConfig = z.infer<typeof McpServerSchema>;
 export type BudgetRule = z.infer<typeof BudgetRuleSchema>;
+export type SecretsConfig = MercuryConfig['secrets'];
 export { McpServerSchema, ModelProfileSchema };

@@ -30,7 +30,7 @@ the real installation present on this machine) and **Mercury Agent** (this repos
 | 5 | **Projects / workspaces** | `project` (named, multi-folder workspaces) | ✅ **Done** — `mercury project list\|create\|use\|show\|current\|remove` (named workspaces each with their own data dir, scoping config + memory via the existing data-dir indirection; registry at `~/.mercury/projects.json`, `MERCURY_PROJECT` env override; `--dir`/`--folder`/`--desc`/`--use`, gated `remove --force` with extra `--purge`; `--json`) | Closed |
 | 6 | **Kanban board** | `kanban` (tasks, links, comments) | — | Missing |
 | 7 | **Shell hooks** | `hooks` (shell-script lifecycle hooks) | — | Missing |
-| 8 | **External secret stores** | `secrets` (Bitwarden, 1Password) | `.env` / env vars only | No managed secret backends |
+| 8 | **External secret stores** | `secrets` (Bitwarden, 1Password) | ✅ **Done** — `mercury secrets backends\|list\|get\|resolve` (pluggable `SecretBackend` abstraction: always-on `env` backend plus opt-in Bitwarden `bw get password` / 1Password `op read` adapters via an injected command runner; `${SECRET:backend:key}`/`${SECRET:key}` references resolved at connect time for MCP server configs, coexisting with the preset `${ENV_VAR}` substitution; values masked by default, raw only via `get --reveal`; `--json`; `secrets.*` config section) | Closed |
 | 9 | **Supply-chain audit** | `security` (OSV.dev scan of venv, plugins, MCP servers) | ✅ **Done** — `mercury security audit` (OSV.dev scan of npm deps, configured MCP servers, installed plugins; `--json`, `--npm`/`--mcp`/`--plugins`, `--lockfile`; CI-usable exit codes) | Closed |
 | 10 | **Backup / restore** | `backup`, `import`, `dump`, `checkpoints` | ✅ **Done** — `mercury backup` / `mercury import` (full `~/.mercury` archive to a signed, integrity-checked `.mbak`; `backup inspect`, secret-exclusion default with `--include-secrets`, safe restore with `--force` + auto pre-restore backup; `--json`) | Closed |
 | 11 | **Session management** | `sessions` (list/rename/export/prune/delete) | ✅ **Done** — `mercury sessions list\|rename\|export\|delete\|prune` over the existing persisted sessions (readable table + `--json`, `--limit`/`--search`; export to JSON or markdown with `--out`; destructive delete/prune gated behind `--force`/`--yes`; `prune` is a dry run by default with `--older-than`/`--keep`/`--empty`) | Closed |
@@ -136,8 +136,25 @@ Ordered by value-to-effort for a self-hosted agentic platform. Each tier is inde
    plus a thin fs layer with an **injected clock** in `packages/core/src/projects/manage.ts`; offline
    deterministic tests in `tests/projects.test.ts`; EN/DE help in `docs/help/project.md` /
    `docs/help/de/project.md`.
-6. **External secret stores (`mercury secrets`)** — pluggable backend interface (Bitwarden, 1Password)
-   resolving `${SECRET:...}` references at connect time; reuses the MCP preset `${ENV_VAR}` pattern.
+6. ✅ **Done — External secret stores (`mercury secrets backends|list|get|resolve`)** — pluggable secret
+   backends resolving `${SECRET:...}` references at connect time, so plaintext secrets never live in the
+   config file. A `SecretBackend` abstraction maps a key to a value: an always-on `env` backend (reads
+   from an env map / `process.env`) plus opt-in adapters for the Bitwarden CLI (`bw get password <key>`)
+   and 1Password CLI (`op read <op://...>`), each invoked through an **injected command runner** so the
+   design is extensible and tests never shell out. The resolver expands `${SECRET:backend:key}` and
+   `${SECRET:key}` (default/configured backend) references; it only ever touches `${SECRET:...}` and
+   leaves the MCP preset `${ENV_VAR}` substitution untouched, so the two coexist. Resolution is wired
+   into the real connect path (`packages/runtime/src/mercury.ts` expands `config.mcp.servers` before
+   `mcp.connectAll`, logging only the *count* of unresolved refs — never keys or values) and exposed as a
+   library (`secretResolverFromConfig`, `expandSecretsDeep`, `scanSecretRefs`). CLI: `backends` (configured
+   backends + availability), `list` (refs in the live config with resolve status), `get <ref>` (resolve a
+   single reference — **masked unless `--reveal`**), `resolve [--config <path>]` (scan a config and report
+   masked); `--json` everywhere; non-zero exit on unresolved refs. Secret values are never persisted or
+   logged and are masked by default (`maskSecret` is fixed-width, no length leak). A `secrets.*` config
+   section (`defaultBackend`, `bitwarden.{enabled,command}`, `onepassword.{enabled,command}`) selects
+   backends. Pure logic + thin default runner in `packages/core/src/secrets/secrets.ts`; offline
+   deterministic tests with an injected runner in `tests/secrets.test.ts`; EN/DE help in
+   `docs/help/secrets.md` / `docs/help/de/secrets.md`.
 7. **Isolated profiles (`mercury profile`)** — multiple isolated instances via `MERCURY_HOME`
    switching; mostly orchestration over the existing home-dir indirection.
 8. **Usage insights (`mercury insights`)** — aggregate the token/cost ledger and run events already
