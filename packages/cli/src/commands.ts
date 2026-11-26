@@ -4,7 +4,7 @@ import { cpSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'no
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { auditCoordinates, errorMessage, buildArchive, buildSessionExport, checkArchiveCompat, collectDataDir, exitCodeFor, extractNpmCoordinates, fetchHttpClient, filterSessions, findSession, activeProjectName, createProject, getPath, buildInsights, resolveInsightsRange, formatTokens, formatCost, type InsightsGroupBy, type InsightsReport, installPlugin, installSkills, listInstalled, listProjects, loadOrCreateAuditKey, mcpServerCoordinates, mercuryHome, planRestore, pluginCoordinates, projectDataDirEntryCount, readArchiveFile, removePlugin, removeProject, renderSessionMarkdown, resolveVoicePreset, restoreArchive, runEvalSuite, scaffold, scaffoldAddin, selectEvals, selectPrune, setConfigValue, showProject, updatePlugin, useProject, verifyArchive, verifyArchiveIntegrity, voicePresets, workingDirOf, writeArchiveFile, secretResolverFromConfig, scanSecretRefs, unwrapSecretRef, maskSecret, defaultSecretRunner, activeProfileName, createProfile, listProfiles, profileHomeEntryCount, profileRegistryDir, removeProfile, showProfile, useProfile, DEFAULT_PROFILE_NAME, PROFILE_ENV_VAR, type BackupArchive, type Coordinate, type EvalObservation, type ExtensionKind, type PackageJsonLike, type PluginPkg, type ProfileListEntry, type ProjectListEntry, type SecretResolver, type Session, type VoiceKind } from '@mercury/core';
+import { ACP_PROTOCOL_VERSION, auditCoordinates, errorMessage, buildArchive, buildSessionExport, checkArchiveCompat, collectDataDir, exitCodeFor, extractNpmCoordinates, fetchHttpClient, filterSessions, findSession, activeProjectName, createProject, getPath, buildInsights, resolveInsightsRange, formatTokens, formatCost, type InsightsGroupBy, type InsightsReport, installPlugin, installSkills, listInstalled, listProjects, loadOrCreateAuditKey, mcpServerCoordinates, mercuryHome, planRestore, pluginCoordinates, projectDataDirEntryCount, readArchiveFile, removePlugin, removeProject, renderSessionMarkdown, resolveVoicePreset, restoreArchive, runEvalSuite, scaffold, scaffoldAddin, selectEvals, selectPrune, setConfigValue, showProject, updatePlugin, useProject, verifyArchive, verifyArchiveIntegrity, voicePresets, workingDirOf, writeArchiveFile, secretResolverFromConfig, scanSecretRefs, unwrapSecretRef, maskSecret, defaultSecretRunner, activeProfileName, createProfile, listProfiles, profileHomeEntryCount, profileRegistryDir, removeProfile, showProfile, useProfile, DEFAULT_PROFILE_NAME, PROFILE_ENV_VAR, type BackupArchive, type Coordinate, type EvalObservation, type ExtensionKind, type PackageJsonLike, type PluginPkg, type ProfileListEntry, type ProjectListEntry, type SecretResolver, type Session, type VoiceKind } from '@mercury/core';
 import type { Mercury } from '@mercury/runtime';
 import { enablePresetConfig, mcpPreset, mcpPresets } from '@mercury/mcp';
 import { flag, type Args } from './args.js';
@@ -1117,6 +1117,79 @@ export async function mcpCmd(m: Mercury, a: Args): Promise<void> {
     }, true);
   }
   return out(m.mcp.status(), true);
+}
+
+export const ACP_HELP = `usage: mercury acp [serve|info|methods] [--json] [--user <name>]
+
+Expose Mercury over the Agent Client Protocol (ACP) so external clients (editors/IDEs such
+as Zed) can open a session and drive the Mercury agent. ACP complements the MCP server: where
+'mercury mcp serve' lets MCP clients call Mercury's tools, 'mercury acp serve' lets an ACP
+client prompt the Mercury agent and reach the same tool surface.
+
+Subcommands:
+  serve       Run the ACP server over stdio (newline-delimited JSON-RPC 2.0). This is the mode
+              an ACP client launches; it reads requests on stdin and writes responses +
+              session/update notifications on stdout. Runs until stdin closes.
+              Bind a specific user with --user <name> (defaults to the local admin).
+  info        Show protocol version, capabilities and the implemented method surface (default).
+  methods     List the JSON-RPC methods this server handles.
+
+Wire surface (JSON-RPC 2.0 over stdio):
+  initialize            negotiate protocol version + capabilities (no auth methods advertised)
+  session/new           open a session -> { sessionId }
+  session/list          list open sessions
+  session/prompt        run one turn; streams session/update, answers { stopReason }
+  session/cancel        (notification) abort the in-flight turn
+  _mercury/tools/list   list Mercury tool specs (vendor extension)
+  _mercury/tools/call   invoke one Mercury tool by name (vendor extension)
+
+Note: session/load and auth/* are intentionally unsupported (loadSession=false, no auth).`;
+
+/**
+ * ACP server management. The blocking 'serve' stdio loop is launched from bin.ts (like 'mcp serve');
+ * this command prints the protocol/capability info and method surface.
+ */
+export async function acpCmd(m: Mercury, a: Args): Promise<void> {
+  if (a.flags.help) return out(ACP_HELP);
+  const sub = a._[1] ?? 'info';
+  const methods = [
+    { method: 'initialize', kind: 'request', description: 'Negotiate protocol version and exchange capabilities.' },
+    { method: 'session/new', kind: 'request', description: 'Open a conversation session; returns a sessionId.' },
+    { method: 'session/list', kind: 'request', description: 'List open sessions.' },
+    { method: 'session/prompt', kind: 'request', description: 'Run one prompt turn; streams session/update, returns a stopReason.' },
+    { method: 'session/cancel', kind: 'notification', description: 'Abort the in-flight turn.' },
+    { method: '_mercury/tools/list', kind: 'request', description: 'List Mercury tool specs (vendor extension).' },
+    { method: '_mercury/tools/call', kind: 'request', description: 'Invoke one Mercury tool by name (vendor extension).' },
+  ];
+  if (sub === 'serve') {
+    // The actual stdio loop is run by bin.ts. If this path is reached, print guidance.
+    return out('Run `mercury acp serve` as a subprocess of an ACP client; it serves JSON-RPC over stdio until stdin closes.');
+  }
+  if (sub === 'methods') {
+    if (a.flags.json) return out(methods, true);
+    return out(methods.map((x) => `${x.method.padEnd(22)} ${x.kind.padEnd(12)} ${x.description}`).join('\n'));
+  }
+  // info (default)
+  const info = {
+    protocolVersion: ACP_PROTOCOL_VERSION,
+    transport: 'stdio (newline-delimited JSON-RPC 2.0)',
+    capabilities: { loadSession: false, authMethods: [], sessionCapabilities: { list: true }, promptCapabilities: { image: false, audio: false, embeddedContext: true } },
+    toolSurface: (m.tools.specs('mcp') ?? []).map((t) => t.name),
+    methods: methods.map((x) => x.method),
+    serve: 'mercury acp serve',
+  };
+  if (a.flags.json) return out(info, true);
+  return out(
+    [
+      `Mercury ACP server (Agent Client Protocol)`,
+      `  protocol version: ${info.protocolVersion}`,
+      `  transport:        ${info.transport}`,
+      `  capabilities:     loadSession=false, auth=none, session/list=yes`,
+      `  methods:          ${info.methods.join(', ')}`,
+      `  tool surface:     ${info.toolSurface.length} tool(s) reachable via _mercury/tools/*`,
+      `  serve:            mercury acp serve   (launched by an ACP client over stdio)`,
+    ].join('\n'),
+  );
 }
 
 /**

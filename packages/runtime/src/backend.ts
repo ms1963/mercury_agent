@@ -1,5 +1,5 @@
 /** McpBackend implementation: what external MCP clients can do with Mercury. */
-import { newId, type Principal, type ToolContext } from '@mercury/core';
+import { newId, type AcpAgent, type Principal, type ToolContext } from '@mercury/core';
 import type { McpBackend } from '@mercury/mcp';
 import type { Mercury } from './mercury.js';
 
@@ -46,5 +46,26 @@ export function createBackend(m: Mercury): McpBackend {
     skillBody: (name) => m.skills.view(name),
     scheduleList: (principal) => m.scheduler.list(principal.userId) as unknown as Array<Record<string, unknown>>,
     scheduleCreate: (principal, when, task) => m.scheduler.create(principal.userId, { when, task }) as unknown as Record<string, unknown>,
+  };
+}
+
+/**
+ * ACP agent adapter: exposes the same underlying agent + tool surface as the MCP backend, bound to one
+ * authenticated `principal` via closure (exactly as `serveStdio` binds a principal for MCP). The final
+ * assistant output is returned to the ACP dispatch, which streams it as a single `agent_message_chunk`.
+ */
+export function createAcpAgent(m: Mercury, principal: Principal): AcpAgent {
+  return {
+    async runPrompt(input, opts) {
+      const r = await m.agent.run({ principal, input, platform: 'acp', kind: 'mcp', sessionId: opts.sessionId });
+      const stopReason = r.status === 'completed' ? 'end_turn' : r.status === 'stopped' ? 'cancelled' : 'error';
+      return { output: r.output, stopReason };
+    },
+    toolSpecs: () => m.tools.specs('mcp'),
+    async callTool(name, args) {
+      const ctx = directToolContext(m, principal, 'acp');
+      const r = await m.executor.execute({ id: newId('call'), name, arguments: args }, ctx, { untrustedSeen: true, userRequest: `ACP call ${name}` });
+      return { content: r.result.content, isError: !r.ok };
+    },
   };
 }

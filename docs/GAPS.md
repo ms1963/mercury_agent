@@ -38,7 +38,7 @@ the real installation present on this machine) and **Mercury Agent** (this repos
 | 13 | **Skill curator** | `curator` (background skill maintenance: run/pause/pin) | Self-distill + `learn`, no curator loop | Missing maintenance loop |
 | 14 | **Memory graph & timeline** | `memory-graph`, `journey` timeline, external `memory` provider | Layered memory + `learn` | No graph/timeline/external provider |
 | 15 | **Usage insights** | `insights` (analytics) | ✅ **Done** — `mercury insights` (read-only analytics over the recorded `usage` token/cost ledger joined to `runs`: totals + breakdowns `--by day\|model\|agent\|session`, `--since`/`--until` range, `--top <n>`, `--limit`; readable token/cost formatting; `--json`; clean "no usage recorded" on an empty ledger) | Closed |
-| 16 | **Agent Client Protocol** | `acp` (ACP server) | — | Missing |
+| 16 | **Agent Client Protocol** | `acp` (ACP server) | ✅ **Done** — `mercury acp serve` (ACP server over stdio, newline-delimited JSON-RPC 2.0) exposing the SAME agent + tool surface as the MCP server to external clients (editors/IDEs). Implements `initialize` (version/capability negotiation, no auth advertised), `session/new`, `session/list`, `session/prompt` (streams `session/update` agent-message + tool-call notifications, answers a `stopReason`), the `session/cancel` notification, and vendor extensions `_mercury/tools/list` / `_mercury/tools/call`; `session/load` + `auth/*` are deliberately unsupported (loadSession=false). Pure dispatch/parse layer in `packages/core/src/acp/acp.ts` (unit-testable with injected agent stub + notification sink) + thin stdio transport; runtime adapter `m.acpAgent(principal)` binds a principal via closure; `mercury acp info\|methods` print the protocol surface (`--json`) | Closed |
 | 17 | **Language Server Protocol** | `lsp` | — | Missing |
 | 18 | **OAuth→OpenAI proxy** | `proxy` (local OpenAI-compatible proxy to OAuth providers) | — | Missing |
 | 19 | **Pooled provider auth / fallback** | `auth` (pooled credentials), `fallback` providers | Fallback chain exists; no pooled-credential manager | Partial |
@@ -196,8 +196,27 @@ Ordered by value-to-effort for a self-hosted agentic platform. Each tier is inde
 
 ### Tier 3 — Strategic / ecosystem
 
-9. **ACP server (`mercury acp`)** — expose Mercury over the Agent Client Protocol so external clients
-   (editors, IDEs) can drive it; complements the existing MCP server.
+9. ✅ **Done — ACP server (`mercury acp`)** — expose Mercury over the Agent Client Protocol so external
+   clients (editors, IDEs such as Zed) can drive it; complements the existing MCP server. `mercury acp
+   serve` runs a JSON-RPC 2.0 server over stdio (newline-delimited, one message per line) exposing the
+   SAME underlying agent + tool surface the MCP server exposes. Implemented method surface: `initialize`
+   (negotiates the integer protocol version and advertises capabilities — `loadSession=false`, empty
+   `authMethods`, `sessionCapabilities.list`), `session/new` (opens a session → `sessionId`),
+   `session/list`, `session/prompt` (runs one turn; streams `session/update` notifications —
+   `agent_message_chunk` plus any `tool_call`/`tool_call_update` the agent pushes — then answers with a
+   `stopReason`), the `session/cancel` notification, and two vendor extensions `_mercury/tools/list` /
+   `_mercury/tools/call` (ACP reserves the `_` prefix) that reach Mercury's full tool surface.
+   `session/load` and `auth/*` are deliberately unsupported. Core logic lives in
+   `packages/core/src/acp/acp.ts`, split into pure request parsing/dispatch functions (unit-testable
+   with an injected `AcpAgent` stub + injected notification sink) and a thin stdio transport
+   (`serveAcpStdio`). The runtime adapter `m.acpAgent(principal)` binds a principal via closure (exactly
+   as `serveStdio` does for MCP) and returns the agent's final output as a single `agent_message_chunk`.
+   CLI: `mercury acp serve` (stdio loop wired in `bin.ts`), `mercury acp info|methods` (`--json`) print
+   the protocol surface. Offline deterministic tests in `tests/acp.test.ts` (34 tests) cover parsing,
+   every handler, error paths and stdio framing; EN/DE help in `docs/help/acp.md` /
+   `docs/help/de/acp.md`. **Honesty:** every handler, the JSON-RPC framing and the error paths are
+   exercised offline against stubs; it has **not** been exercised against a real external ACP client
+   (e.g. Zed).
 10. **Mixture-of-Agents (`mercury moa`)** — aggregate/vote across model slots; a natural extension of
     the Jev router and teams.
 11. **Memory graph & journey timeline** — a graph view and chronological timeline over the existing

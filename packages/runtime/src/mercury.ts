@@ -111,7 +111,7 @@ import {
 import { registerBuiltinTools, registerPolyglotTools } from '@mercury/tools';
 import { McpClientManager } from '@mercury/mcp';
 import { Gateway, registerAdapterType, type Adapter, type HttpTransport } from '@mercury/gateway';
-import { createBackend } from './backend.js';
+import { createAcpAgent, createBackend } from './backend.js';
 
 export interface CreateOptions {
   configFile?: string;
@@ -740,6 +740,11 @@ export class Mercury {
   /** Implementation of the MCP server backend (Mercury exposed as an MCP server). */
   mcpBackend() {
     return createBackend(this);
+  }
+
+  /** ACP agent adapter bound to one principal (Mercury exposed as an ACP server). */
+  acpAgent(principal: Principal) {
+    return createAcpAgent(this, principal);
   }
 
   /** Resolve a user principal by username (CLI helpers). */

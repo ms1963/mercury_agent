@@ -8,6 +8,7 @@ import { createLogger, setConfigValue, SYSTEM_PRINCIPAL } from '@mercury/core';
 import { createMercury, type Mercury } from '@mercury/runtime';
 import { startServer } from '@mercury/server';
 import { serveStdio } from '@mercury/mcp';
+import { serveAcpStdio } from '@mercury/core';
 import { flag, parseArgs, type Args } from './args.js';
 import { chatOnce, repl } from './repl.js';
 import * as cmd from './commands.js';
@@ -46,6 +47,9 @@ Usage: mercury <command> [options]
                             connectors (Slack, Notion, Postgres, Playwright, …) with provenance,
                             required env vars and on/off state; all are DISABLED by default.
                             'enable <preset>' turns one on, 'disable <server>' turns it off.
+  acp [serve|info|methods]  Expose Mercury over the Agent Client Protocol (ACP) for editors/IDEs.
+                            'serve' runs the stdio JSON-RPC server (launched by an ACP client);
+                            'info'/'methods' show the protocol surface. Complements 'mcp serve'.
   user [list|add|passwd|role|delete]
   token [list|create <name> --scopes chat,mcp|revoke <id>]
   audit [list|verify] [--actor id] [--action token] [--since ISO] [--limit n] [--json]
@@ -137,7 +141,7 @@ async function main(argv: string[]): Promise<void> {
   if (command === 'new') return cmd.newCmd(a);
   if (command === 'version' || a.flags.v) return console.log(`mercury ${pkgVersion()}`);
 
-  const serve = command === 'serve' || (command === 'mcp' && a._[1] === 'serve');
+  const serve = command === 'serve' || (command === 'mcp' && a._[1] === 'serve') || (command === 'acp' && a._[1] === 'serve');
   const m = await boot(a, serve);
   try {
     switch (command) {
@@ -235,6 +239,13 @@ async function main(argv: string[]): Promise<void> {
           await new Promise(() => undefined);
         }
         return await cmd.mcpCmd(m, a);
+      case 'acp':
+        if (a._[1] === 'serve') {
+          const principal = flag(a, 'user') ? m.principalFor(flag(a, 'user')) : await m.localPrincipal();
+          await serveAcpStdio(m.acpAgent(principal));
+          return;
+        }
+        return await cmd.acpCmd(m, a);
       case 'replay':
         for (const e of m.recorder.replay(a._[1] ?? '')) console.log(`${e.ts} ${e.type.padEnd(16)} ${JSON.stringify(e.data).slice(0, 160)}`);
         return;
