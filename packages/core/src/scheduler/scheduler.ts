@@ -82,8 +82,8 @@ function toSchedule(r: Row): Schedule {
 }
 
 /** Compute the next run time after `from` (undefined = never again). */
-export function computeNextRun(kind: ScheduleKind, spec: string, from = new Date(), lastRun?: string): string | undefined {
-  if (kind === 'cron') return nextCronRun(spec, from).toISOString();
+export function computeNextRun(kind: ScheduleKind, spec: string, from = new Date(), lastRun?: string, tz?: string): string | undefined {
+  if (kind === 'cron') return nextCronRun(spec, from, tz).toISOString();
   if (kind === 'interval') {
     const base = lastRun ? new Date(lastRun).getTime() : from.getTime();
     return new Date(Math.max(base + Number(spec), from.getTime() + 1000)).toISOString();
@@ -100,8 +100,38 @@ export class Scheduler {
     private db: Db,
     private runner: ScheduleRunner,
     private bus?: EventBus,
-    private opts: { tickMs?: number; defaultRetries?: number } = {},
-  ) {}
+    private opts: { tickMs?: number; defaultRetries?: number; timezone?: string } = {},
+  ) {
+    this.timezone = opts.timezone;
+  }
+
+  /** IANA zone used to evaluate cron times; undefined = host computer's local zone. */
+  private timezone?: string;
+
+  /** Effective time zone: the configured override, or the host computer's local zone. */
+  get effectiveTimezone(): string {
+    return this.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  }
+
+  /** Whether a zone override is active (false = follows the host computer). */
+  get timezoneOverridden(): boolean {
+    return Boolean(this.timezone);
+  }
+
+  /**
+   * Change the zone used for cron evaluation and recompute every active cron job's next run.
+   * Pass undefined/empty to clear the override and follow the host computer's zone.
+   * Returns the number of schedules whose next run was recomputed.
+   */
+  setTimezone(tz?: string): number {
+    this.timezone = tz || undefined;
+    const rows = this.db.all("SELECT * FROM schedules WHERE status = 'active' AND kind = 'cron'").map(toSchedule);
+    for (const s of rows) {
+      const next = computeNextRun(s.kind, s.spec, new Date(), undefined, this.timezone);
+      this.db.run('UPDATE schedules SET next_run = ? WHERE id = ?', next ?? null, s.id);
+    }
+    return rows.length;
+  }
 
   setRunner(runner: ScheduleRunner): void {
     this.runner = runner;
@@ -123,7 +153,7 @@ export class Scheduler {
     const parsed = parseSchedule(input.when);
     if (!parsed) throw new MercuryError(`Could not understand schedule "${input.when}". Try "every weekday at 9am", "every 2 hours", "in 10 minutes" or a cron expression.`, 'bad_schedule', 'scheduler');
     const id = newId('sch');
-    const next = computeNextRun(parsed.kind, parsed.spec);
+    const next = computeNextRun(parsed.kind, parsed.spec, new Date(), undefined, this.timezone);
     this.db.run(
       `INSERT INTO schedules (id, user_id, name, kind, spec, nl, task, delivery, status, next_run, max_retries, budget, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`,
@@ -161,7 +191,7 @@ export class Scheduler {
       if (!parsed) throw new MercuryError(`Could not understand schedule "${patch.when}"`, 'bad_schedule', 'scheduler');
       ({ kind, spec } = parsed);
       nl = patch.when;
-      nextRun = computeNextRun(kind, spec);
+      nextRun = computeNextRun(kind, spec, new Date(), undefined, this.timezone);
     }
     this.db.run(
       'UPDATE schedules SET name = ?, kind = ?, spec = ?, nl = ?, task = ?, delivery = ?, max_retries = ?, budget = ?, next_run = ? WHERE id = ?',
@@ -179,7 +209,7 @@ export class Scheduler {
 
   resume(id: string, userId?: string): Schedule {
     const s = this.mustGet(id, userId);
-    const next = computeNextRun(s.kind, s.spec, new Date(), s.kind === 'once' ? undefined : s.lastRun);
+    const next = computeNextRun(s.kind, s.spec, new Date(), s.kind === 'once' ? undefined : s.lastRun, this.timezone);
     this.db.run("UPDATE schedules SET status = 'active', next_run = ? WHERE id = ?", next ?? null, id);
     return this.get(id)!;
   }
@@ -226,7 +256,7 @@ export class Scheduler {
     this.running.set(s.id, controller);
     // Advance next_run first so a crash mid-run doesn't re-fire the job forever.
     if (advance) {
-      const next = computeNextRun(s.kind, s.spec, now, now.toISOString());
+      const next = computeNextRun(s.kind, s.spec, now, now.toISOString(), this.timezone);
       this.db.run(
         'UPDATE schedules SET next_run = ?, status = ? WHERE id = ?',
         next ?? null, next ? s.status : 'done', s.id,

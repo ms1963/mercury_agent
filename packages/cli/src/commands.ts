@@ -180,6 +180,47 @@ export async function configCmd(m: Mercury, a: Args): Promise<void> {
   return out(m.configFile ?? `(no config file; defaults in use — will be written to ${join(mercuryHome(), 'config.yaml')})`);
 }
 
+/** Show or override the time zone the scheduler uses for cron jobs (default: host computer's zone). */
+export async function timezoneCmd(m: Mercury, a: Args): Promise<void> {
+  const { isValidTimeZone } = await import('@mercury/core');
+  const [, sub = 'show', zone] = a._;
+  const json = a.flags.json === true;
+  const hostZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  if (sub === 'set') {
+    const tz = need(zone, 'mercury timezone set <IANA zone, e.g. Europe/Berlin>');
+    if (!isValidTimeZone(tz)) throw new Error(`unknown time zone: ${tz} (use an IANA name like Europe/Berlin or America/New_York)`);
+    const saved = setConfigValue('scheduler.timezone', tz, m.configFile);
+    const recomputed = m.scheduler.setTimezone(tz);
+    return out(json
+      ? { timezone: tz, overridden: true, host: hostZone, recomputed, saved }
+      : `scheduler time zone set to ${tz} (saved to ${saved}); recomputed ${recomputed} schedule(s)`, json);
+  }
+
+  if (sub === 'clear') {
+    const saved = setConfigValue('scheduler.timezone', '', m.configFile);
+    const recomputed = m.scheduler.setTimezone(undefined);
+    return out(json
+      ? { timezone: hostZone, overridden: false, host: hostZone, recomputed, saved }
+      : `scheduler time zone override cleared; following host computer's zone (${hostZone}); recomputed ${recomputed} schedule(s)`, json);
+  }
+
+  if (sub === 'show') {
+    const effective = m.scheduler.effectiveTimezone;
+    const overridden = m.scheduler.timezoneOverridden;
+    const now = new Date().toLocaleString('en-US', { timeZone: effective, timeZoneName: 'short' });
+    if (json) return out({ timezone: effective, overridden, host: hostZone, override: m.config.scheduler.timezone || null, now }, true);
+    return out([
+      `effective time zone : ${effective}${overridden ? ' (override)' : ' (following host computer)'}`,
+      `host computer zone  : ${hostZone}`,
+      `config override     : ${m.config.scheduler.timezone || '(none)'}`,
+      `current local time  : ${now}`,
+    ].join('\n'));
+  }
+
+  throw new Error('usage: mercury timezone [show | set <zone> | clear]');
+}
+
 export async function gatewayCmd(m: Mercury, a: Args): Promise<void> {
   const [, sub = 'status', code] = a._;
   if (sub === 'pair') {

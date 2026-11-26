@@ -528,7 +528,7 @@ export class Mercury {
           { role: 'user', content: user },
         ], { budgetOverride: true })).content,
     });
-    this.scheduler = new Scheduler(this.db, (s, signal) => this.runSchedule(s.userId, s.task, signal), this.bus, { tickMs: config.scheduler.tickMs, defaultRetries: config.scheduler.maxRetries });
+    this.scheduler = new Scheduler(this.db, (s, signal) => this.runSchedule(s.userId, s.task, signal), this.bus, { tickMs: config.scheduler.tickMs, defaultRetries: config.scheduler.maxRetries, timezone: config.scheduler.timezone || undefined });
     this.gateway = new Gateway({
       config, db: this.db, bus: this.bus, logger: this.logger, users: this.users, pairing: this.pairing, approvals: this.approvals,
       attachments: this.attachments, voice: this.voice, judgment: this.judgment, transport: opts.transport,

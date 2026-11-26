@@ -485,7 +485,17 @@ export const ConfigSchema = z.object({
     .prefault({}),
 
   scheduler: z
-    .object({ enabled: z.boolean().default(true), tickMs: z.number().default(30_000), maxRetries: z.number().default(2) })
+    .object({
+      enabled: z.boolean().default(true),
+      tickMs: z.number().default(30_000),
+      maxRetries: z.number().default(2),
+      /**
+       * IANA time zone (e.g. "Europe/Berlin") used to evaluate cron / natural-language
+       * schedule times. When unset/empty the host computer's local zone is used, so
+       * Mercury's time zone matches the machine it runs on. Override with `mercury timezone set`.
+       */
+      timezone: z.string().optional(),
+    })
     .prefault({}),
 
   attachments: z

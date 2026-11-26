@@ -41,6 +41,7 @@ Usage: mercury <command> [options]
                             --show-proposals --json)
   perms [list|show <personality>]   Inspect per-agent/personality permission profiles
   config [path|get <key>|set <key> <value>]
+  timezone [show|set <zone>|clear]   Override the scheduler time zone (default: host computer's zone)
   voice [presets|show|use <stt|tts> <preset>]
                             Swap the STT/TTS stack in one step (openai, speaches,
                             whisper, openedai, kokoro, piper, edge-tts)
@@ -213,6 +214,9 @@ async function main(argv: string[]): Promise<void> {
         return await cmd.permsCmd(m, a);
       case 'config':
         return await cmd.configCmd(m, a);
+      case 'timezone':
+      case 'tz':
+        return await cmd.timezoneCmd(m, a);
       case 'voice':
         return cmd.voiceCmd(m, a);
       case 'gateway':

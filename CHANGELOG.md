@@ -7,13 +7,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`mercury timezone [show|set <zone>|clear]`** — an optional per-install override for the time zone the
+  scheduler uses to evaluate cron and natural-language schedules. By default Mercury follows the host
+  computer's zone; `timezone set Europe/Berlin` (or any IANA name) persists `scheduler.timezone` in the
+  config, validates the name, and immediately recomputes every active cron job's next run; `timezone clear`
+  removes the override and reverts to the host zone; `timezone show` (alias `tz`, `--json` supported)
+  reports the effective zone, the host zone, the override, and the current local time. The scheduler reads
+  this override at startup so it survives restarts.
+
 ### Fixed
 
-- **Scheduler time zone** — the cron/natural-language scheduler evaluates times in the process's
-  local time zone, but the deployment VM's clock is UTC, so `"every day at 5pm"` was scheduled as
-  17:00 UTC (shown as 18:00 to a CET operator). The `deploy/mercury.service` unit now sets
-  `Environment=TZ=Europe/Berlin` so natural-language times resolve in the operator's local zone;
-  override the value for other time zones.
+- **Scheduler time zone follows the host computer** — the cron/natural-language scheduler evaluates
+  times in the process's local time zone. Previously the VM clock was UTC, so `"every day at 5pm"`
+  was scheduled as 17:00 UTC (shown as 18:00 to a CET operator). Mercury now simply inherits the
+  machine's time zone: the host system zone is set via `timedatectl set-timezone`, and
+  `deploy/mercury.service` pins **no** `TZ` so the service (and the CLI) always match the computer
+  they run on. To change zones, set the machine's zone — e.g.
+  `sudo timedatectl set-timezone Europe/Berlin` — and restart the service.
 
 ## [2.0.0] - 2026-11-26
 
