@@ -80,6 +80,7 @@ export * from './security/paths.js';
 export * from './security/policy-code.js';
 export * from './security/redact.js';
 export * from './security/ssrf.js';
+export * from './security/supply-chain.js';
 export * from './security/taint.js';
 export * from './skills/composer.js';
 export * from './skills/installer.js';

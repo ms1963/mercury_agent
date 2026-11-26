@@ -31,7 +31,7 @@ the real installation present on this machine) and **Mercury Agent** (this repos
 | 6 | **Kanban board** | `kanban` (tasks, links, comments) | — | Missing |
 | 7 | **Shell hooks** | `hooks` (shell-script lifecycle hooks) | — | Missing |
 | 8 | **External secret stores** | `secrets` (Bitwarden, 1Password) | `.env` / env vars only | No managed secret backends |
-| 9 | **Supply-chain audit** | `security` (OSV.dev scan of venv, plugins, MCP servers) | Security test suite, but no CVE audit | Missing dependency CVE audit |
+| 9 | **Supply-chain audit** | `security` (OSV.dev scan of venv, plugins, MCP servers) | ✅ **Done** — `mercury security audit` (OSV.dev scan of npm deps, configured MCP servers, installed plugins; `--json`, `--npm`/`--mcp`/`--plugins`, `--lockfile`; CI-usable exit codes) | Closed |
 | 10 | **Backup / restore** | `backup`, `import`, `dump`, `checkpoints` | `bundle` packages config only | No full-home backup/restore |
 | 11 | **Session management** | `sessions` (list/rename/export/prune/delete) | Sessions persist, no dedicated CLI | Partial — no session CLI |
 | 12 | **Plugin lifecycle** | `plugins` install/update/remove/list | `plugins` **list-only** (+ `new plugin` scaffold) | Partial — no install/update/remove |
@@ -75,9 +75,11 @@ Ordered by value-to-effort for a self-hosted agentic platform. Each tier is inde
 
 ### Tier 1 — High value, moderate effort (do first)
 
-1. **Supply-chain audit (`mercury security audit`)** — wrap OSV.dev over `package-lock.json`, installed
-   plugins and configured MCP servers. High security value, self-contained, aligns with Mercury's
-   existing security posture.
+1. ✅ **Done — Supply-chain audit (`mercury security audit`)** — wraps OSV.dev over `package-lock.json`,
+   installed plugins and configured MCP servers. Human table grouped by source plus `--json`; narrowing
+   flags `--npm`/`--mcp`/`--plugins` and a `--lockfile <path>` override; CI-usable exit codes (0 clean,
+   1 vulnerabilities found, 2 could-not-complete). Engine in `packages/core/src/security/supply-chain.ts`
+   with an injectable HTTP client; offline deterministic tests in `tests/security-audit.test.ts`.
 2. **Backup / restore (`mercury backup` / `mercury import`)** — zip `~/.mercury` (config, memory DB,
    skills, add-ins) and restore it. Extends the existing `bundle` machinery; critical for real
    deployments.

@@ -2,8 +2,8 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { cpSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
-import { getPath, installSkills, mercuryHome, resolveVoicePreset, runEvalSuite, scaffold, scaffoldAddin, selectEvals, setConfigValue, voicePresets, type EvalObservation, type ExtensionKind, type VoiceKind } from '@mercury/core';
+import { dirname, join } from 'node:path';
+import { auditCoordinates, exitCodeFor, extractNpmCoordinates, fetchHttpClient, getPath, installSkills, mcpServerCoordinates, mercuryHome, pluginCoordinates, resolveVoicePreset, runEvalSuite, scaffold, scaffoldAddin, selectEvals, setConfigValue, voicePresets, type Coordinate, type EvalObservation, type ExtensionKind, type PackageJsonLike, type PluginPkg, type VoiceKind } from '@mercury/core';
 import type { Mercury } from '@mercury/runtime';
 import { enablePresetConfig, mcpPreset, mcpPresets } from '@mercury/mcp';
 import { flag, type Args } from './args.js';
@@ -713,4 +713,111 @@ export async function teamCmd(m: Mercury, a: Args): Promise<void> {
     default:
       throw new Error('usage: mercury team <list | create <name> --members ... | show <id> | delete <id> | run <id> <task> | runs> [--json]');
   }
+}
+
+
+const SECURITY_HELP = `usage: mercury security audit [--npm] [--mcp] [--plugins] [--lockfile <path>] [--json]
+
+Supply-chain vulnerability audit via the free OSV.dev API (no API key required). Enumerates
+package coordinates and queries OSV for known vulnerabilities.
+
+Sources (default: all; pass one or more flags to narrow):
+  --npm              npm packages from package-lock.json
+  --mcp              npm packages invoked by configured MCP servers (npx-launched)
+  --plugins          installed plugins and the npm dependencies they declare
+Options:
+  --lockfile <path>  override the npm lockfile (default: ./package-lock.json)
+  --json             emit the full machine-readable report
+
+Exit code: 0 clean · 1 vulnerabilities found · 2 audit could not complete (network/parse error).
+The audit makes live calls to https://api.osv.dev when run; results depend on OSV availability.`;
+
+/** Read a plugin's package.json from the directory of its entry file (or one level up for dist/ layouts). */
+function readPluginPkgJson(entryPath: string): PackageJsonLike | undefined {
+  for (const cand of [join(dirname(entryPath), 'package.json'), join(dirname(dirname(entryPath)), 'package.json')]) {
+    if (!existsSync(cand)) continue;
+    try {
+      return JSON.parse(readFileSync(cand, 'utf8')) as PackageJsonLike;
+    } catch {
+      /* ignore malformed package.json */
+    }
+  }
+  return undefined;
+}
+
+/**
+ * `mercury security audit` — supply-chain CVE audit over OSV.dev across npm dependencies, configured
+ * MCP servers and installed plugins. Human-readable table by default, `--json` for the full report.
+ * Sets a CI-friendly exit code (0 clean / 1 vulnerable / 2 could-not-complete).
+ */
+export async function securityCmd(m: Mercury, a: Args): Promise<void> {
+  const sub = a._[1];
+  if (sub !== 'audit' || a.flags.help) return out(SECURITY_HELP);
+
+  const want = { npm: !!a.flags.npm, mcp: !!a.flags.mcp, plugins: !!a.flags.plugins };
+  const all = !want.npm && !want.mcp && !want.plugins;
+  const coords: Coordinate[] = [];
+  const notes: string[] = [];
+
+  // 1) npm dependencies from the lockfile.
+  if (all || want.npm) {
+    const lockPath = flag(a, 'lockfile') ?? join(process.cwd(), 'package-lock.json');
+    if (existsSync(lockPath)) {
+      try {
+        coords.push(...extractNpmCoordinates(readFileSync(lockPath, 'utf8')));
+      } catch (err) {
+        notes.push(`npm: ${(err as Error).message}`);
+      }
+    } else {
+      notes.push(`npm: no lockfile at ${lockPath} (use --lockfile <path>)`);
+    }
+  }
+
+  // Installed npm versions (from the lockfile) let us pin MCP/plugin packages that are also present.
+  const installed = new Map<string, string>();
+  for (const c of coords) if (c.source === 'npm') installed.set(c.name, c.version);
+
+  // 2) Configured MCP servers (every configured server, enabled or not).
+  if (all || want.mcp) coords.push(...mcpServerCoordinates(m.config.mcp.servers, installed, true));
+
+  // 3) Installed plugins + the npm deps they declare.
+  if (all || want.plugins) {
+    const plugs: PluginPkg[] = m.plugins.map((p) => ({ name: p.name, pkgJson: readPluginPkgJson(p.path) }));
+    coords.push(...pluginCoordinates(plugs));
+  }
+
+  const report = await auditCoordinates(coords, { http: fetchHttpClient });
+  report.errors.unshift(...notes);
+
+  if (a.flags.json) {
+    out(report, true);
+    process.exitCode = exitCodeFor(report.status);
+    return;
+  }
+
+  const lines: string[] = [];
+  lines.push(`Mercury supply-chain audit (OSV.dev) — sources: ${report.sources.join(', ') || '(none)'}`);
+  lines.push(`Scanned ${report.scanned} package(s); ${report.vulnerablePackages} vulnerable, ${report.findings.length} finding(s).`);
+  for (const bySource of ['npm', 'mcp', 'plugin'] as const) {
+    const group = report.findings.filter((f) => f.coordinate.source === bySource);
+    if (!group.length) continue;
+    lines.push(`\n[${bySource}]`);
+    for (const f of group) {
+      const ver = f.coordinate.version || '(unpinned)';
+      const via = f.coordinate.via ? ` via ${f.coordinate.via}` : '';
+      const ids = [f.id, ...f.aliases].join(', ');
+      const sev = f.severity ? `  severity=${f.severity}` : '';
+      const fix = f.fixedVersion ? `  fixed-in=${f.fixedVersion}` : '';
+      lines.push(`  ${f.coordinate.name}@${ver}${via}`);
+      lines.push(`    ${ids}${sev}${fix}`);
+      if (f.summary) lines.push(`    ${f.summary}`);
+    }
+  }
+  if (report.errors.length) {
+    lines.push(`\nWarnings/errors:`);
+    for (const e of report.errors) lines.push(`  ! ${e}`);
+  }
+  lines.push(`\nResult: ${report.status.toUpperCase()}${report.status === 'clean' ? ' — no known vulnerabilities found.' : ''}`);
+  out(lines.join('\n'));
+  process.exitCode = exitCodeFor(report.status);
 }

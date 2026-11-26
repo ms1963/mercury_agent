@@ -49,6 +49,8 @@ Usage: mercury <command> [options]
   user [list|add|passwd|role|delete]
   token [list|create <name> --scopes chat,mcp|revoke <id>]
   audit [list|verify] [--actor id] [--action token] [--since ISO] [--limit n] [--json]
+  security [audit] [--npm] [--mcp] [--plugins] [--lockfile <path>] [--json]
+                            Supply-chain CVE audit (OSV.dev) of npm deps, MCP servers & plugins
   plugins                   List loaded plugins
   import-agent [~/.hermes]  Import memories, profile and skills from Hermes Agent
   new <tool|skill|workflow|adapter|plugin> <name> [--lang python|js|go|cpp|java]
@@ -179,6 +181,8 @@ async function main(argv: string[]): Promise<void> {
         return await cmd.tokenCmd(m, a);
       case 'audit':
         return await cmd.auditCmd(m, a);
+      case 'security':
+        return await cmd.securityCmd(m, a);
       case 'plugins':
         return cmd.pluginsCmd(m);
       case 'import-agent':
