@@ -26,7 +26,7 @@ the real installation present on this machine) and **Mercury Agent** (this repos
 | 1 | **Native desktop app** | `desktop` / `gui` (build & launch native app) + `serve` headless backend powering it | Web UI (`serve`) only | Missing native desktop shell |
 | 2 | **Computer Use / GUI automation** | `computer-use` (cua-driver; macOS/Windows/Linux) | Untested Playwright browser backend only | No OS-level GUI control |
 | 3 | **Mixture-of-Agents** | `moa` (aggregate answers across several model slots) | Router + teams, no MoA aggregation | Missing MoA provider |
-| 4 | **Isolated profiles** | `profile` (multiple fully isolated instances) | Multi-user RBAC in one instance | No instance isolation |
+| 4 | **Isolated profiles** | `profile` (multiple fully isolated instances) | ✅ **Done** — `mercury profile list\|create\|use\|show\|current\|remove` (multiple fully isolated instances, each its own `MERCURY_HOME` → own config, memory DB, skills, plugins, audit key; built-in `default` → `~/.mercury` so existing setups are unaffected; registry at `~/.config/mercury/profiles.json`; `use` persists the selection AND prints the `export MERCURY_PROFILE=<name>` line for the current shell; `MERCURY_HOME` wins, else `MERCURY_PROFILE` overrides stored active; `--home`/`--desc`/`--use`, gated `remove --force` with extra `--purge`; `--json`) | Closed |
 | 5 | **Projects / workspaces** | `project` (named, multi-folder workspaces) | ✅ **Done** — `mercury project list\|create\|use\|show\|current\|remove` (named workspaces each with their own data dir, scoping config + memory via the existing data-dir indirection; registry at `~/.mercury/projects.json`, `MERCURY_PROJECT` env override; `--dir`/`--folder`/`--desc`/`--use`, gated `remove --force` with extra `--purge`; `--json`) | Closed |
 | 6 | **Kanban board** | `kanban` (tasks, links, comments) | — | Missing |
 | 7 | **Shell hooks** | `hooks` (shell-script lifecycle hooks) | — | Missing |
@@ -155,8 +155,31 @@ Ordered by value-to-effort for a self-hosted agentic platform. Each tier is inde
    backends. Pure logic + thin default runner in `packages/core/src/secrets/secrets.ts`; offline
    deterministic tests with an injected runner in `tests/secrets.test.ts`; EN/DE help in
    `docs/help/secrets.md` / `docs/help/de/secrets.md`.
-7. **Isolated profiles (`mercury profile`)** — multiple isolated instances via `MERCURY_HOME`
-   switching; mostly orchestration over the existing home-dir indirection.
+7. ✅ **Done — Isolated profiles (`mercury profile list|create|use|show|current|remove`)** — multiple
+   **fully isolated** instances, each its own **home directory** (`MERCURY_HOME`) and therefore its own
+   config, memory DB, skills, plugins, personalities and audit key. This is the home-level sibling of a
+   project (#5): where a project selects the **data dir** *within* a home, a profile selects an entirely
+   separate **home** — the layering is *profile → selects `MERCURY_HOME`*, then *project → selects the data
+   dir within it*. It is "orchestration over the existing home-dir indirection": `mercuryHome()` in
+   `packages/core/src/config/load.ts` already drives the home off `MERCURY_HOME`, so this just records which
+   profile is active and resolves its home on the next run (an explicit `MERCURY_HOME` always wins — the
+   resolver returns `undefined` so the env value is used — otherwise a `MERCURY_PROFILE` env var overrides
+   the stored active profile; isolated loads, which set their own data dir, are unaffected). Because
+   profiles sit **above** homes, their registry lives at `~/.config/mercury/profiles.json` (override the
+   directory with `MERCURY_PROFILES_DIR`), not inside any one home; non-default homes default to
+   `~/.mercury-profiles/<name>/` (override the base with `MERCURY_PROFILES_HOME`, or set `--home` per
+   profile). A built-in **`default`** profile always exists and maps to the standard `~/.mercury`, so
+   existing setups are completely unaffected; it cannot be created, removed or purged. Because a process
+   cannot mutate its parent shell's environment, `use <name>` BOTH persists the selection (new processes
+   pick it up) AND prints the exact `export MERCURY_PROFILE=<name>` line for the current shell (like
+   pyenv/direnv). CLI: `create <name>` (`--home`, `--desc`, `--use`), `use <name>` (switch active + print
+   export line), `list` (table + `--json`, default first, active marker + home-exists), `show [name]`
+   (details incl. home entry count; defaults to active/default), `current` (active name or `default`), and a
+   gated `remove <name>` (`--force`/`--yes`; keeps the home dir by default, extra `--purge` deletes it but
+   never `~/.mercury`); `--json` everywhere. Pure registry logic (validation, parse/serialize, CRUD,
+   active-profile resolution, home-path resolution) plus a thin fs layer with an **injected clock/env** in
+   `packages/core/src/profiles/manage.ts`; offline deterministic tests in `tests/profiles.test.ts`; EN/DE
+   help in `docs/help/profile.md` / `docs/help/de/profile.md`.
 8. **Usage insights (`mercury insights`)** — aggregate the token/cost ledger and run events already
    recorded into a reportable analytics view.
 

@@ -65,6 +65,7 @@ export * from './memory/manager.js';
 export * from './sessions/manage.js';
 export * from './memory/providers.js';
 export * from './memory/user-model.js';
+export * from './profiles/manage.js';
 export * from './plugins/builtin-hooks.js';
 export * from './plugins/hooks.js';
 export * from './plugins/manage.js';

@@ -60,6 +60,9 @@ Usage: mercury <command> [options]
   plugins [list|install|update|remove]   Manage plugins (list loaded; install/update/remove from path or git)
                             install <path|git-url> [--name n] [--force] [--build]; update <name>|--all;
                             remove <name> --force   (--json everywhere)
+  profile [list|create|use|show|current|remove]   Fully isolated instances (each its own MERCURY_HOME)
+                            create <name> [--home p] [--desc t] [--use]; use <name> (prints export line);
+                            show [name]; current; remove <name> --force [--purge]   (--json everywhere)
   project [list|create|use|show|current|remove]   Named workspaces scoping config + memory per project
                             create <name> [--dir p] [--folder p1,p2] [--desc t] [--use]; use <name>;
                             show [name]; current; remove <name> --force [--purge]   (--json everywhere)
@@ -205,6 +208,8 @@ async function main(argv: string[]): Promise<void> {
         return await cmd.sessionsCmd(m, a);
       case 'plugins':
         return await cmd.pluginsCmd(m, a);
+      case 'profile':
+        return await cmd.profileCmd(m, a);
       case 'project':
         return await cmd.projectCmd(m, a);
       case 'secrets':

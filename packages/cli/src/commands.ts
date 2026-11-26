@@ -4,7 +4,7 @@ import { cpSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'no
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { auditCoordinates, errorMessage, buildArchive, buildSessionExport, checkArchiveCompat, collectDataDir, exitCodeFor, extractNpmCoordinates, fetchHttpClient, filterSessions, findSession, activeProjectName, createProject, getPath, installPlugin, installSkills, listInstalled, listProjects, loadOrCreateAuditKey, mcpServerCoordinates, mercuryHome, planRestore, pluginCoordinates, projectDataDirEntryCount, readArchiveFile, removePlugin, removeProject, renderSessionMarkdown, resolveVoicePreset, restoreArchive, runEvalSuite, scaffold, scaffoldAddin, selectEvals, selectPrune, setConfigValue, showProject, updatePlugin, useProject, verifyArchive, verifyArchiveIntegrity, voicePresets, workingDirOf, writeArchiveFile, secretResolverFromConfig, scanSecretRefs, unwrapSecretRef, maskSecret, defaultSecretRunner, type BackupArchive, type Coordinate, type EvalObservation, type ExtensionKind, type PackageJsonLike, type PluginPkg, type ProjectListEntry, type SecretResolver, type Session, type VoiceKind } from '@mercury/core';
+import { auditCoordinates, errorMessage, buildArchive, buildSessionExport, checkArchiveCompat, collectDataDir, exitCodeFor, extractNpmCoordinates, fetchHttpClient, filterSessions, findSession, activeProjectName, createProject, getPath, installPlugin, installSkills, listInstalled, listProjects, loadOrCreateAuditKey, mcpServerCoordinates, mercuryHome, planRestore, pluginCoordinates, projectDataDirEntryCount, readArchiveFile, removePlugin, removeProject, renderSessionMarkdown, resolveVoicePreset, restoreArchive, runEvalSuite, scaffold, scaffoldAddin, selectEvals, selectPrune, setConfigValue, showProject, updatePlugin, useProject, verifyArchive, verifyArchiveIntegrity, voicePresets, workingDirOf, writeArchiveFile, secretResolverFromConfig, scanSecretRefs, unwrapSecretRef, maskSecret, defaultSecretRunner, activeProfileName, createProfile, listProfiles, profileHomeEntryCount, profileRegistryDir, removeProfile, showProfile, useProfile, DEFAULT_PROFILE_NAME, PROFILE_ENV_VAR, type BackupArchive, type Coordinate, type EvalObservation, type ExtensionKind, type PackageJsonLike, type PluginPkg, type ProfileListEntry, type ProjectListEntry, type SecretResolver, type Session, type VoiceKind } from '@mercury/core';
 import type { Mercury } from '@mercury/runtime';
 import { enablePresetConfig, mcpPreset, mcpPresets } from '@mercury/mcp';
 import { flag, type Args } from './args.js';
@@ -485,6 +485,149 @@ export async function projectCmd(m: Mercury, a: Args): Promise<void> {
 
     default:
       out(PROJECT_HELP);
+      process.exitCode = 1;
+  }
+}
+
+const PROFILE_HELP = `usage: mercury profile list [--json]
+       mercury profile create <name> [--home <path>] [--desc <text>] [--use] [--json]
+       mercury profile use <name> [--json]
+       mercury profile show [name] [--json]
+       mercury profile current [--json]
+       mercury profile remove <name> [--force|--yes] [--purge] [--json]
+
+Multiple fully ISOLATED instances. Each profile is its own MERCURY_HOME — its own config, memory DB,
+skills, plugins and audit key. This is the home-level sibling of a project: a profile selects the HOME,
+a project (within it) selects the data dir. The built-in "default" profile maps to ~/.mercury, so
+existing setups are unaffected. Profiles are tracked in ~/.config/mercury/profiles.json.
+
+Switching mechanism: a process cannot change its parent shell's environment, so "use" BOTH persists the
+selection (new Mercury processes pick it up automatically) AND prints the exact
+"export ${PROFILE_ENV_VAR}=<name>" line to apply it to your current shell right now (like pyenv/direnv).
+
+  list                        List all profiles (name, active marker, home dir, description).
+    --json                    Emit the profiles as JSON.
+  create <name>               Create a profile and its home dir under ~/.mercury-profiles/<name>.
+    --home <path>             Use <path> as the home dir instead of the default.
+    --desc <text>             A short description.
+    --use                     Make the new profile active immediately.
+    --json                    Emit the created profile as JSON.
+  use <name>                  Switch the active profile (persisted; prints the export line to apply now).
+  show [name]                 Show a profile's details; with no name, the active (or default) profile.
+  current                     Print the active profile's name ("default" when none is selected).
+  remove <name>               Unregister a profile. Requires --force/--yes. The home dir is kept unless:
+    --purge                   ...also delete the profile's home dir from disk (extra-destructive).
+    --force, --yes            Confirm the removal.
+    --json                    Emit the result as JSON.
+
+An explicit MERCURY_HOME always wins; otherwise ${PROFILE_ENV_VAR} overrides the stored active profile.
+The "default" profile cannot be created, removed, or purged.`;
+
+/** One human table row for a profile. */
+const profileRow = (p: ProfileListEntry): string => {
+  const marker = p.isActive ? '*' : ' ';
+  const name = (p.name || '').slice(0, 24).padEnd(24);
+  const missing = p.homeExists ? '' : '  (home missing)';
+  const desc = p.description ? `  ${p.description}` : '';
+  return `${marker} ${name} ${p.home}${missing}${desc}`;
+};
+
+/**
+ * `mercury profile <list|create|use|show|current|remove>` — multiple fully isolated instances, each with
+ * its own MERCURY_HOME (the home-level sibling of `project`). Mirrors `projectCmd`'s shape/quality: bare
+ * command prints help, --json everywhere, destructive remove gated behind --force/--yes. Because a process
+ * cannot mutate its parent environment, `use` persists the selection AND prints the shell export line.
+ */
+export async function profileCmd(m: Mercury, a: Args): Promise<void> {
+  void m; // profile management operates on the global profile registry, not the (already-selected) instance.
+  const sub = a._[1];
+  if (!sub || a.flags.help) return out(PROFILE_HELP);
+  const json = !!a.flags.json;
+  const force = !!a.flags.force || !!a.flags.yes;
+  const dir = profileRegistryDir();
+
+  switch (sub) {
+    // ── list ───────────────────────────────────────────────────────────────
+    case 'list': {
+      const rows = listProfiles(dir);
+      if (json) return out(rows, true);
+      return out(rows.map(profileRow).join('\n'));
+    }
+
+    // ── create ───────────────────────────────────────────────────────────────
+    case 'create': {
+      const name = need(a._[2], 'mercury profile create <name> [--home <path>] [--desc <text>] [--use]');
+      const profile = createProfile(dir, name, {
+        home: flag(a, 'home'),
+        description: flag(a, 'desc') ?? flag(a, 'description'),
+        use: !!a.flags.use,
+      });
+      if (json) return out(profile, true);
+      return out(
+        `Created profile "${profile.name}" (home: ${profile.home}).` +
+          (a.flags.use
+            ? `\n  now active — to apply it to this shell now, run:\n    export ${PROFILE_ENV_VAR}=${profile.name}`
+            : `\n  activate it with: mercury profile use ${profile.name}`),
+      );
+    }
+
+    // ── use ───────────────────────────────────────────────────────────────
+    case 'use': {
+      const name = need(a._[2], 'mercury profile use <name>');
+      const profile = useProfile(dir, name);
+      if (json) return out({ active: profile.name, home: profile.home, export: `${PROFILE_ENV_VAR}=${profile.name}` }, true);
+      return out(
+        `Active profile is now "${profile.name}" (home: ${profile.home}).\n` +
+          `New Mercury processes will use it automatically. To apply it to your CURRENT shell now, run:\n` +
+          `    export ${PROFILE_ENV_VAR}=${profile.name}`,
+      );
+    }
+
+    // ── show ───────────────────────────────────────────────────────────────
+    case 'show': {
+      const details = showProfile(dir, a._[2]);
+      const enriched = { ...details, homeEntries: profileHomeEntryCount(details.home) };
+      if (json) return out(enriched, true);
+      return out(
+        [
+          `name:        ${details.name}${details.isActive ? '  (active)' : ''}${details.builtin ? '  (built-in)' : ''}`,
+          `home:        ${details.home}${details.homeExists ? '' : '  (missing)'}`,
+          `entries:     ${enriched.homeEntries}`,
+          `description: ${details.description ?? '(none)'}`,
+          `created:     ${details.createdAt || '(built-in)'}`,
+        ].join('\n'),
+      );
+    }
+
+    // ── current ───────────────────────────────────────────────────────────────
+    case 'current': {
+      const name = activeProfileName(dir);
+      if (json) return out({ active: name }, true);
+      return out(name);
+    }
+
+    // ── remove ───────────────────────────────────────────────────────────────
+    case 'remove': {
+      const name = need(a._[2], 'mercury profile remove <name> [--force|--yes] [--purge]');
+      if (name === DEFAULT_PROFILE_NAME) {
+        process.exitCode = 1;
+        throw new Error(`the "${DEFAULT_PROFILE_NAME}" profile cannot be removed`);
+      }
+      if (!force) {
+        process.exitCode = 1;
+        throw new Error(`refusing to remove profile "${name}" without --force (or --yes)`);
+      }
+      const result = removeProfile(dir, name, { purge: !!a.flags.purge });
+      if (json) return out(result, true);
+      return out(
+        `Removed profile "${result.name}".` +
+          `${result.purged ? ` Deleted its home dir (${result.home}).` : ` Kept its home dir (${result.home}); pass --purge to delete it.`}` +
+          `${result.wasActive ? ` It was active; the default profile is active now.` : ''}`,
+      );
+    }
+
+    default:
+      out(PROFILE_HELP);
       process.exitCode = 1;
   }
 }

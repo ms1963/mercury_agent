@@ -9,12 +9,22 @@ import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { ConfigSchema, type MercuryConfig } from './schema.js';
 import { resolveActiveProjectDataDir } from '../projects/manage.js';
+import { resolveActiveProfileHome } from '../profiles/manage.js';
 
 export const CONFIG_VERSION = 1;
 
-/** Root of the user's Mercury home (config, data, extensions). */
+/**
+ * Root of the user's Mercury home (config, data, extensions).
+ *
+ * Resolution order: an explicit `MERCURY_HOME` always wins; otherwise the active **profile**'s home
+ * (Tier-2 #7 — selected via the profile registry / `MERCURY_PROFILE`), falling back to the standard
+ * `~/.mercury`. Profiles are opt-in: with no registry, this is exactly the historical behaviour. (Project
+ * selection then scopes the data dir *within* this home — see {@link loadConfig}.)
+ */
 export function mercuryHome(): string {
-  return resolve(process.env.MERCURY_HOME ?? join(homedir(), '.mercury'));
+  if (process.env.MERCURY_HOME && process.env.MERCURY_HOME.trim()) return resolve(process.env.MERCURY_HOME);
+  const profileHome = resolveActiveProfileHome();
+  return resolve(profileHome ?? join(homedir(), '.mercury'));
 }
 
 /**
