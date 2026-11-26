@@ -51,6 +51,9 @@ Usage: mercury <command> [options]
   audit [list|verify] [--actor id] [--action token] [--since ISO] [--limit n] [--json]
   security [audit] [--npm] [--mcp] [--plugins] [--lockfile <path>] [--json]
                             Supply-chain CVE audit (OSV.dev) of npm deps, MCP servers & plugins
+  backup [--out f] [--include-secrets]  Back up the full Mercury home (~/.mercury) to a .mbak archive
+  backup inspect <file>     Verify a backup archive (digest, hashes, signature) without restoring
+  import <file> [--force]   Restore a .mbak archive into the Mercury home (alias: restore)
   plugins                   List loaded plugins
   import-agent [~/.hermes]  Import memories, profile and skills from Hermes Agent
   new <tool|skill|workflow|adapter|plugin> <name> [--lang python|js|go|cpp|java]
@@ -183,6 +186,11 @@ async function main(argv: string[]): Promise<void> {
         return await cmd.auditCmd(m, a);
       case 'security':
         return await cmd.securityCmd(m, a);
+      case 'backup':
+        return await cmd.backupCmd(m, a);
+      case 'import':
+      case 'restore':
+        return await cmd.restoreCmd(m, a);
       case 'plugins':
         return cmd.pluginsCmd(m);
       case 'import-agent':

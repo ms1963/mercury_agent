@@ -32,7 +32,7 @@ the real installation present on this machine) and **Mercury Agent** (this repos
 | 7 | **Shell hooks** | `hooks` (shell-script lifecycle hooks) | — | Missing |
 | 8 | **External secret stores** | `secrets` (Bitwarden, 1Password) | `.env` / env vars only | No managed secret backends |
 | 9 | **Supply-chain audit** | `security` (OSV.dev scan of venv, plugins, MCP servers) | ✅ **Done** — `mercury security audit` (OSV.dev scan of npm deps, configured MCP servers, installed plugins; `--json`, `--npm`/`--mcp`/`--plugins`, `--lockfile`; CI-usable exit codes) | Closed |
-| 10 | **Backup / restore** | `backup`, `import`, `dump`, `checkpoints` | `bundle` packages config only | No full-home backup/restore |
+| 10 | **Backup / restore** | `backup`, `import`, `dump`, `checkpoints` | ✅ **Done** — `mercury backup` / `mercury import` (full `~/.mercury` archive to a signed, integrity-checked `.mbak`; `backup inspect`, secret-exclusion default with `--include-secrets`, safe restore with `--force` + auto pre-restore backup; `--json`) | Closed |
 | 11 | **Session management** | `sessions` (list/rename/export/prune/delete) | Sessions persist, no dedicated CLI | Partial — no session CLI |
 | 12 | **Plugin lifecycle** | `plugins` install/update/remove/list | `plugins` **list-only** (+ `new plugin` scaffold) | Partial — no install/update/remove |
 | 13 | **Skill curator** | `curator` (background skill maintenance: run/pause/pin) | Self-distill + `learn`, no curator loop | Missing maintenance loop |
@@ -80,9 +80,17 @@ Ordered by value-to-effort for a self-hosted agentic platform. Each tier is inde
    flags `--npm`/`--mcp`/`--plugins` and a `--lockfile <path>` override; CI-usable exit codes (0 clean,
    1 vulnerabilities found, 2 could-not-complete). Engine in `packages/core/src/security/supply-chain.ts`
    with an injectable HTTP client; offline deterministic tests in `tests/security-audit.test.ts`.
-2. **Backup / restore (`mercury backup` / `mercury import`)** — zip `~/.mercury` (config, memory DB,
-   skills, add-ins) and restore it. Extends the existing `bundle` machinery; critical for real
-   deployments.
+2. ✅ **Done — Backup / restore (`mercury backup` / `mercury import`)** — snapshots the full Mercury home
+   (`~/.mercury`: config, memory DB + `-wal`/`-shm`, skills, add-ins, permissions, plugins, wiki, bundles)
+   into a single gzipped-JSON `.mbak` archive. Each archive carries a per-file SHA-256, a content digest
+   and an optional HMAC signature using the instance audit key; the format is deterministic and adds zero
+   new dependencies. Secrets (`.env`, `audit.key`) are excluded by default (`--include-secrets` opts in);
+   volatile files (`*.log`, `*.mbak`, sockets, pids, temp, `node_modules/`, `.git/`) are always excluded.
+   CLI: `mercury backup` (create), `mercury backup inspect <file>` (verify digest/hashes/signature/compat
+   without restoring) and `mercury import <file>` / `restore` (refuses to overwrite without `--force`;
+   `--force` first writes a reversible pre-restore safety backup; integrity is verified before any write).
+   Engine in `packages/core/src/backup/backup.ts` (pure + thin fs layer); offline deterministic tests in
+   `tests/backup.test.ts`.
 3. **Session management CLI (`mercury sessions list|rename|export|prune|delete`)** — sessions already
    persist; this only adds a management surface over existing data.
 4. **Full plugin lifecycle (`mercury plugins install|update|remove`)** — Mercury already *loads*

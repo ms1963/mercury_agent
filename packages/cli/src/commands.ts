@@ -3,7 +3,8 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { cpSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { auditCoordinates, exitCodeFor, extractNpmCoordinates, fetchHttpClient, getPath, installSkills, mcpServerCoordinates, mercuryHome, pluginCoordinates, resolveVoicePreset, runEvalSuite, scaffold, scaffoldAddin, selectEvals, setConfigValue, voicePresets, type Coordinate, type EvalObservation, type ExtensionKind, type PackageJsonLike, type PluginPkg, type VoiceKind } from '@mercury/core';
+import { fileURLToPath } from 'node:url';
+import { auditCoordinates, buildArchive, checkArchiveCompat, collectDataDir, exitCodeFor, extractNpmCoordinates, fetchHttpClient, getPath, installSkills, loadOrCreateAuditKey, mcpServerCoordinates, mercuryHome, planRestore, pluginCoordinates, readArchiveFile, resolveVoicePreset, restoreArchive, runEvalSuite, scaffold, scaffoldAddin, selectEvals, setConfigValue, verifyArchive, verifyArchiveIntegrity, voicePresets, writeArchiveFile, type BackupArchive, type Coordinate, type EvalObservation, type ExtensionKind, type PackageJsonLike, type PluginPkg, type VoiceKind } from '@mercury/core';
 import type { Mercury } from '@mercury/runtime';
 import { enablePresetConfig, mcpPreset, mcpPresets } from '@mercury/mcp';
 import { flag, type Args } from './args.js';
@@ -820,4 +821,200 @@ export async function securityCmd(m: Mercury, a: Args): Promise<void> {
   lines.push(`\nResult: ${report.status.toUpperCase()}${report.status === 'clean' ? ' — no known vulnerabilities found.' : ''}`);
   out(lines.join('\n'));
   process.exitCode = exitCodeFor(report.status);
+}
+
+
+/** Resolve the Mercury version from the CLI package.json (same source as bin.ts `pkgVersion`). */
+function cliVersion(): string {
+  try {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const pkg = JSON.parse(readFileSync(join(here, '..', 'package.json'), 'utf8')) as { version?: string };
+    return pkg.version ?? '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+
+/** Human-ish byte formatter (e.g. 1536 -> "1.5 KB"). */
+function humanBytes(n: number): string {
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let v = n;
+  let u = 0;
+  while (v >= 1024 && u < units.length - 1) {
+    v /= 1024;
+    u++;
+  }
+  return `${u === 0 ? v : v.toFixed(1)} ${units[u]}`;
+}
+
+const BACKUP_HELP = `usage: mercury backup [--out <file>] [--include-secrets] [--json]
+       mercury backup inspect <file> [--json]
+       mercury import <file> [--force] [--json]        (alias: mercury restore <file>)
+
+Full-home backup / restore. A backup is a complete, integrity-checked snapshot of this instance's
+Mercury home (${'~/.mercury'} by default) written as a gzipped-JSON '.mbak' archive: config, the memory
+DB (+ -wal/-shm), skills, add-ins, permissions, plugins, wiki and bundles.
+
+  backup                      Create a backup of the Mercury home in the current directory.
+    --out <file>              Write the archive to <file> instead of the default timestamped name.
+    --include-secrets         Also back up secret files (.env, audit.key). EXCLUDED by default.
+    --json                    Emit the manifest + digest/signature as JSON.
+  backup inspect <file>       Verify an archive (content digest, per-file hashes, signature,
+                              compatibility) and print its metadata WITHOUT restoring. --json for JSON.
+  import <file>               Restore an archive into the Mercury home. Refuses to overwrite existing
+    --force                   files unless --force is given; --force first writes a pre-restore safety
+    --json                    backup of the current home so the restore is reversible.
+
+Secret-exclusion default: '.env' and 'audit.key' are skipped unless --include-secrets. Volatile files
+(*.log, *.mbak, sockets, pids, temp files, node_modules/, .git/) are always excluded. The archive is
+signed with this instance's audit key; a VALID signature confirms it came from this instance.
+
+Tip: the backup works on a live server; the SQLite -wal/-shm sidecars are included. For a perfectly
+consistent DB snapshot you may stop the server first, but it is not required.`;
+
+/**
+ * `mercury backup [...]` — create a full-home backup, or `mercury backup inspect <file>` to verify one.
+ * Mirrors the shape/quality of `securityCmd` / `bundleCmd`.
+ */
+export async function backupCmd(m: Mercury, a: Args): Promise<void> {
+  const sub = a._[1];
+  if (a.flags.help) return out(BACKUP_HELP);
+
+  const dataDir = m.config.dataDir;
+  const version = cliVersion();
+  const secret = loadOrCreateAuditKey(join(dataDir, 'audit.key'));
+  const json = !!a.flags.json;
+
+  // ── inspect ──────────────────────────────────────────────────────────────
+  if (sub === 'inspect') {
+    const file = need(a._[2], 'mercury backup inspect <file>');
+    const archive = readArchiveFile(file);
+    const integrity = verifyArchiveIntegrity(archive);
+    const signaturePresent = !!archive.signature;
+    const signatureValid = signaturePresent ? verifyArchive(archive, secret) : false;
+    const compat = checkArchiveCompat(archive.manifest, version);
+    if (json) {
+      return out(
+        {
+          manifest: archive.manifest,
+          digest: archive.digest,
+          digestValid: integrity.digestValid,
+          fileHashesValid: integrity.fileHashesValid,
+          signaturePresent,
+          signatureValid,
+          compatible: compat.compatible,
+          issues: [...integrity.issues, ...compat.issues],
+        },
+        true,
+      );
+    }
+    const man = archive.manifest;
+    const sig = !signaturePresent
+      ? 'absent'
+      : signatureValid
+        ? 'VALID'
+        : 'INVALID (archive likely came from a different instance, or was tampered with)';
+    const lines = [
+      `Backup archive "${file}"`,
+      `  created:     ${man.createdAt}`,
+      `  mercury:     v${man.mercuryVersion} (format v${man.formatVersion})`,
+      `  files:       ${man.fileCount} (${humanBytes(man.totalBytes)})`,
+      `  secrets:     ${man.includedSecrets ? 'INCLUDED (.env/audit.key)' : 'excluded'}`,
+      `  digest:      ${archive.digest.slice(0, 16)}… (${integrity.digestValid ? 'valid' : 'INVALID'})`,
+      `  file hashes: ${integrity.fileHashesValid ? 'valid' : 'INVALID'}`,
+      `  signature:   ${sig}`,
+      `  compatible:  ${compat.compatible ? 'yes' : 'no'}`,
+    ];
+    const issues = [...integrity.issues, ...compat.issues];
+    if (issues.length) lines.push(`  issues:      ${issues.join('; ')}`);
+    return out(lines.join('\n'));
+  }
+
+  // ── create ───────────────────────────────────────────────────────────────
+  const includeSecrets = !!a.flags['include-secrets'];
+  const files = collectDataDir(dataDir, { includeSecrets });
+  const archive = buildArchive(files, {
+    mercuryVersion: version,
+    dataDir,
+    createdAt: new Date().toISOString(),
+    includeSecrets,
+    secret,
+  });
+  const outPath =
+    flag(a, 'out') ?? join(process.cwd(), `mercury-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.mbak`);
+  writeArchiveFile(outPath, archive);
+
+  if (json) {
+    return out({ manifest: archive.manifest, path: outPath, digest: archive.digest, signature: archive.signature }, true);
+  }
+  const lines = [
+    `✓ Backup written to ${outPath}`,
+    `  files:     ${archive.manifest.fileCount} (${humanBytes(archive.manifest.totalBytes)})`,
+    `  secrets:   ${includeSecrets ? 'INCLUDED (.env/audit.key)' : 'excluded (use --include-secrets for a full DR snapshot)'}`,
+    `  digest:    ${archive.digest.slice(0, 16)}…`,
+    `  signature: ${archive.signature ? archive.signature.slice(0, 16) + '…' : '(none)'}`,
+  ];
+  return out(lines.join('\n'));
+}
+
+/**
+ * `mercury import <file>` (alias `restore`) — restore a `.mbak` archive into the Mercury home.
+ * Refuses to overwrite existing files without `--force`; `--force` first writes a pre-restore safety
+ * backup of the current home so the operation is reversible. Integrity is verified before any write.
+ */
+export async function restoreCmd(m: Mercury, a: Args): Promise<void> {
+  if (a.flags.help) return out(BACKUP_HELP);
+  const file = need(a._[1], 'mercury import <file> [--force]   (alias: mercury restore <file>)');
+  const dest = m.config.dataDir;
+  const json = !!a.flags.json;
+  const force = !!a.flags.force;
+
+  const archive: BackupArchive = readArchiveFile(file);
+  const plan = planRestore(archive, dest);
+
+  if (plan.willOverwrite.length > 0 && !force) {
+    throw new Error(
+      `restore would overwrite ${plan.willOverwrite.length} existing file(s) in ${dest}. ` +
+        `Re-run with --force to proceed (--force first writes a pre-restore safety backup you can roll back to).`,
+    );
+  }
+
+  // With --force and existing files, snapshot the current home first (secrets included) so the
+  // operation is reversible.
+  let preRestoreBackup: string | undefined;
+  if (force && plan.willOverwrite.length > 0) {
+    try {
+      const current = collectDataDir(dest, { includeSecrets: true });
+      const secret = loadOrCreateAuditKey(join(dest, 'audit.key'));
+      const safety = buildArchive(current, {
+        mercuryVersion: cliVersion(),
+        dataDir: dest,
+        createdAt: new Date().toISOString(),
+        includeSecrets: true,
+        secret,
+      });
+      const baseDir = (() => {
+        try {
+          return dirname(dest);
+        } catch {
+          return process.cwd();
+        }
+      })();
+      preRestoreBackup = join(baseDir, `mercury-prerestore-${new Date().toISOString().replace(/[:.]/g, '-')}.mbak`);
+      writeArchiveFile(preRestoreBackup, safety);
+    } catch (err) {
+      throw new Error(`failed to write pre-restore safety backup (aborting restore): ${(err as Error).message}`);
+    }
+  }
+
+  // restoreArchive verifies integrity (digest + every file hash) and throws before writing anything.
+  const { restored } = restoreArchive(archive, dest);
+
+  if (json) return out({ restored, preRestoreBackup }, true);
+  const lines = [
+    `✓ Restored ${restored.length} file(s) into ${dest}`,
+    preRestoreBackup ? `  pre-restore safety backup: ${preRestoreBackup}` : `  (no existing files overwritten)`,
+    `  Restart Mercury to pick up the restored config and data.`,
+  ];
+  return out(lines.join('\n'));
 }

@@ -13,6 +13,7 @@ export * from './agent/references.js';
 export * from './agent/run-state.js';
 export * from './addins/index.js';
 export * from './attachments/store.js';
+export * from './backup/backup.js';
 export * from './auth/crypto.js';
 export * from './auth/grants.js';
 export * from './auth/pairing.js';
