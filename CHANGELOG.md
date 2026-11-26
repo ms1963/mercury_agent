@@ -7,6 +7,35 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-11-26
+
+### Added
+
+- **`mercury security audit`** (Tier-1 gap #1) — a configuration and secrets security audit that
+  inspects `~/.mercury` for world-readable permissions, plaintext secrets, insecure config values and
+  risky MCP preset settings, grading findings by severity with `--json` and non-zero exit on failures.
+- **Backup and import** (Tier-1 gap #2) — `mercury backup` creates a portable archive of configuration,
+  sessions and secrets, and `mercury import` restores it, with collision handling and dry-run support.
+- **`mercury sessions`** (Tier-1 gap #3) — list, show, rename, export and delete stored agent sessions.
+- **Plugin lifecycle** (Tier-1 gap #4) — install, list, enable/disable and remove plugins with manifest
+  validation and lifecycle hooks.
+- **`mercury project`** (Tier-2 gap #5) — project-scoped configuration and context management.
+- **`mercury secrets`** (Tier-2 gap #6) — manage named secrets (set, get, list, remove) with masked
+  output and secure storage.
+- **`mercury profile`** (Tier-2 gap #7) — named configuration profiles with switch, create, copy and
+  delete, so multiple environments can be kept side by side.
+- **`mercury insights`** (Tier-2 gap #8) — usage analytics summarizing commands, sessions and token
+  usage with `--json` output.
+- EN + DE help topics for every new command above.
+- Comprehensive test coverage for all eight features (200+ new tests).
+
+### Changed
+
+- Bumped the root package and all seven workspace packages (`core`, `tools`, `mcp`, `gateway`,
+  `runtime`, `server`, `cli`) to `1.9.0`.
+- Updated `docs/GAPS.md` version references to `v1.9.0`.
+- Upgraded the `vitest` dev dependency from `3.2.4` to `4.1.12`.
+
 ## [1.8.1] - 2026-11-25
 
 ### Changed
