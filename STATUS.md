@@ -21,6 +21,28 @@ docker image build.)
   `fallback`/`route`/`hooks` command output is routed through the catalog so it localizes. Covered by
   `tests/i18n.test.ts` (resolver, help-topic parity, catalog key parity). Version bumped to 2.1.0.
 
+## 0a. New (Unreleased) — self-extending tools / dynamic tool synthesis (offline-tested, DISABLED by default)
+
+- **What it is.** Mercury can DRAFT a new tool when a capability is repeatedly missed. It is a Mercury-only
+  extra and HIGH-RISK, so it is **disabled by default** behind `selfExtension.enabled = false` — a hard,
+  localized no-op on CLI/Web/API while off.
+- **Pipeline (gated at every step).** `tool.miss` event → threshold gap detection (`missThreshold`, default
+  3) → LLM authoring of a draft (impl + generated unit test + least-privilege capability manifest) →
+  validation BEFORE registration (manifest deny-by-default → compile → generated unit test, out-of-process,
+  never `eval`) → approval gating (PENDING until approved; `autoApprove` opt-in) → sandboxed out-of-process
+  execution as a persisted polyglot tool folder (scrubbed env, no network unless declared, time/output caps)
+  → provenance + audit → persistence across sessions.
+- **Surfaces.** `mercury selfextend status|enable|disable|list|gaps|synthesize|approve|deny` (`--json`); Web
+  UI **Self-Extend** admin panel; API `GET /api/selfextend`, `POST /api/selfextend/toggle`,
+  `POST /api/selfextend/:id/approve|deny`. New `selfExtension.*` config; EN+DE help + full EN/DE i18n.
+- **Code.** Pure/injectable logic in `packages/core/src/synthesis/*`; real out-of-process compile/test
+  runners in `packages/tools/src/synthesis/runners.ts`; runtime wiring in `packages/runtime/src/mercury.ts`.
+  Covered by `tests/synthesis.test.ts` (stubbed LLM + real local compile/test runners).
+- **Honesty note.** Infrastructure implemented and offline-tested. NOT CI-verified: real production-LLM
+  draft quality, and execution inside the full polyglot/Docker host sandbox (CI exercises the lighter host
+  child-process compile/test path). Treat real-LLM authoring and production-sandbox execution as
+  experimental. See `docs/GAPS.md` §2b for the threat model.
+
 ## 0c. New since v1.8.0 — v1.9.0 and v2.0.0 subsystems (offline-tested)
 
 These subsystems shipped after the v1.8.0 snapshot above and are each covered by the offline vitest

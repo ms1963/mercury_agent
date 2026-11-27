@@ -47,6 +47,7 @@ export * from './terminal/processes.js';
 export * from './browser/backends.js';
 export * from './sandbox/execute-code.js';
 export * from './polyglot/runner.js';
+export * from './synthesis/runners.js';
 export { walk, globToRegExp } from './builtin/files.js';
 export { evaluate, convertUnit, lineDiff } from './builtin/utility.js';
 export { jsonPath, parseCsv } from './builtin/data.js';

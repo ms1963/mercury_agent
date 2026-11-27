@@ -1643,6 +1643,25 @@ shown is the default applied when the key is omitted. Keys are grouped by their 
 | `llm.fallback` | `[]` | **Automatic fallback chain (2.1.0).** Ordered list of `{provider, model, baseUrl?}` tried, in order, when the primary model is unavailable (model-not-found, bad/missing key, connection refused, rate-limit/overload). Request-intrinsic errors (context-overflow, bad-request, content-policy) are not retried on another model. Manage with `mercury fallback`. |
 | `llm.routing` | `[]` | **Criteria-based model selection (2.1.0).** List of `{provider, model, criteria[]}`; per request the most-specific entry whose criteria (profile tags: general/code/reasoning/fast/cheap/vision/local/private) all match is chosen. Empty criteria or `['default']` = catch-all. The selected model still uses the fallback chain. Manage with `mercury route`. |
 
+### `selfExtension` — self-extending tools / dynamic tool synthesis
+
+**HIGH-RISK; disabled by default.** Lets Mercury draft a new tool when a capability is repeatedly
+missed. The whole subsystem is a hard no-op while `enabled` is false. Manage with `mercury selfextend`.
+
+| Key | Default | Notes |
+| --- | --- | --- |
+| `selfExtension.enabled` | `false` | Master kill-switch. Everything is a no-op while false. |
+| `selfExtension.missThreshold` | `3` | Misses of the same capability before a gap is actionable. |
+| `selfExtension.autoApprove` | `false` | If true, validated tools are approved automatically (NOT recommended). |
+| `selfExtension.allowFilesystem` | `false` | Allow drafts to declare filesystem access (deny-by-default). |
+| `selfExtension.allowNetwork` | `false` | Allow drafts to declare network access (deny-by-default). |
+| `selfExtension.allowedHosts` | `[]` | Exact hosts or `*.suffix` wildcards a networked draft may reach. |
+| `selfExtension.allowShell` | `false` | Allow drafts to declare shell access (strongly discouraged). |
+| `selfExtension.runtimes` | `['python','node']` | Runtimes a draft may target. |
+| `selfExtension.timeoutMs` | `15000` | Per-execution wall-clock limit (compile, test, run). |
+| `selfExtension.maxOutputChars` | `20000` | Output cap per execution. |
+| `selfExtension.dir` | *(dataDir/synth-tools)* | Where approved tool folders persist. |
+
 ### `router`
 
 | Key | Default | Notes |

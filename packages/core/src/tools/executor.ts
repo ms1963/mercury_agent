@@ -86,7 +86,14 @@ export class ToolExecutor {
     };
 
     const tool = this.registry.get(call.name);
-    if (!tool) return fail(`Unknown tool "${call.name}". Available tools are listed in your tool definitions.`);
+    if (!tool) {
+      // Gap signal for self-extending tools: a capability was requested that no registered tool
+      // provides. The runtime's gap tracker (when selfExtension is enabled) listens for this to
+      // decide, after a threshold of repeats, whether to offer to synthesize a tool. Emitting the
+      // event is side-effect-free here — nothing is synthesized or run from inside the executor.
+      this.bus.emit({ type: 'tool.miss', runId: ctx.runId, data: { id: call.id, name: call.name } });
+      return fail(`Unknown tool "${call.name}". Available tools are listed in your tool definitions.`);
+    }
     if (!this.registry.isEnabled(tool, ctx.platform, ctx.allowedToolsets)) return fail(`Tool "${call.name}" is disabled for this agent/platform.`, 'denied');
     const denied = this.policy.check(ctx.principal, 'tool.use', { tool: { name: tool.name, toolset: tool.toolset, risk: tool.risk }, profile: ctx.personality });
     if (denied) return fail(`Permission denied: ${denied}`, 'denied');

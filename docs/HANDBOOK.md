@@ -1580,7 +1580,46 @@ mercury config set gateway.adapters.myplatform '{"enabled":true, "...": "..."}'
 
 For tools, personalities and permission profiles you don't even need a plugin — drop them into `<dataDir>/addins/` with an `addin.yaml` manifest. `mercury addin list` shows what's loaded; `mercury addin scaffold <name>` starts one. See [`ADDINS.md`](ADDINS.md).
 
-## 10.8 The contributor loop & architecture rules
+## 10.8 Self-extending tools (dynamic tool synthesis) — and its threat model
+
+The most autonomous extension point: Mercury can **author a brand-new tool by itself** when it keeps
+hitting a capability it does not have. Because this is Mercury writing and running its own code, it is
+**the single most dangerous feature in the product**, and it is treated that way: **disabled by
+default** behind `selfExtension.enabled = false`, and every step of the pipeline is gated.
+
+**The pipeline.** A failed tool call emits a `tool.miss` event. Once the same capability has been
+missed `missThreshold` times (default 3), the gap becomes *actionable*. An injected LLM runner is then
+asked to author a draft: name, input schema, an implementation (Python or Node), a **generated unit
+test**, and a least-privilege **capability manifest**. The draft must then pass **validation before it
+is ever registered** — manifest policy (deny-by-default), a compile check, and the generated unit test,
+all run out-of-process. A validated draft is stored **PENDING** and cannot run until a human approves
+it (or `autoApprove` is explicitly set). Approved tools persist as polyglot tool folders and run
+out-of-process behind the existing sandbox boundary; they reload on the next launch.
+
+Manage it with `mercury selfextend status|enable|disable|list|gaps|synthesize|approve|deny`, the
+Web UI **Self-Extend** admin panel, or the API (`/api/selfextend*`). Config lives under
+`selfExtension.*` (see the GUIDE config reference). Full details: `mercury help selfextend`.
+
+### Threat model
+
+Each threat and the mitigation that addresses it:
+
+| Threat | Mitigation |
+|--------|-----------|
+| The feature is abused, or generates code unexpectedly | **Disabled by default**; master `enabled:false` kill-switch; a hard, localized no-op on every surface while off |
+| A generated tool grants itself more privilege than it needs | **Deny-by-default capability manifest** — every requested capability (filesystem / network / host / shell) must be explicitly granted in config; over-privileged drafts are **refused**, never auto-widened |
+| Generated code exfiltrates secrets | **No ambient secrets** — the execution environment is scrubbed (reuses `safeEnv()`); network is unavailable unless the manifest declared it *and* the host is on the allow-list |
+| A malicious or broken tool runs unchecked | **Validation + generated-test gate before registration** (compile + unit test, out-of-process) and **mandatory approval before first run** |
+| Generated code is injected into the main runtime | **Out-of-process execution** behind the existing polyglot sandbox boundary — the implementation is **never `eval`'d** in the runtime |
+| A tool consumes unbounded resources | **Time, output, and runtime limits** (`timeoutMs`, `maxOutputChars`, allowed `runtimes`) with process-group kill on timeout |
+| No accountability for what was generated or run | **Full audit trail + provenance** — every author/validate/approve/deny/run is recorded, and each tool folder keeps a `.synth.json` (capability, prompt digest, manifest, validation result, approver) |
+
+**Honest status.** The infrastructure is implemented and offline-tested (stubbed LLM runner + real
+local compile/test runners). Real production-LLM draft quality and execution inside the full
+polyglot/Docker host sandbox are **not** CI-verified — treat those as experimental. See
+`docs/GAPS.md` §2b.
+
+## 10.9 The contributor loop & architecture rules
 
 ```bash
 npm run build      # tsc project references
@@ -1640,6 +1679,7 @@ Invoke as `mercury <command>` (after `npm link` or the published bin) or `node p
 | `model [provider/model]` | Show or set the default model | — |
 | `fallback` | Automatic provider/model fallback chain (`llm.fallback`), tried in order when a model is unavailable | `list`, `add <provider> <model> [--base-url u]`, `remove <p> <m> --force`, `clear --force` |
 | `route` | Criteria-based model selection (`llm.routing`) — pick a model by request criteria/tags | `list`, `add <provider> <model> [criteria...]`, `remove <p> <m> --force`, `clear --force` |
+| `selfextend` | Self-extending tools (dynamic tool synthesis) — **DISABLED by default** (`selfExtension`) | `status`, `enable`, `disable`, `list [state]`, `gaps`, `synthesize <cap...>`, `approve <id>`, `deny <id>`; `--json` |
 | `tools` | Inspect/toggle tools | `list`, `toolsets`, `enable <n>`, `disable <n>` |
 | `skills` | Manage skills | `list`, `view <n>`, `install <src>` |
 | `schedule` | Scheduled tasks | `list`, `add --when "…"`, `edit <id>`, `pause`, `resume`, `run <id>`, `delete <id>` |
@@ -1683,6 +1723,7 @@ Everything lives under `~/.mercury` (override with `MERCURY_HOME` or the `dataDi
 ├── attachments/         # uploaded files
 ├── skills/              # installed / distilled skills
 ├── tools/               # custom + polyglot tools
+├── synth-tools/         # approved self-extended (synthesized) tool folders + .synth.json provenance
 ├── workflows/           # workflow definitions
 ├── plugins/             # plugins
 ├── adapters/            # gateway adapters

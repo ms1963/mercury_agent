@@ -17,6 +17,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Self-extending tools / dynamic tool synthesis (`mercury selfextend ...`)** — Mercury can now DRAFT a
+  brand-new tool when a capability is repeatedly needed but no registered tool provides it. **High-risk, so
+  DISABLED BY DEFAULT** behind the master `selfExtension.enabled = false` kill-switch (a hard, localized
+  no-op on every surface while off). Pipeline, every step gated: threshold-based **gap detection** (a new
+  `tool.miss` runtime event; actionable only after `missThreshold` misses, default 3) → **authoring** by an
+  injected LLM runner (name + input schema + implementation + a **generated unit test** + a least-privilege
+  **capability manifest**) → **validation before registration** (manifest policy deny-by-default → compile
+  check → the generated unit test, all out-of-process, never `eval`) → **approval gating** (PENDING until a
+  human approves, unless `autoApprove` is explicitly configured) → **sandboxed out-of-process execution** as
+  a persisted polyglot tool folder (scrubbed env via `safeEnv()`, no network unless declared + host
+  allow-listed, time/output caps) → **provenance + audit** (`.synth.json` per tool) → **persistence** across
+  sessions. Surfaces: `mercury selfextend status|enable|disable|list|gaps|synthesize|approve|deny` (all
+  `--json`), a Web UI **Self-Extend** admin panel, and API `GET /api/selfextend` /
+  `POST /api/selfextend/toggle` / `POST /api/selfextend/:id/approve|deny`. New `selfExtension.*` config
+  section, EN+DE help (`docs/help/selfextend.md`, `docs/help/de/selfextend.md`), and full EN/DE i18n for
+  every user-facing string. Pure/injectable logic in `packages/core/src/synthesis/*` with real
+  out-of-process compile/test runners in `packages/tools/src/synthesis/runners.ts`; covered by
+  `tests/synthesis.test.ts`. **Honesty note:** the infrastructure is implemented and offline-tested
+  (stubbed LLM + real local compile/test runners); real-LLM draft quality and full polyglot/Docker
+  host-sandbox execution are NOT CI-verified and are experimental. See `docs/GAPS.md` §2b for the threat
+  model.
 - **`mercury timezone [show|set <zone>|clear]`** — an optional per-install override for the time zone the
   scheduler uses to evaluate cron and natural-language schedules. By default Mercury follows the host
   computer's zone; `timezone set Europe/Berlin` (or any IANA name) persists `scheduler.timezone` in the

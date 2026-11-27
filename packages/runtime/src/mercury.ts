@@ -111,8 +111,12 @@ import {
   type Principal,
   type ToolServices,
   type MoaModelCall,
+  Synthesizer,
+  loadRegistry,
+  persistToolFolder,
+  removeToolFolder,
 } from '@mercury/core';
-import { registerBuiltinTools, registerPolyglotTools } from '@mercury/tools';
+import { registerBuiltinTools, registerPolyglotTools, makeSynthRunners } from '@mercury/tools';
 import { McpClientManager } from '@mercury/mcp';
 import { Gateway, registerAdapterType, type Adapter, type HttpTransport } from '@mercury/gateway';
 import { createAcpAgent, createLspAgent, createBackend } from './backend.js';
@@ -265,6 +269,11 @@ export class Mercury {
   readonly slo: SloService;
   /** Proactive: event-triggered reactions with interrupt-vs-defer timing and digest batching. */
   readonly proactive: ProactiveService;
+  /**
+   * Self-extending tools (dynamic tool synthesis). Always instantiated so the CLI/UI get a clear
+   * localized refusal when disabled; every entry point is a hard no-op unless `selfExtension.enabled`.
+   */
+  readonly synthesizer: Synthesizer;
   readonly services: ToolServices;
   readonly plugins: LoadedPlugin[] = [];
   private loadedPlugins: Plugin[] = [];
@@ -402,6 +411,33 @@ export class Mercury {
       return { status: r.status, output: r.output, toolNames: r.toolNames };
     });
     this.slo = new SloService(config, this.db);
+
+    // Self-extending tools (dynamic tool synthesis). DISABLED BY DEFAULT (config.selfExtension.enabled).
+    // The LLM author reuses the real LLMService (system principal, aux budget) — no mock provider. The
+    // validator uses REAL out-of-process compile/test runners (makeSynthRunners): a generated tool must
+    // compile and pass its generated unit test in a child process before it can be registered. Provenance
+    // is written to the real AuditLog. The registry is hydrated from disk so approved tools survive
+    // restarts; the approved tools themselves are loaded + run as polyglot tools in start() (out-of-process
+    // sandbox), only when enabled. When disabled, every method is a hard no-op refusal.
+    const synthDir = config.selfExtension.dir || join(config.dataDir, 'synth-tools');
+    this.synthesizer = new Synthesizer({
+      policy: config.selfExtension,
+      llm: async (prompt) =>
+        (await this.llm.complete(SYSTEM_PRINCIPAL, [{ role: 'user', content: prompt }], { budgetOverride: true, kind: 'auxiliary' })).content,
+      validator: makeSynthRunners({ timeoutMs: config.selfExtension.timeoutMs, maxOutputChars: config.selfExtension.maxOutputChars }),
+      registry: loadRegistry(synthDir),
+      audit: (action, target, details) => this.audit.record('system', action, target, details),
+    });
+    // Feed tool-misses into the gap tracker only while the feature is enabled (recordMiss is itself a
+    // no-op when disabled; this just avoids the subscription overhead in the common off case).
+    if (config.selfExtension.enabled) {
+      this.cleanups.push(
+        this.bus.on('tool.miss', (e) => {
+          const name = (e.data as { name?: string } | undefined)?.name;
+          if (name) this.synthesizer.recordMiss(name, '');
+        }),
+      );
+    }
 
     // Self-distilling skills: distil reusable parameterized skills from winning run traces,
     // govern them, and reuse approved ones. Backed by a real SQLite store (no mocks).
@@ -690,7 +726,14 @@ export class Mercury {
   /** Load plugins, polyglot tools and start background services. */
   async start(opts: { services?: boolean } = {}): Promise<void> {
     const { config } = this;
-    const polyDirs = [join(this.assets, 'tools'), join(config.dataDir, 'tools'), ...config.tools.polyglotDirs, ...this.addins.toolDirs];
+    const polyDirs = [
+      join(this.assets, 'tools'),
+      join(config.dataDir, 'tools'),
+      ...config.tools.polyglotDirs,
+      ...this.addins.toolDirs,
+      // Approved synthesized tools are polyglot folders; load them only while self-extension is enabled.
+      ...(config.selfExtension.enabled ? [config.selfExtension.dir || join(config.dataDir, 'synth-tools')] : []),
+    ];
     this.cleanups.push(registerPolyglotTools(this.tools, polyDirs, {
         onError: (e) => this.logger.warn('polyglot tool', { error: e }),
         // Folders the file tools can write are host-gated and tamper-pinned (see PolyglotLoadOptions).
@@ -745,6 +788,49 @@ export class Mercury {
     }
     await this.mcp.connectAll(mcpServers).catch((e: unknown) => this.logger.warn('mcp connect failed', { error: String(e) }));
     if (config.gateway.enabled) await this.gateway.start();
+  }
+
+  /** Resolved directory where approved synthesized tools are persisted as polyglot folders. */
+  get synthDir(): string {
+    return this.config.selfExtension.dir || join(this.config.dataDir, 'synth-tools');
+  }
+
+  /**
+   * Approve a synthesized tool for first run, PERSIST it to disk as a polyglot tool folder (so it
+   * survives restarts and runs out-of-process behind the sandbox boundary) and hot-register it so it
+   * is usable immediately. Hard no-op / refusal when the feature is disabled.
+   */
+  approveSynthesized(id: string, by = 'admin'): { ok: boolean; reason?: string; name?: string } {
+    const res = this.synthesizer.approve(id, by);
+    if (!res.ok || !res.record) return { ok: false, reason: res.reason };
+    try {
+      persistToolFolder(this.synthDir, res.record, { timeoutMs: this.config.selfExtension.timeoutMs });
+    } catch (err) {
+      return { ok: false, reason: `approved but persist failed: ${errorMessage(err)}` };
+    }
+    // Hot-register the newly persisted folder so the tool is usable without a restart.
+    this.cleanups.push(
+      registerPolyglotTools(this.tools, [this.synthDir], {
+        onError: (e) => this.logger.warn('polyglot tool', { error: e }),
+        isWritable: (d) => this.jail.contains(d),
+      }),
+    );
+    return { ok: true, name: res.record.draft.name };
+  }
+
+  /** Deny a synthesized tool (it can never run) and remove any persisted folder. */
+  denySynthesized(id: string, by = 'admin'): { ok: boolean; reason?: string; name?: string } {
+    const existing = this.synthesizer.registry.get(id);
+    const res = this.synthesizer.deny(id, by);
+    if (!res.ok) return { ok: false, reason: res.reason };
+    if (existing) {
+      try {
+        removeToolFolder(this.synthDir, existing.draft.name);
+      } catch {
+        /* best-effort cleanup; the deny decision already stands in the registry */
+      }
+    }
+    return { ok: true, name: existing?.draft.name };
   }
 
   private async loadPlugins(): Promise<void> {

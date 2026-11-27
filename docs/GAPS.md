@@ -98,6 +98,51 @@ existed in the repo rather than a competing mechanism:
 
 ---
 
+## 2b. Self-extending tools / dynamic tool synthesis (new — Mercury-only extra)
+
+A capability **neither Hermes nor the earlier Mercury had**: Mercury can **draft a brand-new tool**
+when a capability is repeatedly needed but no registered tool provides it. This is deliberately a
+**Mercury-only extra** and a high-risk one, so it is **DISABLED BY DEFAULT** behind the master
+`selfExtension.enabled = false` kill-switch.
+
+**Pipeline (every step gated):** threshold-based **gap detection** (a `tool.miss` runtime event; a gap
+is actionable only after `missThreshold` misses of the same capability, default 3) → **authoring** by
+an injected LLM runner (tool name + schema + implementation + a **generated unit test** + a
+least-privilege **capability manifest**) → **validation before registration** (manifest policy
+deny-by-default → compile check → the generated unit test, all out-of-process, never `eval`) →
+**approval gating** (PENDING until a human approves, unless `autoApprove` is explicitly set) →
+**sandboxed out-of-process execution** as a persisted polyglot tool folder (scrubbed env, no network
+unless declared, time/output caps) → **provenance + audit** → **persistence** across sessions.
+
+**Surfaces.** `mercury selfextend status|enable|disable|list|gaps|synthesize|approve|deny` (all
+`--json`); Web UI **Self-Extend** admin panel; API `GET /api/selfextend`,
+`POST /api/selfextend/toggle`, `POST /api/selfextend/:id/approve|deny`. Config section
+`selfExtension.*`. EN+DE help (`docs/help/selfextend.md`, `docs/help/de/selfextend.md`) and full EN/DE
+i18n for every user-facing string.
+
+**Safety / threat model.** Mitigations, each mapped to a threat:
+
+| Threat | Mitigation |
+|--------|-----------|
+| Feature abused / unexpected code generation | **Disabled by default**; master `enabled:false` kill-switch; hard localized no-op on every surface when off |
+| Over-privileged generated tool | **Deny-by-default capability manifest** — every requested capability (fs/network/host/shell) must be explicitly granted in config; over-privileged drafts are **refused**, never auto-widened |
+| Secret exfiltration by generated code | **No ambient secrets** — execution env is scrubbed (reuses `safeEnv()`); network unavailable unless the manifest declared it and the host is allow-listed |
+| Malicious/broken tool runs unchecked | **Validation + generated-test gate before registration** (compile + unit test, out-of-process) and **mandatory approval before first run** |
+| Code injected into the main process | **Out-of-process execution** behind the existing polyglot sandbox boundary — never `eval`'d in the runtime |
+| Runaway resource use | **Time, output, and runtime limits** (`timeoutMs`, `maxOutputChars`, allowed `runtimes`), process-group kill on timeout |
+| No accountability | **Full audit trail + provenance** (`.synth.json` per tool: capability, prompt digest, manifest, validation result, approver) |
+
+**Status — honest.** The **infrastructure is implemented and offline-tested**: gap detection +
+threshold, authoring contract + draft parsing, validation gate (accept + reject on
+manifest/compile/test), approval gating (pending/approve/deny/auto-approve), policy enforcement
+(deny-by-default, host allow-list), provenance/audit, persistence/reload, disabled no-op, and
+config/CLI parsing — plus a **real local compile/test runner** exercised against good and bad Python
+drafts. **Not verified in CI:** the quality of drafts produced by a real production LLM, and execution
+inside the full polyglot/Docker host sandbox (CI exercises the lighter host child-process compile/test
+path). Treat real-LLM authoring and production-sandbox execution as **experimental**.
+
+---
+
 ## 3. Vendor-specific (out of scope — match only if you choose to)
 
 `portal` (Nous Portal login/model/tool-gateway), `claw` (OpenClaw migration), `pets` / petdex

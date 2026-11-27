@@ -18,6 +18,7 @@ export type EventType =
   | 'tool.result'
   | 'tool.denied'
   | 'tool.runaway'
+  | 'tool.miss'
   | 'approval.request'
   | 'approval.resolved'
   | 'memory.write'

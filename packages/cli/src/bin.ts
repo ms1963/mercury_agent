@@ -100,6 +100,8 @@ Usage: mercury <command> [options]
                             Chronological timeline of memory/skill/run/learn events
   hooks <list|events|add|remove|run> [...]
                             Shell-script lifecycle hooks (approval-gated). See: mercury hooks
+  selfextend <status|enable|disable|list|gaps|synthesize|approve|deny> [...]
+                            Self-extending tools (dynamic tool synthesis). DISABLED by default. See: mercury selfextend
   eval [--tag <tag>] [--json]   Run the built-in self-evaluation suite (offline) with token/cost accounting
   completion <bash|zsh|fish>    Print a shell-completion script for mercury (source/save it)
   logs [--limit n] [--since <dur|ISO>] [--until <dur|ISO>] [--json]
@@ -326,6 +328,8 @@ async function main(argv: string[]): Promise<void> {
         return cmd.journeyCmd(m, a);
       case 'hooks':
         return await cmd.hooksCmd(m, a);
+      case 'selfextend':
+        return await cmd.selfextendCmd(m, a);
       case 'eval':
         return await cmd.evalCmd(m, a);
       case 'completion':

@@ -405,6 +405,56 @@ export const renderDistill = (view) => panel(view, t('distill.title', 'Distilled
 });
 
 /**
+ * Self-extending tools (dynamic tool synthesis): master kill-switch + policy, the synthesized-tool
+ * review queue (approve/deny) and the tracked capability gaps. DISABLED by default.
+ */
+export const renderSelfExtend = (view) => panel(view, t('selfextend.title', 'Self-Extending Tools'), async (reload) => {
+  const data = await api('/api/selfextend').catch(() => null);
+  if (!data) return card(null, h('p.muted', {}, t('selfextend.unavailable', 'self-extending tools subsystem unavailable')));
+
+  const cfg = data.config;
+  const toggle = (enable) => safe(async () => {
+    await api('/api/selfextend/toggle', { body: { enabled: enable } });
+    toast(t('selfextend.toggled', 'Setting saved'));
+    reload();
+  });
+  const grants = `${t('selfextend.capabilities', 'Capabilities')}: fs=${cfg.allowFilesystem} · net=${cfg.allowNetwork} · shell=${cfg.allowShell} · hosts=${(cfg.allowedHosts || []).join(', ') || '-'}`;
+  const statusCard = card(t('selfextend.status', 'Status'),
+    h('p.small.muted', {}, t('selfextend.intro', 'When a capability is repeatedly needed but no registered tool provides it, Mercury can DRAFT a new tool.')),
+    h('p', {}, t('common.status') + ': ', badge(data.enabled, t('selfextend.on', 'self-extension ON'), t('selfextend.off', 'off (safe)')),
+      h('span.small', {}, ` · ${t('selfextend.threshold', 'miss threshold')} ${cfg.missThreshold} · ${t('selfextend.autoApprove', 'auto-approve')} ${cfg.autoApprove ? 'on' : 'off'} · ${grants}`)),
+    data.enabled ? null : h('p.small.muted', {}, t('selfextend.disabledNote', 'Self-extending tools are disabled.')),
+    isAdmin() ? h('div.row', {}, data.enabled
+      ? h('button.danger', { onclick: toggle(false) }, t('selfextend.disable', 'Disable'))
+      : h('button.primary', { onclick: toggle(true) }, t('selfextend.enable', 'Enable'))) : null);
+
+  const stateBadge = (s) => h(`span.badge.${s === 'approved' ? 'on' : s === 'denied' ? 'off' : ''}`, {}, s);
+  const capsOf = (x) => { const c = x.draft.capabilities; return `fs=${c.filesystem} net=${c.network} shell=${c.shell}`; };
+  const actions = (x) => !isAdmin() ? null : h('div.row', {},
+    x.approval === 'pending' && x.validation.ok ? h('button.primary', { onclick: safe(async () => (await api(`/api/selfextend/${x.id}/approve`, { body: {} }), toast(t('selfextend.approved', 'Tool approved')), reload())) }, t('selfextend.approve', 'Approve')) : null,
+    x.approval !== 'denied' ? h('button.danger', { onclick: safe(async () => (await api(`/api/selfextend/${x.id}/deny`, { body: {} }), toast(t('selfextend.denied', 'Tool denied')), reload())) }, t('selfextend.deny', 'Deny')) : null);
+
+  const toolsCard = card(t('selfextend.tools', 'Synthesized tools'),
+    data.tools.length ? table(data.tools, [
+      [t('selfextend.id', 'ID'), (x) => h('code.small', {}, x.id)],
+      [t('selfextend.name', 'Name'), (x) => h('code', {}, x.draft.name)],
+      [t('selfextend.runtime', 'Runtime'), (x) => h('span.small', {}, x.draft.runtime)],
+      [t('selfextend.state', 'State'), (x) => stateBadge(x.approval)],
+      [t('selfextend.validation', 'Validation'), (x) => badge(x.validation.ok, 'valid', x.validation.stage)],
+      [t('selfextend.capabilities', 'Capabilities'), (x) => h('span.small', {}, capsOf(x))],
+      ['', actions],
+    ]) : h('p.muted', {}, t('selfextend.emptyTools', 'No synthesized tools yet.')));
+
+  const gapsCard = card(t('selfextend.gaps', 'Capability gaps'),
+    (data.gaps && data.gaps.length) ? table(data.gaps, [
+      [t('selfextend.count', 'Misses'), (g) => g.count],
+      [t('selfextend.capability', 'Capability'), (g) => h('code', {}, g.key)],
+    ]) : h('p.muted', {}, t('selfextend.emptyGaps', 'No capability gaps tracked yet.')));
+
+  return [statusCard, toolsCard, gapsCard];
+});
+
+/**
  * Proactive (but not annoying): pending/reacted events, the deferred digest queue and the
  * notification rules that map events to actions and interrupt-vs-defer routing.
  */

@@ -2338,6 +2338,151 @@ export async function hooksCmd(m: Mercury, a: Args): Promise<void> {
   }
 }
 
+const SELFEXTEND_HELP = `usage: mercury selfextend status [--json]
+       mercury selfextend enable | disable
+       mercury selfextend list [pending|approved|denied] [--json]
+       mercury selfextend gaps [--json]
+       mercury selfextend synthesize <capability...> [--json]
+       mercury selfextend approve <id>
+       mercury selfextend deny <id>
+
+Self-extending tools (dynamic tool synthesis): Mercury can DRAFT a new tool when a capability is
+repeatedly needed but no registered tool provides it. HIGH-RISK and DISABLED BY DEFAULT.
+
+Pipeline (every step gated): threshold-based gap detection -> an LLM authors a draft with a
+least-privilege capability manifest -> the draft must COMPILE and pass a GENERATED unit test and
+stay within the granted capabilities (deny-by-default) -> a human (or an explicit auto-approve
+policy) must APPROVE it before its first run -> approved tools persist as polyglot tool folders and
+run OUT-OF-PROCESS behind the existing sandbox boundary (scrubbed env, no network unless declared,
+timeout) -- never eval'd in the main runtime.
+
+  status                      Show whether the feature is enabled and the current policy + counts.
+    --json                    Emit as JSON.
+  enable | disable            Toggle selfExtension.enabled in the config file (master kill-switch).
+  list [state]                List synthesized tools (optionally filter: pending|approved|denied).
+    --json                    Emit as JSON.
+  gaps                        List tracked capability gaps (most-missed first).
+    --json                    Emit as JSON.
+  synthesize <capability...>  Author + validate a tool for a capability (creates a PENDING record).
+    --json                    Emit the record as JSON.
+  approve <id>                Approve a validated tool for first run (persists + hot-registers it).
+  deny <id>                   Deny a tool (it can never run) and remove any persisted folder.
+
+SAFETY: the master switch is enabled:false. Grants are deny-by-default (selfExtension.allowFilesystem
+/ allowNetwork / allowedHosts / allowShell); a draft that over-asks is rejected before it runs. No
+ambient secrets are passed to generated code. Set selfExtension.autoApprove only if you accept tools
+running without a human in the loop.`;
+
+/**
+ * Self-extending tools: status / enable / disable / list / gaps / synthesize / approve / deny.
+ * Every mutating path goes through the Synthesizer, which is a hard no-op refusal when disabled.
+ */
+export async function selfextendCmd(m: Mercury, a: Args): Promise<void> {
+  const sub = a._[1];
+  if (!sub || a.flags.help) return out(SELFEXTEND_HELP);
+  const json = !!a.flags.json;
+  const cfg = m.config.selfExtension;
+
+  switch (sub) {
+    case 'status': {
+      const status = {
+        enabled: cfg.enabled,
+        missThreshold: cfg.missThreshold,
+        autoApprove: cfg.autoApprove,
+        grants: { filesystem: cfg.allowFilesystem, network: cfg.allowNetwork, hosts: cfg.allowedHosts, shell: cfg.allowShell },
+        runtimes: cfg.runtimes,
+        timeoutMs: cfg.timeoutMs,
+        maxOutputChars: cfg.maxOutputChars,
+        tools: { total: m.synthesizer.list().length, pending: m.synthesizer.list('pending').length, approved: m.synthesizer.list('approved').length, denied: m.synthesizer.list('denied').length },
+        gaps: m.synthesizer.gaps().length,
+      };
+      if (json) return out(status, true);
+      const lines = [
+        m.i18n.t(cfg.enabled ? 'cli.selfextend.isEnabled' : 'cli.selfextend.isDisabled'),
+        m.i18n.t('cli.selfextend.statusThreshold', { n: cfg.missThreshold }),
+        m.i18n.t('cli.selfextend.statusAutoApprove', { v: String(cfg.autoApprove) }),
+        m.i18n.t('cli.selfextend.statusGrants', { fs: String(cfg.allowFilesystem), net: String(cfg.allowNetwork), sh: String(cfg.allowShell), hosts: cfg.allowedHosts.join(', ') || '-' }),
+        m.i18n.t('cli.selfextend.statusTools', { total: status.tools.total, pending: status.tools.pending, approved: status.tools.approved, denied: status.tools.denied }),
+        m.i18n.t('cli.selfextend.statusGaps', { n: status.gaps }),
+      ];
+      return out(lines.join('\n'));
+    }
+
+    case 'enable':
+    case 'disable': {
+      const file = setConfigValue('selfExtension.enabled', sub === 'enable', m.configFile);
+      return out(m.i18n.t(sub === 'enable' ? 'cli.selfextend.enabledNow' : 'cli.selfextend.disabledNow', { file }));
+    }
+
+    case 'list': {
+      const stateArg = a._[2] as 'pending' | 'approved' | 'denied' | undefined;
+      const records = m.synthesizer.list(stateArg);
+      if (json) return out(records, true);
+      if (!records.length) return out(m.i18n.t('cli.selfextend.noTools'));
+      return out(
+        records
+          .map((r) => `${r.id}  ${r.draft.name.padEnd(24)} ${r.approval.padEnd(8)} ${r.validation.ok ? 'valid' : `invalid@${r.validation.stage}`}  ${r.draft.runtime}`)
+          .join('\n'),
+      );
+    }
+
+    case 'gaps': {
+      const gaps = m.synthesizer.gaps();
+      if (json) return out(gaps, true);
+      if (!gaps.length) return out(m.i18n.t('cli.selfextend.noGaps'));
+      return out(gaps.map((g) => `${String(g.count).padStart(4)}x  ${g.key}`).join('\n'));
+    }
+
+    case 'synthesize': {
+      if (!m.synthesizer.isEnabled()) {
+        process.exitCode = 1;
+        return out(m.i18n.t('cli.selfextend.isDisabled'));
+      }
+      const capability = a._.slice(2).join(' ');
+      if (!capability) throw new Error('usage: mercury selfextend synthesize <capability...>');
+      let actor = 'system';
+      try {
+        actor = m.principalFor().userId;
+      } catch {
+        /* no users yet */
+      }
+      const res = await m.synthesizer.synthesize({ capability, actor });
+      if (json) return out(res, true);
+      if (!res.ok) {
+        process.exitCode = 1;
+        return out(m.i18n.t('cli.selfextend.rejected', { reason: res.reason ?? 'unknown error' }));
+      }
+      return out(m.i18n.t('cli.selfextend.created', { name: res.record.draft.name, id: res.record.id, state: res.record.approval }));
+    }
+
+    case 'approve': {
+      const id = need(a._[2], 'mercury selfextend approve <id>');
+      const res = m.approveSynthesized(id, 'cli');
+      if (json) return out(res, true);
+      if (!res.ok) {
+        process.exitCode = 1;
+        return out(m.i18n.t('cli.selfextend.failed', { reason: res.reason ?? 'unknown error' }));
+      }
+      return out(m.i18n.t('cli.selfextend.approved', { name: res.name ?? id, id }));
+    }
+
+    case 'deny': {
+      const id = need(a._[2], 'mercury selfextend deny <id>');
+      const res = m.denySynthesized(id, 'cli');
+      if (json) return out(res, true);
+      if (!res.ok) {
+        process.exitCode = 1;
+        return out(m.i18n.t('cli.selfextend.failed', { reason: res.reason ?? 'unknown error' }));
+      }
+      return out(m.i18n.t('cli.selfextend.denied', { id }));
+    }
+
+    default:
+      out(SELFEXTEND_HELP);
+      process.exitCode = 1;
+  }
+}
+
 // ───────────────────────────── fallback chain + criteria routing (gap #19) ─────────────────────────────
 
 export const FALLBACK_HELP = `usage: mercury fallback <list|add|remove|clear> [...]

@@ -615,6 +615,46 @@ export function registerManageRoutes(app: FastifyInstance, { m, auth, sse }: Ctx
     return { match: m.distiller.match(task) ?? null };
   });
 
+  // ---- self-extending tools: dynamic tool synthesis (DISABLED by default) -----------------------
+  app.get('/api/selfextend', async (req) => {
+    auth(req, 'audit.read');
+    const sc = m.config.selfExtension;
+    const stateArg = (req.query as Body).state as string | undefined;
+    return {
+      enabled: sc.enabled,
+      config: {
+        missThreshold: sc.missThreshold,
+        autoApprove: sc.autoApprove,
+        allowFilesystem: sc.allowFilesystem,
+        allowNetwork: sc.allowNetwork,
+        allowedHosts: sc.allowedHosts,
+        allowShell: sc.allowShell,
+        runtimes: sc.runtimes,
+        timeoutMs: sc.timeoutMs,
+      },
+      tools: m.synthesizer.list(stateArg as never),
+      gaps: m.synthesizer.gaps(),
+    };
+  });
+  app.post('/api/selfextend/toggle', async (req) => {
+    auth(req, 'config.manage');
+    const enabled = Boolean((req.body as Body).enabled);
+    const file = setConfigValue('selfExtension.enabled', enabled, m.configFile);
+    return { ok: true, enabled, file };
+  });
+  app.post('/api/selfextend/:id/approve', async (req) => {
+    auth(req, 'config.manage');
+    const res = m.approveSynthesized(param(req), 'web');
+    if (!res.ok) throw new HttpError(422, res.reason ?? 'approve failed');
+    return res;
+  });
+  app.post('/api/selfextend/:id/deny', async (req) => {
+    auth(req, 'config.manage');
+    const res = m.denySynthesized(param(req), 'web');
+    if (!res.ok) throw new HttpError(422, res.reason ?? 'deny failed');
+    return res;
+  });
+
   // ---- evals: evaluation-driven self-improvement (closed evals + governed auto-tune) -----------
   app.get('/api/evals', async (req) => {
     auth(req, 'audit.read');

@@ -271,6 +271,29 @@ mercury route list
 > Every referenced provider must be configured (under `llm.providers` or via its env key) for the id to
 > resolve. See `mercury help fallback` and `mercury help route` for the full reference.
 
+### 7c. Optional (advanced / HIGH-RISK): self-extending tools
+
+Mercury can **draft a brand-new tool by itself** when it repeatedly needs a capability no registered
+tool provides. Because this means Mercury writing and running its own code, it is **DISABLED BY
+DEFAULT** and you should leave it off unless you understand the risk. Everything below the master switch
+is a hard no-op until you enable it.
+
+```zsh
+mercury selfextend status          # shows DISABLED by default
+mercury selfextend enable          # turn the feature ON (writes selfExtension.enabled: true)
+mercury selfextend gaps            # capability gaps tracked so far
+mercury selfextend list pending    # drafts awaiting your approval
+mercury selfextend approve <id>    # approve a validated draft for its first run
+mercury selfextend disable         # kill-switch: turn it back off
+```
+
+Even when enabled, a drafted tool must **compile, pass a generated unit test, stay within a
+least-privilege capability manifest (deny-by-default), and be approved by you** before it can ever run —
+and it runs **out-of-process** with a scrubbed environment, no network unless you granted it, and
+time/output limits. Grants (`selfExtension.allowFilesystem` / `allowNetwork` / `allowedHosts` /
+`allowShell`) are all off by default. See `mercury help selfextend` and `docs/GAPS.md` §2b for the full
+threat model.
+
 ### 7b. Download a Piper voice (needed for offline TTS)
 Piper needs a voice model file. Download a good English one:
 ```zsh

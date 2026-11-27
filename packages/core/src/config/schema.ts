@@ -1020,6 +1020,41 @@ export const ConfigSchema = z.object({
     .prefault({}),
 
   /**
+   * Self-extending tools (dynamic tool synthesis). HIGH-RISK and DISABLED BY DEFAULT: Mercury may
+   * draft a new tool when a capability is repeatedly needed but no registered tool matches. Every
+   * step is gated — threshold-based gap detection, an LLM authors a draft with a least-privilege
+   * capability manifest, the draft must COMPILE and pass a GENERATED unit test and stay within the
+   * granted capabilities before registration, and a human (or an explicit auto-approve policy) must
+   * approve it before its FIRST run. Approved tools are persisted as polyglot tool folders and run
+   * OUT-OF-PROCESS behind the existing sandbox boundary (scrubbed env, no network unless declared,
+   * timeout, fingerprint-pinned) — never eval'd in the main runtime. `enabled:false` is the master
+   * kill-switch: when off, every entry point is a hard no-op.
+   */
+  selfExtension: z
+    .object({
+      enabled: z.boolean().default(false),
+      /** How many times the SAME capability must miss before synthesis is triggered (>= 1). */
+      missThreshold: z.number().int().positive().default(3),
+      /** Auto-approve a VALIDATED tool for first run without a human (dangerous; default false). */
+      autoApprove: z.boolean().default(false),
+      /** Deny-by-default capability grants: a draft requesting more than these is rejected. */
+      allowFilesystem: z.boolean().default(false),
+      allowNetwork: z.boolean().default(false),
+      /** Hosts a networked synthesized tool may reach (a tool's hosts must be a subset). */
+      allowedHosts: z.array(z.string()).default([]),
+      allowShell: z.boolean().default(false),
+      /** Runtimes a synthesized tool may be authored in. */
+      runtimes: z.array(z.enum(['python', 'node'])).default(['python', 'node']),
+      /** Per-tool wall-clock limit (ms) in the sandbox. */
+      timeoutMs: z.number().int().positive().default(15_000),
+      /** Max characters of a synthesized tool's output passed back to the model. */
+      maxOutputChars: z.number().int().positive().default(20_000),
+      /** Directory for persisted synthesized tool folders (default `<dataDir>/synth-tools`). */
+      dir: z.string().optional(),
+    })
+    .prefault({}),
+
+  /**
    * External secret stores. `${SECRET:backend:key}` / `${SECRET:key}` references embedded in config values
    * (e.g. MCP server env/headers/args) are resolved to real values at connect time through a pluggable
    * backend, so no plaintext secret is written into the config file. The `env` backend is always present;
