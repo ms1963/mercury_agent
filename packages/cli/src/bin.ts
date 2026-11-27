@@ -23,6 +23,12 @@ Usage: mercury <command> [options]
   setup                     First-run wizard (admin user, LLM provider)
                             non-interactive: --username --password --provider --model
   model [provider/model]    Show or set the default model
+  fallback [list|add|remove|clear]   Automatic provider/model fallback chain (tried in order when a
+                            model is unavailable: model-not-found, bad/missing key, connection refused,
+                            rate-limit/overload). add <provider> <model> [--base-url u]; remove/clear --force
+  route [list|add|remove|clear]      Criteria-based model selection. add <provider> <model> [criteria...]
+                            (criteria from profile tags: general/code/reasoning/fast/cheap/vision/local/private;
+                            empty or 'default' = catch-all); remove/clear --force   (--json everywhere)
   tools [list|toolsets|enable|disable <name>]
   skills [list|view|install <src>]
   learn [stats [bucket]|hints <task>|playbooks]   What the agent learned from its runs (routing, hints, playbooks)
@@ -190,6 +196,10 @@ async function main(argv: string[]): Promise<void> {
         if (a._[1]) return console.log(`default model saved to ${setConfigValue('llm.defaultModel', a._[1], m.configFile)}`);
         console.log(`default: ${m.config.llm.defaultModel}\n${m.providers.profilesList().map((p) => `  ${p.id}`).join('\n')}`);
         return;
+      case 'fallback':
+        return await cmd.fallbackCmd(m, a);
+      case 'route':
+        return await cmd.routeCmd(m, a);
       case 'tools':
         return await cmd.toolsCmd(m, a);
       case 'skills':

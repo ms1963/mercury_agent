@@ -47,6 +47,7 @@ export * from './learning/index.js';
 export * from './i18n/i18n.js';
 export * from './llm/content.js';
 export * from './llm/backoff.js';
+export * from './llm/fallback.js';
 export * from './llm/provider.js';
 export * from './llm/providers/anthropic.js';
 export * from './llm/providers/mock.js';

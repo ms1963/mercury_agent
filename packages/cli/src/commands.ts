@@ -4,7 +4,7 @@ import { cpSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'no
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ACP_PROTOCOL_VERSION, LSP_PROTOCOL, LSP_COMMANDS, auditCoordinates, errorMessage, buildArchive, buildSessionExport, checkArchiveCompat, collectDataDir, exitCodeFor, extractNpmCoordinates, fetchHttpClient, filterSessions, findSession, activeProjectName, createProject, getPath, buildInsights, resolveInsightsRange, formatTokens, formatCost, type InsightsGroupBy, type InsightsReport, buildMemGraphFromDb, memGraphToDot, buildJourney, resolveJourneyRange, type MemGraph, type JourneyTimeline, type JourneyEventKind, generateCompletion, COMPLETION_SHELLS, type CompletionShell, queryOperatorLogs, formatOperatorLogs, resolveOperatorLogRange, computePromptSize, formatPromptSize, readMigrationStatus, applyPendingMigrations, operatorBanner, INSTRUCTION_HIERARCHY, parseHookDefs, validateHookDef, buildHookPlan, runHookPlan, defaultHookRunner, formatHookList, formatHookResult, HOOKS_EVENTS, type HookConfigEntry, type HooksEventName, installPlugin, installSkills, listInstalled, listProjects, loadOrCreateAuditKey, mcpServerCoordinates, mercuryHome, planRestore, runMoa, type MoaStrategy, type MoaResult, pluginCoordinates, projectDataDirEntryCount, readArchiveFile, removePlugin, removeProject, renderSessionMarkdown, resolveVoicePreset, restoreArchive, runEvalSuite, scaffold, scaffoldAddin, selectEvals, selectPrune, setConfigValue, showProject, updatePlugin, useProject, verifyArchive, verifyArchiveIntegrity, voicePresets, workingDirOf, writeArchiveFile, secretResolverFromConfig, scanSecretRefs, unwrapSecretRef, maskSecret, defaultSecretRunner, activeProfileName, createProfile, listProfiles, profileHomeEntryCount, profileRegistryDir, removeProfile, showProfile, useProfile, DEFAULT_PROFILE_NAME, PROFILE_ENV_VAR, type BackupArchive, type Coordinate, type EvalObservation, type ExtensionKind, type PackageJsonLike, type PluginPkg, type ProfileListEntry, type ProjectListEntry, type SecretResolver, type Session, type VoiceKind } from '@mercury/core';
+import { ACP_PROTOCOL_VERSION, LSP_PROTOCOL, LSP_COMMANDS, auditCoordinates, errorMessage, buildArchive, buildSessionExport, checkArchiveCompat, collectDataDir, exitCodeFor, extractNpmCoordinates, fetchHttpClient, filterSessions, findSession, activeProjectName, createProject, getPath, buildInsights, resolveInsightsRange, formatTokens, formatCost, type InsightsGroupBy, type InsightsReport, buildMemGraphFromDb, memGraphToDot, buildJourney, resolveJourneyRange, type MemGraph, type JourneyTimeline, type JourneyEventKind, generateCompletion, COMPLETION_SHELLS, type CompletionShell, queryOperatorLogs, formatOperatorLogs, resolveOperatorLogRange, computePromptSize, formatPromptSize, readMigrationStatus, applyPendingMigrations, operatorBanner, INSTRUCTION_HIERARCHY, parseHookDefs, validateHookDef, buildHookPlan, runHookPlan, defaultHookRunner, formatHookList, formatHookResult, HOOKS_EVENTS, type HookConfigEntry, type HooksEventName, installPlugin, installSkills, listInstalled, listProjects, loadOrCreateAuditKey, mcpServerCoordinates, mercuryHome, planRestore, runMoa, type MoaStrategy, type MoaResult, pluginCoordinates, projectDataDirEntryCount, readArchiveFile, removePlugin, removeProject, renderSessionMarkdown, resolveVoicePreset, restoreArchive, runEvalSuite, scaffold, scaffoldAddin, selectEvals, selectPrune, setConfigValue, showProject, updatePlugin, useProject, verifyArchive, verifyArchiveIntegrity, voicePresets, workingDirOf, writeArchiveFile, secretResolverFromConfig, scanSecretRefs, unwrapSecretRef, maskSecret, defaultSecretRunner, activeProfileName, createProfile, listProfiles, profileHomeEntryCount, profileRegistryDir, removeProfile, showProfile, useProfile, DEFAULT_PROFILE_NAME, PROFILE_ENV_VAR, type BackupArchive, type Coordinate, type EvalObservation, type FallbackEntry, type RoutingEntry, type ExtensionKind, type PackageJsonLike, type PluginPkg, type ProfileListEntry, type ProjectListEntry, type SecretResolver, type Session, type VoiceKind } from '@mercury/core';
 import type { Mercury } from '@mercury/runtime';
 import { enablePresetConfig, mcpPreset, mcpPresets } from '@mercury/mcp';
 import { flag, type Args } from './args.js';
@@ -2334,6 +2334,160 @@ export async function hooksCmd(m: Mercury, a: Args): Promise<void> {
 
     default:
       out(HOOKS_HELP);
+      process.exitCode = 1;
+  }
+}
+
+// ───────────────────────────── fallback chain + criteria routing (gap #19) ─────────────────────────────
+
+export const FALLBACK_HELP = `usage: mercury fallback <list|add|remove|clear> [...]
+
+Automatic provider/model fallback chain. An ORDERED list of (provider, model) pairs that Mercury
+tries, in order, whenever the primary model is UNAVAILABLE — model-not-found, bad/missing API key
+(401/403), connection refused (local backend down), or rate-limit/overload (429/503/529). A
+centralized classifier decides what counts as "unavailable"; request-intrinsic failures
+(context-overflow, bad-request, content-policy) are NOT retried on another model. The chain is
+appended after the router's own candidates, so routing + fallback compose.
+
+Subcommands:
+  list                                  Show the configured fallback chain (--json)
+  add <provider> <model> [--base-url u] Append a (provider, model) pair (deduped, order preserved)
+  remove <provider> <model> --force     Remove a matching entry (needs --force)
+  clear --force                         Remove the whole chain (needs --force)
+
+The referenced provider must be configured (llm.providers / env key) for the id to resolve.
+Example:  mercury fallback add anthropic claude-haiku-4-5`;
+
+export async function fallbackCmd(m: Mercury, a: Args): Promise<void> {
+  const sub = a._[1];
+  if (!sub || a.flags.help) return out(FALLBACK_HELP);
+  const json = !!a.flags.json;
+  const entries = [...((m.config.llm.fallback ?? []) as FallbackEntry[])];
+  const persist = (next: FallbackEntry[]): string => setConfigValue('llm.fallback', next, m.configFile);
+
+  switch (sub) {
+    case 'list': {
+      if (json) return out(entries, true);
+      if (!entries.length) return out('(no fallback chain configured — add one with: mercury fallback add <provider> <model>)');
+      return out(entries.map((e, i) => `${String(i + 1).padStart(2)}. ${e.provider}/${e.model}${e.baseUrl ? `  (baseUrl: ${e.baseUrl})` : ''}`).join('\n'));
+    }
+    case 'add': {
+      const provider = need(a._[2], 'mercury fallback add <provider> <model> [--base-url <url>]');
+      const model = need(a._[3], 'mercury fallback add <provider> <model> [--base-url <url>]');
+      const baseUrl = flag(a, 'base-url');
+      const entry: FallbackEntry = baseUrl ? { provider, model, baseUrl } : { provider, model };
+      const idx = entries.findIndex((e) => e.provider === provider && e.model === model && (e.baseUrl ?? '') === (baseUrl ?? ''));
+      if (idx >= 0) {
+        if (json) return out({ added: false, reason: 'already present', entry }, true);
+        return out(`fallback entry "${provider}/${model}" already in the chain (no change)`);
+      }
+      entries.push(entry);
+      const file = persist(entries);
+      if (json) return out({ added: true, entry, saved: file, chain: entries }, true);
+      return out(`✓ added fallback "${provider}/${model}" (position ${entries.length}) → ${file}`);
+    }
+    case 'remove':
+    case 'rm': {
+      const provider = need(a._[2], 'mercury fallback remove <provider> <model> --force');
+      const model = need(a._[3], 'mercury fallback remove <provider> <model> --force');
+      const idx = entries.findIndex((e) => e.provider === provider && e.model === model);
+      if (idx < 0) {
+        process.exitCode = 1;
+        throw new Error(`no fallback entry "${provider}/${model}" in the chain`);
+      }
+      if (!a.flags.force) return out(`refusing to remove "${provider}/${model}" without --force (re-run with --force to confirm)`);
+      entries.splice(idx, 1);
+      const file = persist(entries);
+      if (json) return out({ removed: `${provider}/${model}`, saved: file }, true);
+      return out(`✓ removed fallback "${provider}/${model}" → ${file}`);
+    }
+    case 'clear': {
+      if (!a.flags.force) return out(`refusing to clear the fallback chain without --force (re-run with --force to confirm)`);
+      const file = persist([]);
+      if (json) return out({ cleared: true, saved: file }, true);
+      return out(`✓ cleared the fallback chain → ${file}`);
+    }
+    default:
+      out(FALLBACK_HELP);
+      process.exitCode = 1;
+  }
+}
+
+export const ROUTE_HELP = `usage: mercury route <list|add|remove|clear> [...]
+
+Criteria-based model selection. Each routing entry pairs a (provider, model) with the CRITERIA it
+serves, drawn from the profile tag vocabulary: general, code, reasoning, fast, cheap, vision, local,
+private. For every task/chat/workflow Mercury picks the MOST SPECIFIC entry whose criteria are all
+satisfied by the request (an entry matches only when every one of its criteria is present). An entry
+with no criteria, or exactly 'default', is the general-purpose catch-all used when nothing else
+matches. The selected model still benefits from the automatic fallback chain if it is unavailable.
+
+Subcommands:
+  list                                        Show the routing chain (--json)
+  add <provider> <model> [criteria...]        Add/replace a (provider, model) entry with criteria
+  remove <provider> <model> --force           Remove a matching entry (needs --force)
+  clear --force                               Remove the whole routing chain (needs --force)
+
+Examples:
+  mercury route add anthropic claude-sonnet-4-5 code reasoning
+  mercury route add openai gpt-4o-mini fast cheap
+  mercury route add ollama llama3.1 private local
+  mercury route add chatllm route-llm default       # general-purpose catch-all`;
+
+export async function routeCmd(m: Mercury, a: Args): Promise<void> {
+  const sub = a._[1];
+  if (!sub || a.flags.help) return out(ROUTE_HELP);
+  const json = !!a.flags.json;
+  const entries = [...((m.config.llm.routing ?? []) as RoutingEntry[])];
+  const persist = (next: RoutingEntry[]): string => setConfigValue('llm.routing', next, m.configFile);
+  const describe = (e: RoutingEntry): string => {
+    const crit = e.criteria.filter(Boolean);
+    const isDefault = crit.length === 0 || (crit.length === 1 && crit[0] === 'default');
+    return `${e.provider}/${e.model}  [${isDefault ? 'default (catch-all)' : crit.join(', ')}]`;
+  };
+
+  switch (sub) {
+    case 'list': {
+      if (json) return out(entries, true);
+      if (!entries.length) return out('(no routing chain configured — add one with: mercury route add <provider> <model> [criteria...])');
+      return out(entries.map((e, i) => `${String(i + 1).padStart(2)}. ${describe(e)}`).join('\n'));
+    }
+    case 'add':
+    case 'set': {
+      const provider = need(a._[2], 'mercury route add <provider> <model> [criteria...]');
+      const model = need(a._[3], 'mercury route add <provider> <model> [criteria...]');
+      const criteria = a._.slice(4);
+      const entry: RoutingEntry = { provider, model, criteria };
+      const idx = entries.findIndex((e) => e.provider === provider && e.model === model);
+      if (idx >= 0) entries[idx] = entry;
+      else entries.push(entry);
+      const file = persist(entries);
+      if (json) return out({ saved: file, entry, overwritten: idx >= 0, chain: entries }, true);
+      return out(`✓ ${idx >= 0 ? 'updated' : 'added'} route ${describe(entry)} → ${file}`);
+    }
+    case 'remove':
+    case 'rm': {
+      const provider = need(a._[2], 'mercury route remove <provider> <model> --force');
+      const model = need(a._[3], 'mercury route remove <provider> <model> --force');
+      const idx = entries.findIndex((e) => e.provider === provider && e.model === model);
+      if (idx < 0) {
+        process.exitCode = 1;
+        throw new Error(`no routing entry "${provider}/${model}" in the chain`);
+      }
+      if (!a.flags.force) return out(`refusing to remove "${provider}/${model}" without --force (re-run with --force to confirm)`);
+      entries.splice(idx, 1);
+      const file = persist(entries);
+      if (json) return out({ removed: `${provider}/${model}`, saved: file }, true);
+      return out(`✓ removed route "${provider}/${model}" → ${file}`);
+    }
+    case 'clear': {
+      if (!a.flags.force) return out(`refusing to clear the routing chain without --force (re-run with --force to confirm)`);
+      const file = persist([]);
+      if (json) return out({ cleared: true, saved: file }, true);
+      return out(`✓ cleared the routing chain → ${file}`);
+    }
+    default:
+      out(ROUTE_HELP);
       process.exitCode = 1;
   }
 }

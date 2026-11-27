@@ -49,6 +49,26 @@ const RouterRuleSchema = z.object({
   model: z.string(),
 });
 
+/**
+ * One entry in the automatic fallback chain (`llm.fallback`). An ordered (provider, model)
+ * pair tried when the preceding model is unavailable. `baseUrl` is optional/forward-compat.
+ */
+const FallbackEntrySchema = z.object({
+  provider: z.string(),
+  model: z.string(),
+  baseUrl: z.string().optional(),
+});
+
+/**
+ * One entry in the criteria-based routing chain (`llm.routing`). A (provider, model) pair plus
+ * the `criteria` it serves (profile tags). Empty criteria or `['default']` = general-purpose.
+ */
+const RoutingEntrySchema = z.object({
+  provider: z.string(),
+  model: z.string(),
+  criteria: z.array(z.string()).default([]),
+});
+
 const BudgetRuleSchema = z.object({
   /** User id, or "*" for everybody. */
   user: z.string().default('*'),
@@ -133,6 +153,24 @@ export const ConfigSchema = z.object({
           windowMs: z.number().int().positive().default(60_000),
         })
         .prefault({}),
+      /**
+       * Automatic provider/model fallback chain (opt-in, backward-compatible: default []).
+       * An ORDERED list of (provider, model) pairs tried in order when the primary model is
+       * UNAVAILABLE (model-not-found, bad/missing API key, connection refused, rate-limit/
+       * overload) — the centralized classifier in `llm/fallback.ts` decides what counts.
+       * Managed with `mercury fallback list|add|remove|clear`. `baseUrl` is persisted for
+       * forward-compat; the referenced provider must be configured for the id to resolve.
+       */
+      fallback: z.array(FallbackEntrySchema).default([]),
+      /**
+       * Criteria-based model selection (opt-in, backward-compatible: default []). Each entry
+       * pairs a (provider, model) with a `criteria` list drawn from the profile tag vocabulary
+       * (general/code/reasoning/fast/cheap/vision/local/private). For each request the most
+       * specific entry whose criteria are all satisfied is chosen; an entry with empty criteria
+       * or `['default']` is the general-purpose catch-all. Managed with
+       * `mercury route list|add|remove|clear`. The selected model still benefits from `fallback`.
+       */
+      routing: z.array(RoutingEntrySchema).default([]),
     })
     .prefault({}),
 
@@ -1028,5 +1066,7 @@ export type ProviderConfig = z.infer<typeof ProviderSchema>;
 export type ModelProfile = z.infer<typeof ModelProfileSchema>;
 export type McpServerConfig = z.infer<typeof McpServerSchema>;
 export type BudgetRule = z.infer<typeof BudgetRuleSchema>;
+export type FallbackEntry = z.infer<typeof FallbackEntrySchema>;
+export type RoutingEntry = z.infer<typeof RoutingEntrySchema>;
 export type SecretsConfig = MercuryConfig['secrets'];
 export { McpServerSchema, ModelProfileSchema };

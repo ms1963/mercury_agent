@@ -11,10 +11,12 @@ import type { TaskBudgetService } from '../budgets/task-budgets.js';
 import type { PolicyEngine } from '../auth/policy.js';
 import type { EventBus } from '../events/bus.js';
 import type { ModelRouter, RouteDecision } from '../router/router.js';
+import { inferTags } from '../router/router.js';
 import { BudgetExceededError, MercuryError, PermissionDeniedError, errorMessage, estimateTokens, sleep, type Principal } from '../types/common.js';
 import type { ChatMessage, DeltaHandler, LLMResponse, ToolSpec } from '../types/messages.js';
 import type { ProviderRegistry } from './registry.js';
 import { ProviderError } from './provider.js';
+import { getFallbackChain, isFallbackError, selectModelByCriteria } from './fallback.js';
 import { backoffDelay } from './backoff.js';
 import { CircuitBreaker, CircuitOpenError } from '../reliability/index.js';
 import { parseTextReact, textReactInstructions } from './text-react.js';
@@ -95,24 +97,47 @@ export class LLMService {
       tools: !!call.tools?.length,
       vision: call.messages.some((m) => m.attachments?.some((a) => a.kind === 'image' || (a.kind === 'video' && a.frames?.length))),
     };
+    // Feature 2 — criteria-based selection. When the caller did not pin a model (no explicit
+    // model / "auto") and a routing chain is configured, pick the most appropriate (provider,
+    // model) by matching the request's tags (explicit + inferred) against each entry's criteria.
+    // The chosen model is handed to the router as the explicit model, so it still gets RBAC
+    // filtering and the fallback chain below.
+    let explicitModel = call.model;
+    if ((!explicitModel || explicitModel === 'auto') && this.config.llm.routing.length) {
+      const requestTags = [...new Set([...(call.tags ?? []), ...inferTags(task)])];
+      const picked = selectModelByCriteria(this.config, { tags: requestTags, needsVision: needs.vision });
+      if (picked) {
+        explicitModel = picked;
+        this.bus.emit({ type: 'llm.route', runId: call.runId, data: { model: picked, reason: 'criteria', criteria: requestTags } });
+      }
+    }
     const route = await this.router.route({
       task,
-      explicitModel: call.model,
+      explicitModel,
       tags: call.tags,
       needs: { tools: needs.tools, vision: needs.vision },
       allowed: (m) => this.policy.can(call.principal, 'model.use', { model: m }),
       runId: call.runId,
     });
-    const attempts = [route.model, ...route.fallbacks];
+    // Feature 1 — automatic fallback chain. Append the user-configured `llm.fallback` entries
+    // after the router's own candidates/fallbacks, deduped and in order.
+    const attempts = [...new Set([route.model, ...route.fallbacks, ...getFallbackChain(this.config)])];
     const errors: string[] = [];
-    for (const modelId of attempts) {
+    for (let i = 0; i < attempts.length; i++) {
+      const modelId = attempts[i]!;
       try {
         const res = await this.callModel(modelId, call);
         return { ...res, route };
       } catch (err) {
         if (err instanceof BudgetExceededError || err instanceof PermissionDeniedError || call.signal?.aborted) throw err;
         errors.push(`${modelId}: ${errorMessage(err)}`);
-        this.bus.emit({ type: 'llm.error', runId: call.runId, data: { model: modelId, error: errorMessage(err), willFallback: modelId !== attempts[attempts.length - 1] } });
+        // Centralized decision: only advance to the next (provider, model) when the error means
+        // THIS one is unavailable. Request-intrinsic errors (context-overflow, bad-request,
+        // content-policy) would recur on every model, so they propagate immediately.
+        const fallbackable = isFallbackError(err);
+        const isLast = i === attempts.length - 1;
+        this.bus.emit({ type: 'llm.error', runId: call.runId, data: { model: modelId, error: errorMessage(err), willFallback: fallbackable && !isLast } });
+        if (!fallbackable) throw err;
       }
     }
     throw new MercuryError(`All models failed. ${errors.join(' | ')}`, 'llm_failed', 'models', 502);
