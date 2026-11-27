@@ -1,17 +1,44 @@
+# --- Dependencies & build output ---
 node_modules
 dist
 *.tsbuildinfo
+
+# --- Secrets & local config ---
+# NOTE: only a literal `.env` is ignored. Provider templates under examples/env/*.env
+# and the root .env.example are tracked on purpose, so do NOT change this to `*.env`.
 .env
+
+# --- Test / coverage artifacts ---
 coverage
+.nyc_output
 .mercury-test*
 
+# --- Local databases ---
 mercury.db
 mercury.db-*
+
+# --- Logs & run markers ---
 *.log
-install.exit
+*.exit
+
+# --- Editor / OS / backup junk ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.bak
+*.bak*
+*.orig
+*.tmp
+
+# --- Platform-owned (keep tracked; ignored only against accidental re-writes) ---
 .abacus.donotdelete
 
-# VM-only artifacts (not part of the repo)
+# --- VM-only artifacts (not part of the repo) ---
 checkers.py
 deploy/14444ce25a.conf
 e2e_out/

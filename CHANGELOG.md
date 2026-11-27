@@ -7,6 +7,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Repository hygiene** — hardened `.gitignore` with generalized patterns for editor/OS/backup/temp
+  junk (`.DS_Store`, `.vscode/`, `.idea/`, `*.swp`, `*~`, `*.bak*`, `*.orig`, `*.tmp`), `.nyc_output`,
+  and run markers (`*.exit`, superseding the single `install.exit`). Grouped and commented the file by
+  category. No tracked files were affected; provider templates under `examples/env/*.env` and
+  `.env.example` remain tracked on purpose (only a literal `.env` is ignored).
+
 ### Added
 
 - **`mercury timezone [show|set <zone>|clear]`** — an optional per-install override for the time zone the
