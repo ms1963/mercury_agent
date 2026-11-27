@@ -168,7 +168,17 @@
     "usage": "Verbrauch (30 Tage)",
     "decisions": "Jev-Entscheidungen",
     "calibration": "Kalibrierung",
-    "tryDecision": "Entscheidung testen"
+    "tryDecision": "Entscheidung testen",
+    "economics": "Wirtschaftlichkeit — Budgets pro Aufgabe & Kosten-Nutzen",
+    "task": "Aufgabe/Lauf",
+    "cost": "Kosten $",
+    "projected": "Prognostiziert $",
+    "value": "Wert $",
+    "valueRatio": "Wert/Kosten",
+    "budgetUsed": "Budget verbraucht",
+    "overBudget": "Über Budget",
+    "lane": "Spur",
+    "lanes": "Spuren"
   },
   "users": {
     "title": "Benutzer",
@@ -472,5 +482,62 @@
     "status": "Status",
     "name": "Name",
     "task": "Aufgabe"
+  },
+  "governance": {
+    "title": "Governance & Sicherheit",
+    "grants": "Fähigkeits-Berechtigungen",
+    "grantsIntro": "Minimalrechte, zeitlich begrenzte Berechtigungen — keine dauerhaften Schlüssel.",
+    "capability": "Fähigkeit",
+    "taskId": "Aufgaben-/Lauf-ID",
+    "scope": "Geltungsbereich",
+    "issue": "Berechtigung erteilen",
+    "granted": "Berechtigung erteilt",
+    "needCapTask": "Fähigkeit und Aufgaben-ID sind erforderlich",
+    "policies": "Policy-as-Code",
+    "policiesIntro": "Deklarative Regeln, die vor sensiblen Aktionen ausgewertet werden. Die strengste Wirkung gewinnt (deny > approve > allow).",
+    "tool": "Werkzeug",
+    "args": "Argumente (JSON)",
+    "effect": "Wirkung",
+    "whenTainted": "Nur bei markierten Daten",
+    "testPolicy": "Policy-Entscheidung testen",
+    "decision": "Entscheidung",
+    "badJson": "Argumente müssen gültiges JSON sein",
+    "trace": "Wiederholbares Audit-Protokoll",
+    "traceIntro": "Einen geordneten, menschenlesbaren Lauf-Trace wiedergeben, um \"Warum hast du das getan?\" zu beantworten.",
+    "runId": "Lauf-ID",
+    "replay": "Wiedergeben",
+    "category": "Kategorie",
+    "step": "Schritt"
+  },
+  "cli": {
+    "fallback": {
+      "none": "(keine Fallback-Kette konfiguriert — mit „mercury fallback add <provider> <model>“ hinzufügen)",
+      "already": "Fallback-Eintrag „{id}“ ist bereits in der Kette (keine Änderung)",
+      "added": "✓ Fallback „{id}“ hinzugefügt (Position {pos}) → {file}",
+      "noEntry": "kein Fallback-Eintrag „{id}“ in der Kette",
+      "refuseRemove": "Entfernen von „{id}“ ohne --force abgelehnt (zur Bestätigung mit --force erneut ausführen)",
+      "removed": "✓ Fallback „{id}“ entfernt → {file}",
+      "refuseClear": "Leeren der Fallback-Kette ohne --force abgelehnt (zur Bestätigung mit --force erneut ausführen)",
+      "cleared": "✓ Fallback-Kette geleert → {file}"
+    },
+    "route": {
+      "none": "(keine Routing-Kette konfiguriert — mit „mercury route add <provider> <model> [kriterien...]“ hinzufügen)",
+      "catchAll": "Standard (Auffang)",
+      "added": "✓ Route {desc} hinzugefügt → {file}",
+      "updated": "✓ Route {desc} aktualisiert → {file}",
+      "noEntry": "kein Routing-Eintrag „{id}“ in der Kette",
+      "refuseRemove": "Entfernen von „{id}“ ohne --force abgelehnt (zur Bestätigung mit --force erneut ausführen)",
+      "removed": "✓ Route „{id}“ entfernt → {file}",
+      "refuseClear": "Leeren der Routing-Kette ohne --force abgelehnt (zur Bestätigung mit --force erneut ausführen)",
+      "cleared": "✓ Routing-Kette geleert → {file}"
+    },
+    "hooks": {
+      "added": "✓ Shell-Hook „{name}“ ({event}) hinzugefügt → {file}",
+      "updated": "✓ Shell-Hook „{name}“ ({event}) aktualisiert → {file}",
+      "noHook": "kein Shell-Hook mit dem Namen „{name}“",
+      "refuseRemove": "Entfernen des Shell-Hooks „{name}“ ohne --force abgelehnt (zur Bestätigung mit --force erneut ausführen)",
+      "removed": "✓ Shell-Hook „{name}“ entfernt → {file}",
+      "invalid": "ungültiger Hook: {errors}"
+    }
   }
 }

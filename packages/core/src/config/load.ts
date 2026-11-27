@@ -107,6 +107,7 @@ export function envOverrides(env: NodeJS.ProcessEnv = process.env): Obj {
     MERCURY_MODEL: 'llm.defaultModel',
     MERCURY_LOG_LEVEL: 'logLevel',
     MERCURY_LOCALE: 'locale',
+    MERCURY_LANG: 'locale', // alias for MERCURY_LOCALE; wins when both are set (listed last)
     MERCURY_DATA_DIR: 'dataDir',
     MERCURY_DEBUG: 'debug',
     MERCURY_APPROVALS: 'tools.approvals.mode',

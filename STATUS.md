@@ -1,4 +1,4 @@
-# Mercury — Build Status (honest snapshot, 2026-11-26, through v2.0.0)
+# Mercury — Build Status (honest snapshot, 2026-11-27, through v2.1.0)
 
 **Overall:** all 8 packages compile. From a clean build, `npm install && npm run build && npm test`
 passes (**55 files, 955 passed / 2 skipped**, offline — up from 549 at v1.8.0 as the v1.9.0 and v2.0.0
@@ -9,8 +9,17 @@ run end-to-end with the offline mock LLM and mock decision provider. **The core 
 also been exercised against real LLMs** — see §0. The Jev API and chat platforms remain offline/mock-only.
 (Note: one test, `security-gaps-residual.test.ts` SC-24, fails **only on the live deployment host**
 because that host carries an untracked `deploy/<host>.conf` nginx vhost; the repository ships no such
-file, so CI is green — the latest CI run on v2.0.0 passes build & test on node 22 and node 24 plus the
+file, so CI is green — the latest CI run passes build & test on node 22 and node 24 plus the
 docker image build.)
+
+## 0b. New in v2.1.0 — complete EN/DE internationalization (offline-tested)
+
+- **Full English + German coverage.** Every `docs/help/` topic now has a German counterpart under
+  `docs/help/de/` (42 each, in sync, incl. new `fallback`/`route` topics), and the shared UI/CLI message
+  catalogs `locales/en.json` / `locales/de.json` are at full key parity (475 keys each). A `resolveLocale()`
+  helper honours `MERCURY_LANG`/`MERCURY_LOCALE`/`config.locale` (default English), and the
+  `fallback`/`route`/`hooks` command output is routed through the catalog so it localizes. Covered by
+  `tests/i18n.test.ts` (resolver, help-topic parity, catalog key parity). Version bumped to 2.1.0.
 
 ## 0c. New since v1.8.0 — v1.9.0 and v2.0.0 subsystems (offline-tested)
 

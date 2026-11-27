@@ -76,8 +76,10 @@ to `~/.mercury/config.yaml` for a documented starting point.
 
 
 `mercury setup` runs an interactive first-run wizard. `mercury doctor` checks the environment.
-`mercury help <topic>` and the web **Help** panel document everything — in English and German
-(German topics are served when the locale is `de`, falling back to English).
+`mercury help <topic>` and the web **Help** panel document everything — in **complete English and
+German** (42 help topics in each language, in sync, plus full EN/DE message-catalog parity for the UI
+and CLI). German is served when the locale is `de` — set it with `MERCURY_LANG=de`, `MERCURY_LOCALE`,
+or `locale: de` in the config — and always falls back to English.
 
 ## Feature matrix
 
@@ -85,7 +87,7 @@ to `~/.mercury/config.yaml` for a documented starting point.
 |---|---|
 | **Agent loop** | Streaming ReAct-style loop, patterns (react, plan-execute, reflexion…), subagents, `/stop`, `/retry`, `/undo`, `/compress`, `/rollback` |
 | **LLM providers** | OpenRouter, Ollama, LM Studio, any OpenAI-compatible API, Anthropic (local **or** remote); a model router with tiers; per-user/model token and cost **budgets** |
-| **Economics & routing** | Cheapest-model-likely-to-succeed selection with **local vs frontier lanes** (routine tasks stay on the near-zero-cost local lane, harder tasks go to frontier/default); **hard per-task budgets** that halt or escalate on exceed; a running **cost-vs-value** estimate (cost so far, projected final cost, value/cost ratio, budget-used) via `GET /api/tasks` and the Models & budgets panel; configure under `router.economics` and `budgets.perTask` |
+| **Economics & routing** | Cheapest-model-likely-to-succeed selection with **local vs frontier lanes** (routine tasks stay on the near-zero-cost local lane, harder tasks go to frontier/default); **hard per-task budgets** that halt or escalate on exceed; a running **cost-vs-value** estimate (cost so far, projected final cost, value/cost ratio, budget-used) via `GET /api/tasks` and the Models & budgets panel; configure under `router.economics` and `budgets.perTask`; an **automatic provider/model fallback chain** (`mercury fallback`, config `llm.fallback`) tried in order when a model is unavailable, and **criteria-based model selection** (`mercury route`, config `llm.routing`) that picks a model per request by tags (general/code/reasoning/fast/cheap/vision/local/private) |
 | **Decision engine (optional)** | `jev` (OpenRouter decisions API) or the configured `llm`; drives model routing, injection classification, tool-approval "smart" mode, gateway triage, retries and reflection. Falls back to a safe heuristic when unconfigured |
 | **Memory** | Working, episodic (sessions + search), semantic facts, procedural (skills), user model, shared blackboard; `MEMORY.md` / `USER.md` |
 | **Reflection** | Post-run lessons and user-model updates, viewable in the UI |

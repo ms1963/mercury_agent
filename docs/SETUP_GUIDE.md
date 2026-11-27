@@ -219,6 +219,58 @@ scheduler:
 - **Jev** needs no extra key and the `/api/alpha` URL is correct — that's OpenRouter's **Decisions** endpoint, which is deliberately different from the chat endpoint.
 - **`scheduler.timezone`** — change `Europe/Berlin` to your zone, or set it later with `mercury timezone set <Area/City>`.
 
+### 7a. Optional: automatic fallback chain & criteria-based routing
+
+Two optional, backward-compatible blocks under `llm:` make Mercury more resilient and smarter about
+which model handles which request. Both are empty/off by default — add them only if you want them.
+
+**Fallback chain (`llm.fallback`).** An *ordered* list of `provider/model` pairs that Mercury tries, in
+order, whenever the primary model is **unavailable** — model-not-found, a bad/missing API key (401/403),
+a refused connection (a local backend is down), or rate-limit/overload (429/503/529). Request-intrinsic
+errors (context too large, bad request, content-policy) are **not** retried on another model.
+
+```yaml
+llm:
+  defaultModel: openrouter/anthropic/claude-sonnet-5.5
+  fallback:
+    - { provider: openrouter, model: openai/gpt-4o-mini }   # tried if Sonnet is unavailable
+    - { provider: ollama, model: llama3.1 }                 # last resort: local, always available
+```
+
+You can manage it from the CLI instead of editing YAML by hand:
+```zsh
+mercury fallback add openrouter openai/gpt-4o-mini
+mercury fallback add ollama llama3.1
+mercury fallback list
+mercury fallback remove ollama llama3.1 --force
+```
+
+**Criteria-based routing (`llm.routing`).** A list of `provider/model` entries, each tagged with the
+**criteria** it serves (from the profile tag vocabulary `general`, `code`, `reasoning`, `fast`, `cheap`,
+`vision`, `local`, `private`). For each request Mercury picks the **most specific** entry whose criteria
+are all satisfied. An entry with **no criteria, or exactly `default`**, is the general-purpose catch-all.
+The selected model still benefits from the fallback chain above if it is unavailable.
+
+```yaml
+llm:
+  routing:
+    - { provider: anthropic, model: claude-sonnet-4-5, criteria: [code, reasoning] }
+    - { provider: openrouter, model: openai/gpt-4o-mini, criteria: [fast, cheap] }
+    - { provider: ollama, model: llama3.1, criteria: [private, local] }
+    - { provider: openrouter, model: anthropic/claude-sonnet-5.5, criteria: [default] }  # catch-all
+```
+
+Or from the CLI:
+```zsh
+mercury route add anthropic claude-sonnet-4-5 code reasoning
+mercury route add openrouter openai/gpt-4o-mini fast cheap
+mercury route add openrouter anthropic/claude-sonnet-5.5 default
+mercury route list
+```
+
+> Every referenced provider must be configured (under `llm.providers` or via its env key) for the id to
+> resolve. See `mercury help fallback` and `mercury help route` for the full reference.
+
 ### 7b. Download a Piper voice (needed for offline TTS)
 Piper needs a voice model file. Download a good English one:
 ```zsh

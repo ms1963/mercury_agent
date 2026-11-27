@@ -27,6 +27,34 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   they run on. To change zones, set the machine's zone — e.g.
   `sudo timedatectl set-timezone Europe/Berlin` — and restart the service.
 
+## [2.1.0] - 2026-11-27
+
+### Added
+
+- **Complete English + German internationalization (i18n).** Mercury now ships full EN/DE coverage for
+  both its help manuals and its user-facing CLI/interface strings.
+  - **Help manuals:** every topic under `docs/help/` has a complete German counterpart under
+    `docs/help/de/` (42 topics each, in sync), including new topics for the `fallback` and `route`
+    commands. The help system resolves `docs/help/<locale>/<topic>.md` and falls back to English.
+  - **Message catalog:** the shared `locales/en.json` / `locales/de.json` catalogs (consumed by the web
+    UI and now the CLI) are at **full key parity (475 keys each)** — the previously missing German
+    `governance.*` and `models.*` economics keys were filled in, and a new `cli.*` namespace was added
+    for the `fallback`, `route` and `hooks` commands in both languages.
+  - **Language resolver:** `resolveLocale()` honours `MERCURY_LANG` → `MERCURY_LOCALE` → `config.locale`,
+    normalises region tags (`de_DE` → `de`), and defaults to English. `MERCURY_LANG` is accepted as an
+    alias of `MERCURY_LOCALE` in config loading.
+  - The `fallback`, `route` and `hooks` command outputs are routed through the catalog, so they appear in
+    German when German is selected (e.g. `MERCURY_LANG=de mercury fallback list`).
+- **Documentation:** the setup guide (`docs/SETUP_GUIDE.md`) now explains how to define the fallback
+  chain (`llm.fallback`) and the criteria/routing chain (`llm.routing`) in `~/.mercury/config.yaml`, with
+  concrete YAML and CLI examples; `GUIDE.md`/`HANDBOOK.md` gained command-table rows and config-appendix
+  entries for both features; version references were bumped to 2.1.0.
+
+### Changed
+
+- Version bumped to **2.1.0** across the monorepo (root and all `packages/*`), with internal workspace
+  dependency ranges kept consistent. `mercury version` reports `mercury 2.1.0`.
+
 ## [2.0.0] - 2026-11-26
 
 ### Added

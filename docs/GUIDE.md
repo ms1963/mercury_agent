@@ -135,7 +135,7 @@ npm run build        # tsc project references → each package's dist/
 via TypeScript project references. After it finishes you can run the binary directly:
 
 ```bash
-node packages/cli/dist/bin.js version      # → "mercury 2.0.0"
+node packages/cli/dist/bin.js version      # → "mercury 2.1.0"
 node packages/cli/dist/bin.js doctor       # environment check (see Appendix E)
 ```
 
@@ -1554,6 +1554,8 @@ variables < CLI flags (see Appendix B), and `MERCURY_HOME` overrides the data di
 | `serve` | Start the HTTP server (REST + SSE + web UI + MCP endpoint). | `--port <n>` (default 3000) |
 | `setup` | Interactive first-run wizard: creates the admin user, picks a provider and default model, writes config. | `--username`, `--password`, `--provider`, `--model` |
 | `model [provider/model]` | Show the active default model, or set it (e.g. `model openai/gpt-4o`). | — |
+| `fallback` | Manage the automatic provider/model fallback chain (`llm.fallback`) tried, in order, when a model is unavailable. | `list`, `add <provider> <model> [--base-url u]`, `remove <provider> <model> --force`, `clear --force` |
+| `route` | Manage criteria-based model selection (`llm.routing`): pick a model by request criteria/tags. | `list`, `add <provider> <model> [criteria...]`, `remove <provider> <model> --force`, `clear --force` |
 | `tools` | Inspect and toggle tools. | `list`, `toolsets`, `enable <name>`, `disable <name>` |
 | `skills` | Manage skills (progressive-disclosure procedural memory). | `list`, `view <name>`, `install <src>` |
 | `schedule` | Manage scheduled tasks. | `list`, `add --when "<cron / natural>"`, `pause <id>`, `resume <id>`, `delete <id>`, `run <id>` |
@@ -1577,11 +1579,11 @@ variables < CLI flags (see Appendix B), and `MERCURY_HOME` overrides the data di
 | `doctor` | Environment / configuration health check (see Appendix E). | — |
 | `update` | Self-update the installation. | — |
 | `help [topic]` | Show help; with a topic, prints the matching help doc. | — |
-| `version`, `-v` | Print the version (prints `mercury 2.0.0`). | — |
+| `version`, `-v` | Print the version (prints `mercury 2.1.0`). | — |
 
-> **Version note.** This guide documents the **2.0.0** release (the root `package.json` is `2.0.0`).
+> **Version note.** This guide documents the **2.1.0** release (the root `package.json` is `2.1.0`).
 > `mercury version` in `packages/cli/src/bin.ts` resolves its string dynamically from the CLI
-> package.json, so it reports `mercury 2.0.0` and tracks the release automatically.
+> package.json, so it reports `mercury 2.1.0` and tracks the release automatically.
 
 > Honest-status note: `import-agent`, `update`, and `install.sh` have been exercised only against the
 > offline/mock setup in this repository; they have not been validated against a real Hermes install, a
@@ -1638,6 +1640,8 @@ shown is the default applied when the key is omitted. Keys are grouped by their 
 | `llm.circuitBreaker.cooldownMs` | `30000` | Time the breaker stays open before allowing a trial call (ms). |
 | `llm.circuitBreaker.halfOpenSuccesses` | `1` | Successful trial calls needed to close again from half-open. |
 | `llm.circuitBreaker.windowMs` | `60000` | Rolling window (ms) over which failures are counted while closed. |
+| `llm.fallback` | `[]` | **Automatic fallback chain (2.1.0).** Ordered list of `{provider, model, baseUrl?}` tried, in order, when the primary model is unavailable (model-not-found, bad/missing key, connection refused, rate-limit/overload). Request-intrinsic errors (context-overflow, bad-request, content-policy) are not retried on another model. Manage with `mercury fallback`. |
+| `llm.routing` | `[]` | **Criteria-based model selection (2.1.0).** List of `{provider, model, criteria[]}`; per request the most-specific entry whose criteria (profile tags: general/code/reasoning/fast/cheap/vision/local/private) all match is chosen. Empty criteria or `['default']` = catch-all. The selected model still uses the fallback chain. Manage with `mercury route`. |
 
 ### `router`
 

@@ -3,7 +3,7 @@
 # Mercury vs Hermes Agent — Capability Gaps
 
 **What this document is.** A grounded, command-level diff between **Hermes Agent** (Nous Research;
-the real installation present on this machine) and **Mercury Agent** (this repository at **v2.0.0**).
+the real installation present on this machine) and **Mercury Agent** (this repository at **v2.1.0**).
 
 **How it was produced (honesty note).**
 
@@ -58,6 +58,43 @@ presets as of v1.8.0); **voice** STT/TTS; **auth / tokens / RBAC / audit log**; 
 self-evaluation harness, the reliability/efficiency toolkit (circuit breaker, saga, TTL cache,
 single-flight), the **LLM Wiki**, declarative **add-ins**, per-agent **permission profiles**,
 **proactive** event triggers, and run **replay**. It also ships `import-agent` to migrate from Hermes.
+
+---
+
+## 2a. Internationalization (new in v2.1.0 — English + German)
+
+Mercury now ships a **complete bilingual (EN/DE) surface**, built on the i18n convention that already
+existed in the repo rather than a competing mechanism:
+
+- **Message catalog.** `locales/en.json` and `locales/de.json` are at **full key parity — 475 keys
+  each**, every German value non-empty (verified by test). This pass filled the previously-missing
+  German `governance.*` (24 keys) and the `models` economics group (10 keys), and added a new `cli.*`
+  namespace (`cli.fallback.*`, `cli.route.*`, `cli.hooks.*`) in BOTH languages for the recently added
+  commands. Catalogs are consumed through the existing `I18n` class
+  (`packages/core/src/i18n/i18n.ts`): dotted-key lookup, `{var}` interpolation, locale→en→key fallback.
+- **Locale resolver.** New `resolveLocale({configLocale, env})` in `i18n.ts` with a documented
+  precedence `MERCURY_LANG > MERCURY_LOCALE > config.locale > 'en'`; region tags are stripped and cased
+  (`de_DE`/`de-AT`/`DE` → `de`) and any unsupported locale falls back to English. `MERCURY_LANG` was
+  also wired into the config env-override map (`packages/core/src/config/load.ts`) as an alias of the
+  locale setting. `SUPPORTED_LOCALES = ['en','de']` is exported.
+- **CLI user-facing strings.** The newly added `fallbackCmd`, `routeCmd` and `hooksCmd` user-facing
+  outputs (22 strings) are now routed through `m.i18n.t('cli.…')` so they localize. Other pre-existing
+  hardcoded command strings (plugin/project/profile/session) were left untouched this pass — a known,
+  disclosed remainder, not full command-surface coverage.
+- **Help topics.** Every English help topic under `docs/help/` has a German counterpart under
+  `docs/help/de/` — **42 topics in each language, verified at parity by test** (added `fallback.md` and
+  `route.md` in both languages this pass; `hooks.md` already existed in both).
+- **Manuals.** `docs/SETUP_GUIDE.md`, `docs/GUIDE.md`, `docs/HANDBOOK.md`, `docs/WIKI.md`, `README.md`,
+  `CHANGELOG.md` and `STATUS.md` were updated for the fallback/route/hooks commands and the version bump
+  to **2.1.0**.
+- **Tests.** `tests/i18n.test.ts` (17 tests) covers the resolver precedence/normalization/fallback,
+  catalog resolution + interpolation in both languages, EN↔DE catalog key parity (no orphan or empty
+  keys), and EN↔DE help-topic file parity. `tests/help.test.ts` continues to cover runtime help
+  localization.
+- **Honesty note.** The i18n layer is exercised entirely offline (catalog + resolver + file parity);
+  full command-surface string coverage is intentionally partial (new features + prominent commands
+  first), and no live translation-quality review beyond consistency with the existing German help files
+  was performed.
 
 ---
 
@@ -306,5 +343,5 @@ Ordered by value-to-effort for a self-hosted agentic platform. Each tier is inde
   without a dedicated command).
 - The Hermes side is the Nous Research Hermes Agent installed on this host at the time of writing; a
   different Hermes version may expose a different command set.
-- The Mercury side is this repository at **v2.0.0**. Re-run `hermes --help` and `mercury help` to
+- The Mercury side is this repository at **v2.1.0**. Re-run `hermes --help` and `mercury help` to
   refresh this diff after either side changes.

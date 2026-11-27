@@ -2,7 +2,7 @@
 
 # ☿ The Mercury Agent Handbook
 
-### The complete, end-to-end handbook for users, administrators and developers — Mercury Agent v2.0.0
+### The complete, end-to-end handbook for users, administrators and developers — Mercury Agent v2.1.0
 
 ---
 
@@ -179,7 +179,7 @@ npm run build        # tsc project references → each package's dist/
 `npm run build` runs `tsc -b packages/cli packages/server`, which transitively builds every package through TypeScript project references. When it finishes you can run the binary directly:
 
 ```bash
-node packages/cli/dist/bin.js version      # → "mercury 2.0.0"
+node packages/cli/dist/bin.js version      # → "mercury 2.1.0"
 node packages/cli/dist/bin.js doctor       # environment health check (see Appendix C)
 ```
 
@@ -1638,6 +1638,8 @@ Invoke as `mercury <command>` (after `npm link` or the published bin) or `node p
 | `serve` | Start HTTP server (REST + SSE + web UI + `/mcp`) | `--port <n>` (default 3000) |
 | `setup` | First-run wizard (admin, provider, model, config) | `--username`, `--password`, `--provider`, `--model` |
 | `model [provider/model]` | Show or set the default model | — |
+| `fallback` | Automatic provider/model fallback chain (`llm.fallback`), tried in order when a model is unavailable | `list`, `add <provider> <model> [--base-url u]`, `remove <p> <m> --force`, `clear --force` |
+| `route` | Criteria-based model selection (`llm.routing`) — pick a model by request criteria/tags | `list`, `add <provider> <model> [criteria...]`, `remove <p> <m> --force`, `clear --force` |
 | `tools` | Inspect/toggle tools | `list`, `toolsets`, `enable <n>`, `disable <n>` |
 | `skills` | Manage skills | `list`, `view <n>`, `install <src>` |
 | `schedule` | Scheduled tasks | `list`, `add --when "…"`, `edit <id>`, `pause`, `resume`, `run <id>`, `delete <id>` |
@@ -1660,11 +1662,11 @@ Invoke as `mercury <command>` (after `npm link` or the published bin) or `node p
 | `doctor` | Environment/config health check | — |
 | `update` | Self-update the installation | — |
 | `help [topic]` | Help; with a topic prints that help doc | — |
-| `version`, `-v` | Print the version (**mercury 2.0.0**) | — |
+| `version`, `-v` | Print the version (**mercury 2.1.0**) | — |
 
-> **Version note.** This handbook documents the **Mercury Agent v2.0.0** release (the root
-> `package.json` is `2.0.0`). `mercury version` resolves its string dynamically from the CLI
-> package.json, so it reports **mercury 2.0.0** and tracks the release automatically.
+> **Version note.** This handbook documents the **Mercury Agent v2.1.0** release (the root
+> `package.json` is `2.1.0`). `mercury version` resolves its string dynamically from the CLI
+> package.json, so it reports **mercury 2.1.0** and tracks the release automatically.
 
 ## Appendix B — Data directory layout
 

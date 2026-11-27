@@ -38,6 +38,24 @@ export class I18n {
   }
 }
 
+/** Locales Mercury ships complete UI/CLI catalogs for. English is always the fallback. */
+export const SUPPORTED_LOCALES = ['en', 'de'] as const;
+export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
+
+/**
+ * Resolve the active UI/CLI locale from (in priority order) an explicit value, the
+ * `MERCURY_LANG` env var, the `MERCURY_LOCALE` env var, the loaded `config.locale`, and
+ * finally English. A region tag is dropped (`de_DE`/`de-AT` → `de`), the value is lower-cased,
+ * and anything outside {@link SUPPORTED_LOCALES} falls back to `'en'` so the resolver never
+ * returns a locale without a catalog.
+ */
+export function resolveLocale(opts: { configLocale?: string; env?: NodeJS.ProcessEnv } = {}): SupportedLocale {
+  const env = opts.env ?? process.env;
+  const raw = (env.MERCURY_LANG || env.MERCURY_LOCALE || opts.configLocale || 'en').trim().toLowerCase();
+  const short = raw.split(/[-_]/)[0];
+  return (SUPPORTED_LOCALES as readonly string[]).includes(short) ? (short as SupportedLocale) : 'en';
+}
+
 function lookup(cat: Catalog | undefined, key: string): string | undefined {
   if (!cat) return undefined;
   if (typeof cat[key] === 'string') return cat[key] as string;

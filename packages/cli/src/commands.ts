@@ -2272,14 +2272,14 @@ export async function hooksCmd(m: Mercury, a: Args): Promise<void> {
       const v = validateHookDef(entry);
       if (!v.ok) {
         process.exitCode = 1;
-        throw new Error(`invalid hook: ${v.errors.join('; ')}`);
+        throw new Error(m.i18n.t('cli.hooks.invalid', { errors: v.errors.join('; ') }));
       }
       const idx = entries.findIndex((e) => e.type === 'shell' && e.name === name);
       if (idx >= 0) entries[idx] = entry;
       else entries.push(entry);
       const file = persist(entries);
       if (json) return out({ saved: file, hook: v.def, overwritten: idx >= 0 }, true);
-      return out(`✓ ${idx >= 0 ? 'updated' : 'added'} shell hook "${name}" (${event}) → ${file}`);
+      return out(m.i18n.t(idx >= 0 ? 'cli.hooks.updated' : 'cli.hooks.added', { name, event, file }));
     }
 
     // ── remove ───────────────────────────────────────────────────────────────
@@ -2289,15 +2289,15 @@ export async function hooksCmd(m: Mercury, a: Args): Promise<void> {
       const idx = entries.findIndex((e) => e.type === 'shell' && e.name === name);
       if (idx < 0) {
         process.exitCode = 1;
-        throw new Error(`no shell hook named "${name}"`);
+        throw new Error(m.i18n.t('cli.hooks.noHook', { name }));
       }
       if (!a.flags.force) {
-        return out(`refusing to remove shell hook "${name}" without --force (re-run with --force to confirm)`);
+        return out(m.i18n.t('cli.hooks.refuseRemove', { name }));
       }
       entries.splice(idx, 1);
       const file = persist(entries);
       if (json) return out({ removed: name, saved: file }, true);
-      return out(`✓ removed shell hook "${name}" → ${file}`);
+      return out(m.i18n.t('cli.hooks.removed', { name, file }));
     }
 
     // ── run / test ───────────────────────────────────────────────────────────────
@@ -2308,7 +2308,7 @@ export async function hooksCmd(m: Mercury, a: Args): Promise<void> {
       const def = defs.find((d) => d.name === name);
       if (!def) {
         process.exitCode = 1;
-        throw new Error(`no shell hook named "${name}"`);
+        throw new Error(m.i18n.t('cli.hooks.noHook', { name }));
       }
       const event: HooksEventName = def.event === '*' ? 'run_start' : def.event;
       let userId = 'system';
@@ -2368,7 +2368,7 @@ export async function fallbackCmd(m: Mercury, a: Args): Promise<void> {
   switch (sub) {
     case 'list': {
       if (json) return out(entries, true);
-      if (!entries.length) return out('(no fallback chain configured — add one with: mercury fallback add <provider> <model>)');
+      if (!entries.length) return out(m.i18n.t('cli.fallback.none'));
       return out(entries.map((e, i) => `${String(i + 1).padStart(2)}. ${e.provider}/${e.model}${e.baseUrl ? `  (baseUrl: ${e.baseUrl})` : ''}`).join('\n'));
     }
     case 'add': {
@@ -2379,12 +2379,12 @@ export async function fallbackCmd(m: Mercury, a: Args): Promise<void> {
       const idx = entries.findIndex((e) => e.provider === provider && e.model === model && (e.baseUrl ?? '') === (baseUrl ?? ''));
       if (idx >= 0) {
         if (json) return out({ added: false, reason: 'already present', entry }, true);
-        return out(`fallback entry "${provider}/${model}" already in the chain (no change)`);
+        return out(m.i18n.t('cli.fallback.already', { id: `${provider}/${model}` }));
       }
       entries.push(entry);
       const file = persist(entries);
       if (json) return out({ added: true, entry, saved: file, chain: entries }, true);
-      return out(`✓ added fallback "${provider}/${model}" (position ${entries.length}) → ${file}`);
+      return out(m.i18n.t('cli.fallback.added', { id: `${provider}/${model}`, pos: entries.length, file }));
     }
     case 'remove':
     case 'rm': {
@@ -2393,19 +2393,19 @@ export async function fallbackCmd(m: Mercury, a: Args): Promise<void> {
       const idx = entries.findIndex((e) => e.provider === provider && e.model === model);
       if (idx < 0) {
         process.exitCode = 1;
-        throw new Error(`no fallback entry "${provider}/${model}" in the chain`);
+        throw new Error(m.i18n.t('cli.fallback.noEntry', { id: `${provider}/${model}` }));
       }
-      if (!a.flags.force) return out(`refusing to remove "${provider}/${model}" without --force (re-run with --force to confirm)`);
+      if (!a.flags.force) return out(m.i18n.t('cli.fallback.refuseRemove', { id: `${provider}/${model}` }));
       entries.splice(idx, 1);
       const file = persist(entries);
       if (json) return out({ removed: `${provider}/${model}`, saved: file }, true);
-      return out(`✓ removed fallback "${provider}/${model}" → ${file}`);
+      return out(m.i18n.t('cli.fallback.removed', { id: `${provider}/${model}`, file }));
     }
     case 'clear': {
-      if (!a.flags.force) return out(`refusing to clear the fallback chain without --force (re-run with --force to confirm)`);
+      if (!a.flags.force) return out(m.i18n.t('cli.fallback.refuseClear'));
       const file = persist([]);
       if (json) return out({ cleared: true, saved: file }, true);
-      return out(`✓ cleared the fallback chain → ${file}`);
+      return out(m.i18n.t('cli.fallback.cleared', { file }));
     }
     default:
       out(FALLBACK_HELP);
@@ -2443,13 +2443,13 @@ export async function routeCmd(m: Mercury, a: Args): Promise<void> {
   const describe = (e: RoutingEntry): string => {
     const crit = e.criteria.filter(Boolean);
     const isDefault = crit.length === 0 || (crit.length === 1 && crit[0] === 'default');
-    return `${e.provider}/${e.model}  [${isDefault ? 'default (catch-all)' : crit.join(', ')}]`;
+    return `${e.provider}/${e.model}  [${isDefault ? m.i18n.t('cli.route.catchAll') : crit.join(', ')}]`;
   };
 
   switch (sub) {
     case 'list': {
       if (json) return out(entries, true);
-      if (!entries.length) return out('(no routing chain configured — add one with: mercury route add <provider> <model> [criteria...])');
+      if (!entries.length) return out(m.i18n.t('cli.route.none'));
       return out(entries.map((e, i) => `${String(i + 1).padStart(2)}. ${describe(e)}`).join('\n'));
     }
     case 'add':
@@ -2463,7 +2463,7 @@ export async function routeCmd(m: Mercury, a: Args): Promise<void> {
       else entries.push(entry);
       const file = persist(entries);
       if (json) return out({ saved: file, entry, overwritten: idx >= 0, chain: entries }, true);
-      return out(`✓ ${idx >= 0 ? 'updated' : 'added'} route ${describe(entry)} → ${file}`);
+      return out(m.i18n.t(idx >= 0 ? 'cli.route.updated' : 'cli.route.added', { desc: describe(entry), file }));
     }
     case 'remove':
     case 'rm': {
@@ -2472,19 +2472,19 @@ export async function routeCmd(m: Mercury, a: Args): Promise<void> {
       const idx = entries.findIndex((e) => e.provider === provider && e.model === model);
       if (idx < 0) {
         process.exitCode = 1;
-        throw new Error(`no routing entry "${provider}/${model}" in the chain`);
+        throw new Error(m.i18n.t('cli.route.noEntry', { id: `${provider}/${model}` }));
       }
-      if (!a.flags.force) return out(`refusing to remove "${provider}/${model}" without --force (re-run with --force to confirm)`);
+      if (!a.flags.force) return out(m.i18n.t('cli.route.refuseRemove', { id: `${provider}/${model}` }));
       entries.splice(idx, 1);
       const file = persist(entries);
       if (json) return out({ removed: `${provider}/${model}`, saved: file }, true);
-      return out(`✓ removed route "${provider}/${model}" → ${file}`);
+      return out(m.i18n.t('cli.route.removed', { id: `${provider}/${model}`, file }));
     }
     case 'clear': {
-      if (!a.flags.force) return out(`refusing to clear the routing chain without --force (re-run with --force to confirm)`);
+      if (!a.flags.force) return out(m.i18n.t('cli.route.refuseClear'));
       const file = persist([]);
       if (json) return out({ cleared: true, saved: file }, true);
-      return out(`✓ cleared the routing chain → ${file}`);
+      return out(m.i18n.t('cli.route.cleared', { file }));
     }
     default:
       out(ROUTE_HELP);

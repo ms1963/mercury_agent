@@ -508,5 +508,36 @@
     "status": "Status",
     "name": "Name",
     "task": "Task"
+  },
+  "cli": {
+    "fallback": {
+      "none": "(no fallback chain configured — add one with: mercury fallback add <provider> <model>)",
+      "already": "fallback entry \"{id}\" already in the chain (no change)",
+      "added": "✓ added fallback \"{id}\" (position {pos}) → {file}",
+      "noEntry": "no fallback entry \"{id}\" in the chain",
+      "refuseRemove": "refusing to remove \"{id}\" without --force (re-run with --force to confirm)",
+      "removed": "✓ removed fallback \"{id}\" → {file}",
+      "refuseClear": "refusing to clear the fallback chain without --force (re-run with --force to confirm)",
+      "cleared": "✓ cleared the fallback chain → {file}"
+    },
+    "route": {
+      "none": "(no routing chain configured — add one with: mercury route add <provider> <model> [criteria...])",
+      "catchAll": "default (catch-all)",
+      "added": "✓ added route {desc} → {file}",
+      "updated": "✓ updated route {desc} → {file}",
+      "noEntry": "no routing entry \"{id}\" in the chain",
+      "refuseRemove": "refusing to remove \"{id}\" without --force (re-run with --force to confirm)",
+      "removed": "✓ removed route \"{id}\" → {file}",
+      "refuseClear": "refusing to clear the routing chain without --force (re-run with --force to confirm)",
+      "cleared": "✓ cleared the routing chain → {file}"
+    },
+    "hooks": {
+      "added": "✓ added shell hook \"{name}\" ({event}) → {file}",
+      "updated": "✓ updated shell hook \"{name}\" ({event}) → {file}",
+      "noHook": "no shell hook named \"{name}\"",
+      "refuseRemove": "refusing to remove shell hook \"{name}\" without --force (re-run with --force to confirm)",
+      "removed": "✓ removed shell hook \"{name}\" → {file}",
+      "invalid": "invalid hook: {errors}"
+    }
   }
 }
