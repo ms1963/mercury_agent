@@ -143,6 +143,49 @@ path). Treat real-LLM authoring and production-sandbox execution as **experiment
 
 ---
 
+## 2c. Hands-free voice mode in the web chat UI (new — ChatLLM-style)
+
+**What was added.** The web chat UI (`packages/server/public`) gained a **ChatLLM-style hands-free
+voice experience** on top of the pre-existing server-side voice (the manual per-message 🔊 play button
+and the MediaRecorder → `/api/voice/transcribe` mic). Two behaviours were the gap and are now closed:
+
+- **Automatic read-aloud toggle** — a 🔊/🔇 button in the chat header (persisted in `localStorage`
+  under `mercury.voice.autospeak`, **OFF by default**). When ON, every completed assistant reply is
+  spoken automatically; toggling it off cancels any in-progress speech.
+- **Hands-free mic with optional auto-send** — the 🎤 mic now prefers the browser's native
+  speech-to-text, shows a clear "listening…" state, and (when the 🗣/🖐 auto-send toggle is ON,
+  persisted under `mercury.voice.autosend`, **OFF by default**) sends the spoken command automatically.
+
+**Progressive enhancement (the design point).** Browser-native Web Speech APIs are the **primary**
+path and need no server models: `window.speechSynthesis` for read-aloud and
+`SpeechRecognition`/`webkitSpeechRecognition` for the mic, with the UI language mapped to a speech
+language (`de-*` → `de-DE`, else `en-US`). The existing server endpoints `/api/voice/speak` (piper)
+and `/api/voice/transcribe` (whisper) remain the **graceful fallback** when the browser APIs are
+absent. Nothing hard-fails: if neither path is available the controls degrade quietly and text chat is
+unaffected.
+
+**Code / tests.** New testable module `packages/server/public/js/voice.js` exports pure/injectable
+helpers (`speakableText` markdown→speech stripper, `resolveSpeechLang`, `pickVoice`, capability
+detection, `chooseSpeakPath`/`chooseListenPath` fallback selection, and `createSpeaker` /
+`createRecognitionListener` wrappers). `chat.js` consumes them. **23 offline unit tests** in
+`tests/voice-web.test.ts` drive every helper and both wrappers with **fake browser globals** (no real
+microphone, speaker or DOM). EN/DE i18n parity is maintained (new `chat.readAloud*`, `chat.listening`,
+`chat.autoSend*` keys in both catalogs).
+
+**Caveats / untested surface (honest).**
+
+- **Browser support for the Web Speech API varies.** Chrome/Edge support `SpeechRecognition`;
+  **Firefox and (older) Safari do not**, and `speechSynthesis` voice availability differs per
+  platform. Hence the server fallback — but note the fallback depends on the piper/whisper binaries,
+  which live on the VM system disk and are **not present in every deployment**.
+- **The DOM wiring in `chat.js`** (button rendering, event handlers, `localStorage` persistence, the
+  `type === 'done'` auto-speak hook) is **not unit-tested** — only the extracted helpers are. It was
+  verified manually against a locally-served dev instance (page loads, controls render).
+- Browser-native STT requires an **HTTPS origin** (or `localhost`) and a user gesture to grant mic
+  permission — unchanged from the previous MediaRecorder behaviour.
+
+---
+
 ## 3. Vendor-specific (out of scope — match only if you choose to)
 
 `portal` (Nous Portal login/model/tool-gateway), `claw` (OpenClaw migration), `pets` / petdex

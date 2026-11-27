@@ -65,7 +65,14 @@
   "deny": "Deny",
   "approvalNeeded": "Approval needed",
   "good": "Good answer",
-  "bad": "Bad answer"
+  "bad": "Bad answer",
+  "readAloud": "Read answers aloud",
+  "readAloudOn": "on",
+  "readAloudOff": "off",
+  "listening": "Listening…",
+  "autoSend": "Auto-send voice",
+  "autoSendOn": "on",
+  "autoSendOff": "off"
  },
  "common": {
   "refresh": "Refresh",

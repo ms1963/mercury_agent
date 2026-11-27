@@ -65,7 +65,14 @@
   "deny": "Ablehnen",
   "approvalNeeded": "Freigabe erforderlich",
   "good": "Gute Antwort",
-  "bad": "Schlechte Antwort"
+  "bad": "Schlechte Antwort",
+  "readAloud": "Antworten vorlesen",
+  "readAloudOn": "an",
+  "readAloudOff": "aus",
+  "listening": "Höre zu…",
+  "autoSend": "Sprache autom. senden",
+  "autoSendOn": "an",
+  "autoSendOff": "aus"
  },
  "common": {
   "refresh": "Aktualisieren",

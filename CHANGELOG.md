@@ -17,6 +17,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Hands-free voice mode in the web chat UI (ChatLLM-style)** — the browser chat gained an automatic
+  **read-aloud toggle** (🔊/🔇 in the chat header, persisted, OFF by default) that speaks each completed
+  assistant reply, and a **hands-free mic** that prefers the browser's native speech-to-text with a clear
+  "listening…" state and an optional **auto-send** toggle (🗣/🖐, persisted, OFF by default) so a spoken
+  command sends itself. Built as **progressive enhancement**: `window.speechSynthesis` and
+  `SpeechRecognition`/`webkitSpeechRecognition` are the primary, zero-setup path (UI language → `de-DE`/
+  `en-US`), with the existing `POST /api/voice/speak` (piper) and `POST /api/voice/transcribe` (whisper)
+  endpoints as the graceful fallback; the manual per-message 🔊 button stays. New testable module
+  `packages/server/public/js/voice.js` (pure helpers: markdown→speakable text, language/voice resolution,
+  capability + fallback-path selection, speaker/listener wrappers) consumed by `chat.js`, with **23
+  offline unit tests** (`tests/voice-web.test.ts`) using fake browser globals (no real mic/speaker/DOM).
+  New EN/DE i18n keys (`chat.readAloud*`, `chat.listening`, `chat.autoSend*`) keep catalog parity. See
+  `docs/GAPS.md` §2c for the browser-support caveat and the untested DOM-wiring surface.
+
 - **Self-extending tools / dynamic tool synthesis (`mercury selfextend ...`)** — Mercury can now DRAFT a
   brand-new tool when a capability is repeatedly needed but no registered tool provides it. **High-risk, so
   DISABLED BY DEFAULT** behind the master `selfExtension.enabled = false` kill-switch (a hard, localized
