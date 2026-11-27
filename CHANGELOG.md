@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-11-27
+
 ### Changed
 
 - **Repository hygiene** — hardened `.gitignore` with generalized patterns for editor/OS/backup/temp
@@ -30,6 +32,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   offline unit tests** (`tests/voice-web.test.ts`) using fake browser globals (no real mic/speaker/DOM).
   New EN/DE i18n keys (`chat.readAloud*`, `chat.listening`, `chat.autoSend*`) keep catalog parity. See
   `docs/GAPS.md` §2c for the browser-support caveat and the untested DOM-wiring surface.
+
+## [2.2.0] - 2026-11-27
+
+### Added
 
 - **Self-extending tools / dynamic tool synthesis (`mercury selfextend ...`)** — Mercury can now DRAFT a
   brand-new tool when a capability is repeatedly needed but no registered tool provides it. **High-risk, so

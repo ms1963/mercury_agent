@@ -145,6 +145,8 @@ path). Treat real-LLM authoring and production-sandbox execution as **experiment
 
 ## 2c. Hands-free voice mode in the web chat UI (new — ChatLLM-style)
 
+**Status: SHIPPED in v2.2.1** (commit `30210dd`).
+
 **What was added.** The web chat UI (`packages/server/public`) gained a **ChatLLM-style hands-free
 voice experience** on top of the pre-existing server-side voice (the manual per-message 🔊 play button
 and the MediaRecorder → `/api/voice/transcribe` mic). Two behaviours were the gap and are now closed:
