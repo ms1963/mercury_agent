@@ -10,3 +10,8 @@ mercury.db-*
 *.log
 install.exit
 .abacus.donotdelete
+
+# VM-only artifacts (not part of the repo)
+checkers.py
+deploy/14444ce25a.conf
+e2e_out/
