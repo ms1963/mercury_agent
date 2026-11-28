@@ -240,6 +240,46 @@ clean machine) without hand-editing unit files.
 
 ---
 
+## 2d. Clear, fail-fast error when a cloud LLM provider has no API key (fix)
+
+**Reported symptom.** After `mercury-setup.sh` with OpenRouter credentials, `mercury chat` returned:
+
+```
+Error: All models failed. openrouter/openai/gpt-4o-mini: 401 from openrouter.ai:
+{"error":{"message":"Missing Authentication header","code":401}}
+```
+
+**Investigation (reproduced on this VM).** `mercury chat` itself is correct: with the key present in
+`~/.mercury/.env` (the file the setup script writes), a clean `setup → chat` flow works. The failure
+appears when a key-requiring **cloud** provider (`openrouter`/`openai`/`chatllm`) is registered but no
+key reaches `process.env` at request time — e.g. an `llm.providers.openrouter` entry enabled in
+`config.yaml` while the key is absent from the environment (or shadowed by a `./.env` in the working
+directory / an exported empty shell variable, since the `.env` loader is first-wins and never overrides
+an existing var). `OpenAICompatibleProvider.headers()` adds `Authorization: Bearer …` **only when the
+key is truthy**, so a keyless provider sent a request with no auth header and OpenRouter answered with
+the empty-key 401 (`Missing Authentication header` / `No cookie auth credentials found`). A second
+contributor: `createProvider` resolved the key with `??`, which passes through an empty string, so a
+stray `apiKey: ''` in config or an exported-empty var defeated the env fallback.
+
+**Fix.**
+- `resolveProviderApiKey(pc, env)` (new, exported from `packages/core/src/llm/registry.ts`) resolves
+  the key across config → `apiKeyEnv` → conventional env var → `ABACUS_API_KEY` (ChatLLM), normalizing
+  every candidate with `|| undefined` so an **empty string is treated as unset** and the next source is
+  consulted. `createProvider` now uses it.
+- `OpenAICompatibleProvider` (openai/openrouter/chatllm) and `AnthropicProvider` now **fail fast** at
+  `chat()` time when their required key is missing, with an actionable `MercuryError` that names the env
+  var (`OPENROUTER_API_KEY`, …), points at `~/.mercury/.env` and `llm.providers.<id>.apiKey`, and warns
+  about the `./.env` / shell-variable shadowing precedence — instead of a cryptic upstream 401. Local
+  providers (`ollama`, `lmstudio`, `openai-compatible`) are intentionally never blocked (they may run
+  keyless). After the fix the reproduction yields the clear local error; a run with the key present
+  still succeeds.
+
+**Tests.** `tests/provider-missing-key.test.ts` (11 offline tests): `resolveProviderApiKey` precedence
+and empty-string normalization; openrouter/openai/anthropic fail-fast with the right env-var name and
+the shadowing caveat in the message; and that a local `ollama` provider is not blocked.
+
+---
+
 ## 3. Vendor-specific (out of scope — match only if you choose to)
 
 `portal` (Nous Portal login/model/tool-gateway), `claw` (OpenClaw migration), `pets` / petdex

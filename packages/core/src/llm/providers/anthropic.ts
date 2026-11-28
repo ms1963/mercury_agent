@@ -2,7 +2,7 @@
  * Anthropic Messages API provider (native tool use, vision, streaming).
  */
 import type { DeltaHandler, LLMRequest, LLMResponse, ModelCapabilities, ModelInfo, ToolCall } from '../../types/messages.js';
-import { safeJsonParse } from '../../types/common.js';
+import { MercuryError, safeJsonParse } from '../../types/common.js';
 import { nativeImages, textWithAttachments } from '../content.js';
 import { guessCapabilities, postJson, sseData, type LLMProvider } from '../provider.js';
 
@@ -80,6 +80,15 @@ export class AnthropicProvider implements LLMProvider {
   }
 
   async chat(req: LLMRequest, onDelta?: DeltaHandler): Promise<LLMResponse> {
+    if (!this.opts.apiKey) {
+      throw new MercuryError(
+        `No API key for provider "${this.id}". Set ANTHROPIC_API_KEY in ~/.mercury/.env (or llm.providers.${this.id}.apiKey in config.yaml). ` +
+          `Note: keys in a ./.env of the current directory, or an exported shell variable of the same name, take precedence and can shadow ~/.mercury/.env.`,
+        'missing_api_key',
+        'models',
+        401,
+      );
+    }
     const { system, messages } = this.toWire(req);
     const body: Record<string, unknown> = {
       model: req.model,

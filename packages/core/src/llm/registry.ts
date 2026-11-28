@@ -130,18 +130,32 @@ export function normalizeProfile(p: Partial<ModelProfile> & { id: string }): Mod
   };
 }
 
+/**
+ * Resolve a provider's API key from (in order) the config value, an explicit `apiKeyEnv`, the
+ * type's conventional env var, and finally ABACUS_API_KEY for ChatLLM.
+ *
+ * Every candidate is normalized with `|| undefined` so an EMPTY STRING is treated as "not set" and
+ * the next source is consulted. This matters because `??` only falls through on null/undefined: a
+ * stray `apiKey: ''` in config, or an exported-but-empty `OPENROUTER_API_KEY`, would otherwise win
+ * and leave the provider keyless (producing an upstream "Missing Authentication header" 401).
+ */
+export function resolveProviderApiKey(pc: ProviderConfig, env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return (
+    (pc.apiKey || undefined) ??
+    (pc.apiKeyEnv ? env[pc.apiKeyEnv] || undefined : undefined) ??
+    (ENV_KEYS[pc.type] ? env[ENV_KEYS[pc.type]!] || undefined : undefined) ??
+    // ChatLLM also accepts the standard Abacus.AI API key.
+    (pc.type === 'chatllm' ? env.ABACUS_API_KEY || undefined : undefined)
+  );
+}
+
 export function createProvider(
   id: string,
   pc: ProviderConfig,
   timeoutMs: number,
   capabilityOverrides?: (model: string) => Partial<ModelCapabilities> | undefined,
 ): LLMProvider {
-  const apiKey =
-    pc.apiKey ??
-    (pc.apiKeyEnv ? process.env[pc.apiKeyEnv] : undefined) ??
-    (ENV_KEYS[pc.type] ? process.env[ENV_KEYS[pc.type]!] : undefined) ??
-    // ChatLLM also accepts the standard Abacus.AI API key.
-    (pc.type === 'chatllm' ? process.env.ABACUS_API_KEY : undefined);
+  const apiKey = resolveProviderApiKey(pc);
   switch (pc.type) {
     case 'anthropic':
       return new AnthropicProvider({ id, apiKey, baseUrl: pc.baseUrl, timeoutMs });

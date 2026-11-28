@@ -3,7 +3,7 @@
  * Ollama (/v1), vLLM, llama.cpp server and any other OpenAI-compatible endpoint.
  */
 import type { DeltaHandler, LLMRequest, LLMResponse, ModelCapabilities, ModelInfo, ToolCall } from '../../types/messages.js';
-import { safeJsonParse } from '../../types/common.js';
+import { MercuryError, safeJsonParse } from '../../types/common.js';
 import { nativeImages, textWithAttachments } from '../content.js';
 import { guessCapabilities, postJson, sseData, type LLMProvider } from '../provider.js';
 
@@ -26,6 +26,17 @@ export const DEFAULT_BASE_URLS: Record<string, string> = {
   chatllm: 'https://routellm.abacus.ai/v1',
 };
 
+/**
+ * Cloud provider types that cannot work without an API key, mapped to the env var that supplies it.
+ * Local/self-hosted endpoints (ollama, lmstudio, openai-compatible) are intentionally absent — they
+ * may run without any key, so they are never blocked here.
+ */
+export const KEY_REQUIRED_ENV: Record<string, string> = {
+  openai: 'OPENAI_API_KEY',
+  openrouter: 'OPENROUTER_API_KEY',
+  chatllm: 'CHATLLM_API_KEY',
+};
+
 type WireMessage = Record<string, unknown>;
 
 export class OpenAICompatibleProvider implements LLMProvider {
@@ -38,6 +49,25 @@ export class OpenAICompatibleProvider implements LLMProvider {
 
   capabilities(model: string): ModelCapabilities {
     return { ...guessCapabilities(model), ...this.opts.capabilityOverrides?.(model) };
+  }
+
+  /**
+   * Fail fast with an actionable message when a key-requiring cloud provider has no API key.
+   * Without this, a keyless provider silently sends a request with no Authorization header and the
+   * upstream returns a cryptic 401 ("Missing Authentication header" / "No cookie auth credentials
+   * found") that gives the user no hint about what to fix.
+   */
+  private ensureAuth(): void {
+    const envName = KEY_REQUIRED_ENV[this.type];
+    if (envName && !this.opts.apiKey) {
+      throw new MercuryError(
+        `No API key for provider "${this.id}". Set ${envName} in ~/.mercury/.env (or llm.providers.${this.id}.apiKey in config.yaml). ` +
+          `Note: keys in a ./.env of the current directory, or an exported shell variable of the same name, take precedence and can shadow ~/.mercury/.env.`,
+        'missing_api_key',
+        'models',
+        401,
+      );
+    }
   }
 
   private headers(): Record<string, string> {
@@ -81,6 +111,7 @@ export class OpenAICompatibleProvider implements LLMProvider {
   }
 
   async chat(req: LLMRequest, onDelta?: DeltaHandler): Promise<LLMResponse> {
+    this.ensureAuth();
     const body: Record<string, unknown> = {
       model: req.model,
       messages: this.toWire(req),
