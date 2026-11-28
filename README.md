@@ -41,6 +41,12 @@ node packages/cli/dist/bin.js setup            # interactive: admin user + LLM p
 node packages/cli/dist/bin.js serve            # web UI + API on http://localhost:3000
 ```
 
+For a **guided cross-platform install + configure + deploy** (Linux/macOS: `scripts/mercury-setup.sh`;
+Windows: `scripts/mercury-setup.ps1`) that prompts for the LLM provider (OpenRouter/Ollama), model, Jev
+and voice, then deploys an auto-starting service (systemd/launchd/Scheduled Task) — and a matching
+teardown (`scripts/mercury-teardown.{sh,ps1}`) that stops and completely erases it — see those scripts
+under `scripts/`.
+
 Or run `./install.sh` (builds and `npm link`s a global `mercury` binary), or use Docker:
 
 ```bash

@@ -198,6 +198,48 @@ header, GUIDE version note, STATUS §0d, README) alongside every workspace `pack
 
 ---
 
+## 2c. Cross-platform install / configure / deploy + teardown scripts (new)
+
+Mercury now ships **cross-platform operator scripts** under `scripts/` covering **Linux, macOS, and
+Windows**, so a user can go from a clean machine to a running, auto-starting service (and back to a
+clean machine) without hand-editing unit files.
+
+- **Design note (OS coverage).** Each task is **one POSIX bash script that handles BOTH Linux and macOS**
+  by branching on `uname` (systemd on Linux, launchd on macOS), **plus one PowerShell `.ps1`** for
+  Windows (Scheduled Task). Each script's header documents which OSes it covers.
+- **Install + configure + deploy** — `scripts/mercury-setup.sh` (Linux/macOS) and
+  `scripts/mercury-setup.ps1` (Windows): prerequisite checks (git, Node ≥ 22.5.0, npm — fail with a
+  `nodejs.org` pointer, no auto-install of Node); clone (or `git pull --ff-only`) from GitHub
+  (`MERCURY_REPO`, default install dir `~/mercury` via `MERCURY_DIR`); `npm ci`→`npm install` fallback
+  then `npm run build`; `npm link` with a `node …/bin.js` runner fallback. Interactive prompts — each
+  with a default and an env/flag override for unattended runs — for **provider (OpenRouter | Ollama
+  only)**, **model** (defaults `openrouter/openai/gpt-4o-mini` / `ollama/llama3.1`), the OpenRouter API
+  key (written to `~/.mercury/.env`, `chmod 600`, never echoed) or the Ollama base URL (+ optional
+  `ollama pull`), the **Jev decision engine** (`decision.provider jev|llm`, with an `auto` fallback
+  warning when Ollama is chosen without an OpenRouter key), **offline voice** (best-effort
+  `ffmpeg`+`whisper`+`piper`, then `voice use stt whisper` / `tts piper`), and the admin
+  username/password. Config is applied via non-interactive `mercury setup`. Deploy is an auto-starting
+  **systemd** (`--user` by default, `--system` with sudo) / **launchd** / **Scheduled Task** service
+  (generated for the actual install dir + current user, a copy kept beside the install so teardown can
+  find it), then polls `http://localhost:3000`. `--no-deploy` configures only.
+- **Teardown (stop + completely erase)** — `scripts/mercury-teardown.sh` (Linux/macOS) and
+  `scripts/mercury-teardown.ps1` (Windows): stop running processes (`bin.js serve` / `mercury serve`),
+  remove the deployed service (systemd user **and** system, launchd, or Scheduled Task), delete all
+  data/config (`~/.mercury`, `~/.mercury-profiles`, `~/.config/mercury` — honoring `MERCURY_HOME` /
+  `MERCURY_PROFILES_HOME` / `MERCURY_DATA_DIR`), the source clone(s) (`~/.mercury-src`, `~/mercury`, or
+  `MERCURY_DIR`), backup archives (`mercury-*.mbak`), and the global npm package / `mercury` link.
+  Interactive confirmation with `--yes`/`-y` (`-Yes`/`-Force` on PowerShell), optional `--backup`, and a
+  closing verification section. Extends the earlier `scripts/mercury-uninstall.sh` with the
+  service-removal logic and the Windows equivalent.
+- **Tests.** `tests/install-scripts.test.ts` (offline, fast) asserts all four scripts exist, runs
+  `bash -n` on each `.sh` (exit 0), runs `shellcheck` when available (skips gracefully otherwise), and
+  checks each script's contents for the required capability markers (OpenRouter/Ollama, model prompt,
+  Jev, whisper/piper, systemd/launchd/Scheduled Task, process-stop, `~/.mercury` + service removal). The
+  scripts are **not executed** against any host. Both bash scripts pass `bash -n` and `shellcheck`
+  clean.
+
+---
+
 ## 3. Vendor-specific (out of scope — match only if you choose to)
 
 `portal` (Nous Portal login/model/tool-gateway), `claw` (OpenClaw migration), `pets` / petdex
