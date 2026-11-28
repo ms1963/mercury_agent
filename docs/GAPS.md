@@ -141,6 +141,10 @@ drafts. **Not verified in CI:** the quality of drafts produced by a real product
 inside the full polyglot/Docker host sandbox (CI exercises the lighter host child-process compile/test
 path). Treat real-LLM authoring and production-sandbox execution as **experimental**.
 
+**Architecture.** The end-to-end design — core `synthesis/` module, the `packages/tools/src/synthesis/runners.ts`
+out-of-process compile/test path, the `m.synthesizer` wiring, the `tool.miss` trigger, and the gated pipeline —
+is documented in **[`ARCHITECTURE.md`](./ARCHITECTURE.md) §5.25 ("Self-extending tools")**.
+
 ---
 
 ## 2c. Hands-free voice mode in the web chat UI (new — ChatLLM-style)
@@ -177,7 +181,8 @@ microphone, speaker or DOM). EN/DE i18n parity is maintained (new `chat.readAlou
 **Documentation.** The handbook now documents this end-to-end in **[`HANDBOOK.md`](./HANDBOOK.md) §3.7
 ("Hands-free voice mode in the web chat")**, and the v2.2.1 release is reflected across the docs (handbook
 header, GUIDE version note, STATUS §0d, README) alongside every workspace `package.json` now reporting
-`2.2.1`.
+`2.2.1`. The architecture-level design (browser Web Speech layer, `voice.js` helpers, and the server
+`/api/voice/*` fallback) is covered in **[`ARCHITECTURE.md`](./ARCHITECTURE.md) §5.26 ("Hands-free voice mode")**.
 
 **Caveats / untested surface (honest).**
 

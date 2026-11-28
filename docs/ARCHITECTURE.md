@@ -8,6 +8,13 @@ layer, a typed decision engine (Jev), RBAC, token budgets and an MCP server.
 This document explains *how the system is put together*. For security details see
 [SECURITY.md](SECURITY.md); for writing extensions see [EXTENDING.md](EXTENDING.md).
 
+> **Covers Mercury up to v2.2.1.** Relative to the v2.1.x architecture, v2.2.x adds two
+> subsystems documented below: **self-extending tools / dynamic tool synthesis** (§5.25,
+> shipped in v2.2.0, **disabled by default**) and the **hands-free voice mode** in the web
+> chat (§5.26, shipped in v2.2.1, a progressive-enhancement front end over the existing voice
+> subsystem of §5.4/§7). Both are additive and backward-compatible; nothing in the v2.1.x
+> flows changed. See [CHANGELOG.md](../CHANGELOG.md) for the release notes.
+
 ---
 
 ## 1. Design principles
@@ -85,6 +92,28 @@ flowchart TB
 | Learning | Experience hints, auto-tuned routing, failure playbooks (from run history) | `core/src/learning` |
 | Foundation | Config, DB, events, logging, security, auth, budgets, i18n, help | `core/src/{config,db,events,logging,security,auth,budgets,i18n,help}` |
 
+**Reading the diagram.** The graph is read top-to-bottom as a strict dependency gradient: every
+box only ever calls boxes *below* it, never above or sideways out of its layer, which is what keeps
+the system testable in isolation. At the top, the five **Frontends** are interchangeable skins —
+the CLI/REPL, the web SPA (talking HTTP+SSE to the Fastify server), the MCP *server* (exposing
+Mercury to other agents over stdio/HTTP), the messaging gateway and the scheduler — and each one
+does nothing but translate its transport into a call on the single composition root `RT`
+(`createMercury()`). Because they all share that one root, a capability added once (a new tool, a
+new pattern) appears on every frontend at the same time with no per-frontend wiring. **Orchestration**
+is the agent loop and the workflow engine that drives it; note that `WF → AG`, i.e. a workflow is
+just a structured way to spawn and sequence agents, not a parallel code path. The agent fans out to
+three services — the model **Router**, the **Tool Executor** and **Reflection** — and each of those
+consults the **Judgment** layer (Jev/LLM/Mock decisions) rather than hard-coding a choice; that
+single `… --> DEC` convergence is why routing, tool-approval gating and self-scoring can all be
+swapped between a real decision model and a deterministic mock without touching their callers.
+**Capabilities** (LLM providers, memory, skills, the tool catalog) are leaf services that hold no
+orchestration logic. **Learning** sits off to the side on purpose: it only *observes* the run
+history (`AG/RTR → LRN → DB`) and feeds back a suggestion the router is free to ignore, so it can
+be disabled with zero behavioural change. Everything ultimately rests on **Foundation** — config,
+the SQLite+FTS5 database, the event bus/tracer, and the security/auth/budget gates — which is the
+only layer every other layer is allowed to depend on. The table above maps each of these boxes to
+the concrete package or folder that implements it.
+
 ---
 
 ## 3. Package map
@@ -97,9 +126,10 @@ mercury/
 │  │     types/  config/  db/  events/  logging/  security/  auth/  budgets/
 │  │     llm/  router/  decision/  agent/  agent/patterns/  memory/  skills/ (+composer)
 │  │     learning/  distill/  timetravel/  evals/  bundles/  teams/  reflection/  tools/ (registry+executor)  workflows/  scheduler/
-│  │     attachments/  voice/  plugins/  checkpoints/  i18n/  help/  extensions/
+│  │     synthesis/ (self-extending tools, v2.2.0)  attachments/  voice/  plugins/  checkpoints/  i18n/  help/  extensions/
 │  ├─ tools/       @mercury/tools    — 50+ built-in tools, toolsets, polyglot runner,
-│  │                                    execute_code sandbox, terminal & browser backends
+│  │                                    execute_code sandbox, terminal & browser backends,
+│  │                                    synthesis/ (out-of-process compile/test runners for synthesized tools, v2.2.0)
 │  ├─ mcp/         @mercury/mcp      — MCP client manager + Mercury-as-MCP-server + curated presets
 │  ├─ gateway/     @mercury/gateway  — adapter SDK, gateway runner, 19 adapters
 │  ├─ runtime/     @mercury/runtime  — createMercury(): composition root
@@ -116,6 +146,25 @@ mercury/
 
 Dependency direction: `cli, server → runtime → {tools, mcp, gateway} → core`. `core` depends
 only on `zod` and `yaml` (and Node built-ins, including `node:sqlite`).
+
+**Reading the tree.** The repository is an npm-workspaces monorepo, and the nesting mirrors the
+dependency rule stated just above: the seven `packages/*` are the only publishable units, and the
+arrow `cli, server → runtime → {tools, mcp, gateway} → core` is acyclic — `core` is the leaf that
+everything imports and that imports nothing from its siblings, which is why its only third-party
+dependencies are `zod` (schema validation) and `yaml`. Everything under `packages/core/src/` is a
+*folder per subsystem*, and each of those folders maps one-to-one to a numbered subsection of §5
+below (e.g. `decision/` → §5.2, `synthesis/` → §5.25), so the two listings are meant to be read
+together. The split between `core/src/synthesis/` and `packages/tools/src/synthesis/` is the
+load-bearing design choice behind self-extending tools (§5.25): all the *pure, injectable* logic
+(gap detection, authoring prompts, policy checks, the registry) lives in `core` with no ability to
+spawn a process, while the part that actually compiles and executes a drafted tool out-of-process
+lives in `packages/tools` — so `core` stays side-effect-free and unit-testable, and the dangerous
+capability is isolated in one auditable place. The remaining top-level folders (`skills/`,
+`tools/`, `workflows/`, `personalities/`, `locales/`, `docs/`, `deploy/`) are **content, not code**:
+they are the bundled defaults and the i18n/documentation/deployment assets that ship with the
+product and are also the discovery roots that user extensions (under `~/.mercury/…`) layer on top of
+(§6). `deploy/` carries two Dockerfiles because offline voice (piper/whisper) pulls in heavy native
+binaries kept out of the default image.
 
 ---
 
@@ -150,9 +199,34 @@ sequenceDiagram
   A->>X: post-task reflection (score, lessons, skill create/refine, calibration)
 ```
 
+**Reading the diagram.** This is the life of a single chat turn, and the order of the arrows is the
+order the guarantees are enforced. The turn begins when any frontend normalizes its input and calls
+`run()` with a `{sessionId, userId, input}` triple — the `userId` is what every downstream scope
+(memory, budgets, RBAC) keys on, so authentication has already happened before the agent sees the
+message. The **first** thing the agent does is run the *input* guardrail (injection heuristics,
+classifier, PII) — deliberately before any model or memory access, so a prompt-injection attempt is
+caught before it can influence context assembly. Context is then *built, not just fetched*: SOUL/AGENTS
+files, curated `MEMORY.md`/`USER.md`, the skills index (names+descriptions only — progressive
+disclosure, §5.5), semantic recall and the learned experience hint (§5.17) are assembled into the
+prompt. Model selection happens once per turn through the router (§5.3), which may consult Jev and the
+learned-routing table. The **loop** is the ReAct pattern by default (other patterns from §5.1 slot in
+here unchanged): every iteration does a *pre-call* budget check (so a turn cannot overspend by making
+the call first and counting after), streams the LLM response as `llm.delta` events, records actual
+usage, and then runs any tool calls through the full `ToolExecutor` pipeline (policy → grants →
+approval → sandbox → timeout → taint, §5.6/§5.13). The `T-->>A: results tagged <untrusted>` arrow is
+the trust boundary in action — anything a tool brought back from outside is marked so it can never
+silently trigger a sensitive action later. After the loop, the *output* guardrail redacts secrets/PII
+from the final answer, the answer streams back to the frontend, and only then — out of the user's
+critical path — does post-task **reflection** score the run, extract lessons, create/refine skills and
+feed the calibration loop. When self-extending tools are enabled (§5.25), a tool call that matches no
+registered tool additionally emits a `tool.miss` event here, which is what the gap detector counts.
+
 Every arrow above emits an event (`run.start`, `llm.request`, `llm.delta`, `llm.response`,
-`tool.call`, `tool.result`, `decision`, `memory.*`, `guardrail.*`, `run.end`) carrying `runId`,
-`spanId` and `parentSpanId`. Events are persisted (`events` table) for replay and debugging.
+`tool.call`, `tool.result`, `tool.miss` (§5.25), `decision`, `memory.*`, `guardrail.*`, `run.end`)
+carrying `runId`, `spanId` and `parentSpanId`. Events are persisted (`events` table) for replay and
+debugging — this single stream is also the substrate every later subsystem reuses: traces (§5.20),
+learning (§5.17), evals (§5.21) and the governance audit trail (§5.13) are all just different folds
+over it, which is why "everything is an event" (§1) is a load-bearing principle and not a slogan.
 
 ---
 
@@ -568,6 +642,71 @@ A new core module that composes role-specialised agents into one governed run, r
   `mercury team list|create|show|delete|run|runs`, REST `GET/POST /api/teams/*` (auth-gated), and the
   admin **Teams** panel. Config `teams`.
 
+### 5.25 Self-extending tools — dynamic tool synthesis (`core/src/synthesis`, `packages/tools/src/synthesis`) — v2.2.0
+When a capability is repeatedly needed but no registered tool provides it, Mercury can **draft, validate
+and register a brand-new tool by itself**. This is the highest-risk subsystem in the platform, so it is
+**disabled by default** behind a single master kill-switch (`selfExtension.enabled = false`); while off,
+every entry point is a hard, localized no-op that returns a clear refusal (`SYNTH_DISABLED`). Pure,
+injectable logic lives in `core/src/synthesis/*`; the only part that spawns a process — the real
+out-of-process compile/test runners — is isolated in `packages/tools/src/synthesis/runners.ts` (see the
+package-map note in §3 for why the split matters). Wired as `m.synthesizer`.
+
+The pipeline is linear and **every step is a gate** — a draft that fails any stage never reaches the
+next:
+* **Gap detection** (`gap-detector.ts`, `GapTracker`) — each unresolved tool call emits a `tool.miss`
+  runtime event (§4); a capability becomes a synthesis candidate only after it has missed at least
+  `missThreshold` times (default 3), so one-off needs never trigger authoring.
+* **Authoring** (`authoring.ts`) — an injected `SynthLlmRunner` is prompted to produce a complete draft:
+  a tool name, an input schema, the implementation (Python or Node per `runtimes`), a **generated unit
+  test**, and a **least-privilege capability manifest** declaring exactly which of filesystem/network/
+  shell it needs. `parseDraft`/`extractJsonObject` turn the raw LLM text into a typed
+  `SynthesizedToolDraft` or a list of parse errors.
+* **Validation before registration** (`validation.ts`, `policy.ts`) — three checks, strictest-first and
+  all **out-of-process (never `eval`)**: the manifest is checked **deny-by-default** against the
+  configured grants (`checkManifest` — a draft asking for more than `allowFilesystem`/`allowNetwork`/
+  `allowShell`/`allowedHosts` permit is rejected), then a compile check, then the generated unit test is
+  actually run by the `packages/tools` runners.
+* **Approval gating** — a validated tool lands as `pending` (`SynthApprovalState`) and is inert until a
+  human approves it, unless `autoApprove` is explicitly set (documented as dangerous).
+* **Sandboxed execution & persistence** (`registry.ts`) — on approval the tool is written as a persisted
+  polyglot tool folder under `<dataDir>/synth-tools` (config `selfExtension.dir`) with a `.synth.json`
+  provenance file, after which it is loaded and run exactly like any hand-written polyglot tool (§5.6):
+  scrubbed env, no network unless declared and host-allow-listed, and `timeoutMs` / `maxOutputChars`
+  caps. Because it persists on disk (not in a DB migration) and is picked up by the normal polyglot
+  discovery path, a synthesized tool survives restarts and is subject to the same ToolExecutor policy,
+  approval, audit and taint pipeline as every other tool.
+
+Surfaces: CLI `mercury selfextend status|enable|disable|list|gaps|synthesize|approve|deny` (all
+`--json`), REST `GET /api/selfextend`, `POST /api/selfextend/toggle`,
+`POST /api/selfextend/:id/approve|deny`, and the admin **Self-Extend** panel. EN+DE help
+(`docs/help/selfextend.md`, `docs/help/de/selfextend.md`) and full EN/DE i18n. Covered by
+`tests/synthesis.test.ts`. **Honesty note:** the infrastructure is implemented and offline-tested
+(stubbed LLM runner + real local compile/test runners); real-LLM draft quality and the full
+polyglot/Docker host-sandbox execution path are **not** CI-verified and are experimental. Config
+`selfExtension`; threat model in [GAPS.md](GAPS.md) §2b and [SECURITY.md](SECURITY.md).
+
+### 5.26 Hands-free voice mode in the web chat (`packages/server/public/js/voice.js`) — v2.2.1
+A ChatLLM-style **hands-free layer** added to the browser chat UI. It is purely a front-end augmentation
+of the existing voice subsystem (§5.4 "Voice memo transcription", §7, `core/src/voice`) and the existing
+`POST /api/voice/speak` (piper TTS) and `POST /api/voice/transcribe` (whisper STT) endpoints — **no
+server, agent or protocol change**, which is why it ships as a patch release. Two controls appear in the
+chat header, both persisted in the browser and **OFF by default**: a **read-aloud toggle** (🔊/🔇) that
+speaks each completed assistant reply, and a **hands-free mic** with an optional **auto-send** toggle
+(🗣/🖐) so a spoken command submits itself; the existing manual per-message 🔊 button is unchanged.
+
+It is built as **progressive enhancement**. The primary, zero-setup path is the browser's own Web Speech
+API — `window.speechSynthesis` for output and `SpeechRecognition`/`webkitSpeechRecognition` for input,
+with the voice/recognition language derived from the UI language (`de-DE`/`en-US`). When those APIs are
+absent (notably Firefox, and older Safari), it **degrades gracefully** to the server endpoints above.
+The decision logic is isolated in a new, dependency-free module `packages/server/public/js/voice.js`
+(pure helpers: markdown→speakable-text, language/voice resolution, capability + fallback-path selection,
+and speaker/listener wrappers) consumed by `chat.js`. That separation is what makes the feature testable:
+`tests/voice-web.test.ts` exercises the helpers with **23 offline unit tests** using fake browser globals
+(no real microphone, speaker or DOM). New EN/DE i18n keys (`chat.readAloud*`, `chat.listening`,
+`chat.autoSend*`) preserve catalog parity. **Known limitation:** the thin DOM wiring in `chat.js` that
+binds these helpers to the actual buttons is **not** covered by CI (the pure module is); see
+[GAPS.md](GAPS.md) §2c for that caveat and the browser-support matrix.
+
 ---
 
 ## 6. Extension points
@@ -609,6 +748,10 @@ escalated for review instead of passing silently; **chaos** fault injection (§5
 default** and gated by a tool-glob allowlist so it can only run deliberately. The gated `web_read`
 tool (§5.6) is `sensitive` and always requires approval, so opening an arbitrary web page is subject
 to the same approval/policy/audit path (and its output is tainted) as any other sensitive action.
+**Self-extending tools** (§5.25) are the highest-risk capability and are therefore **off by default**;
+when enabled, a drafted tool still clears a deny-by-default capability-manifest check, an
+out-of-process compile+test gate and human approval before it can run, and once registered it executes
+under the same jailed/sandboxed ToolExecutor path as any other tool.
 Full threat model: [SECURITY.md](SECURITY.md).
 
 ---
@@ -622,8 +765,29 @@ Full threat model: [SECURITY.md](SECURITY.md).
 ├─ users/<id>/        MEMORY.md, USER.md             ├─ attachments/    uploaded files
 ├─ skills/ tools/ workflows/ plugins/ adapters/ personalities/ patterns/   user extensions
 ├─ checkpoints/<session>/<n>/                        ├─ mcp.json        external MCP servers (hot reload)
+├─ addins/ permissions/   declarative Add-Ins & permission profiles (§5.12)
+├─ synth-tools/<name>/   persisted self-extending tools + `.synth.json` provenance (§5.25, when enabled)
+├─ bundles/           exported/installed Mercury packs (§5.22)
 └─ secret.key         JWT signing key (generated, 0600)
 ```
+
+**Reading the layout.** `~/.mercury` (overridable with `MERCURY_HOME`) is the single writable root for
+one install, and it embodies the three-layer config model: `config.yaml` is layer 2 (user config) and
+`.env` is layer 3 (secrets), stacked on the built-in defaults that are layer 1. Almost all *state* lives
+in the one `mercury.db` SQLite file — users, sessions, messages, facts, usage, schedules, the event log
+and the audit chain, plus every migration-backed table from §5 (learning, distilled skills, traces,
+evals, bundles, teams, memory/knowledge) — which is why a backup is essentially that file plus this
+directory. The items that are **not** in the DB are the ones that are intentionally file-based so they can
+be edited, inspected or version-controlled by hand: the per-user curated memory (`users/<id>/MEMORY.md`,
+`USER.md`), the uploaded `attachments/`, and the whole family of extension/discovery folders
+(`skills/ tools/ workflows/ plugins/ adapters/ personalities/ patterns/`, plus `addins/` and
+`permissions/`) that mirror the bundled defaults from §3 and are merged on top of them at startup (§6).
+Two folders are written by the agent itself rather than the user: `synth-tools/` holds self-extending
+tools as persisted polyglot folders with their `.synth.json` provenance (§5.25, present only when that
+feature is enabled), and `bundles/` holds exported/installed packs (§5.22). `checkpoints/<session>/<n>/`
+backs the filesystem snapshot + `/rollback` feature, `mcp.json` is hot-reloaded so external MCP servers
+can be added without a restart, and `secret.key` (mode 0600) is the generated JWT signing key — losing it
+invalidates issued tokens but nothing else.
 
 ---
 
@@ -649,7 +813,7 @@ Full threat model: [SECURITY.md](SECURITY.md).
 | Cron scheduler (NL + cron, skills, delivery, pause/resume/edit) | `core/src/scheduler/*` | |
 | Subagent delegation (`delegate_task`, isolated, restricted toolsets, parallel) | `core/src/workflows/spawner.ts`, `packages/tools/src/builtin/agents.ts` | max 3/agent, max depth |
 | MCP client (stdio, HTTP, SSE, filtering, sampling) | `packages/mcp/src/client.ts` | hot reload of `mcp.json` |
-| Voice mode, STT/TTS (whisper, OpenAI, Edge/piper, custom CLI) | `core/src/voice/*`, CLI `/voice`, web mic | wake-word hook interface |
+| Voice mode, STT/TTS (whisper, OpenAI, Edge/piper, custom CLI) | `core/src/voice/*`, CLI `/voice`, web mic | wake-word hook interface; **hands-free web voice mode (auto read-aloud + spoken input, v2.2.1, §5.26)** |
 | Vision / image input / attachments | `core/src/attachments/*`, `llm` content parts | |
 | Browser automation (local, CDP, cloud) | `packages/tools/src/browser/*` | Playwright if installed; fetch-based fallback |
 | Terminal backends (local, Docker, SSH, plugins) + approvals | `packages/tools/src/terminal/*`, `core/src/security/commands.ts` | |
@@ -668,6 +832,7 @@ Full threat model: [SECURITY.md](SECURITY.md).
 
 Mercury-only additions: Jev decision engine, reasoning patterns, multi-agent workflow templates
 (including the `planner-executor` template), learning from runs (experience hints, auto-tuned routing,
-failure playbooks), skill composition, curated MCP presets, a gated `web_read` tool, RBAC/ABAC + API
-tokens, token budgets, MCP *server*, hash-chained audit log, debug breakpoints and run replay, web UI,
-i18n, polyglot tool protocol.
+failure playbooks), skill composition, curated MCP presets, a gated `web_read` tool,
+**self-extending tools / dynamic tool synthesis (v2.2.0, §5.25)**, RBAC/ABAC + API
+tokens, token budgets, MCP *server*, hash-chained audit log, debug breakpoints and run replay, web UI
+(with a **hands-free voice mode**, v2.2.1, §5.26), i18n, polyglot tool protocol.
