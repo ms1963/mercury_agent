@@ -7,6 +7,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.2.2] - 2026-11-28
+
+### Fixed
+
+- **Fail fast with an actionable error when a cloud LLM provider has no API key** — a configured
+  cloud provider (e.g. `openrouter`, `openai`, `anthropic`) whose API key was missing from the
+  environment and from `~/.mercury/.env` previously sent a request with no `Authorization` header,
+  producing a cryptic upstream `401 ... Missing Authentication header`. Each cloud provider now
+  checks its required key up front (`KEY_REQUIRED_ENV` + `ensureAuth()` in the OpenAI-compatible and
+  Anthropic providers) and raises a `MercuryError` (`code: missing_api_key`, `help: models`) naming
+  the exact environment variable to set. Empty-string keys from config or a shell export are
+  normalized to "unset" via the new exported `resolveProviderApiKey()` helper in the LLM registry,
+  so a stray `apiKey: ""` no longer defeats the `~/.mercury/.env` fallback. Affects both
+  `mercury chat` and the server chat path.
+
+### Added
+
+- Regression tests `tests/provider-missing-key.test.ts` covering the missing-key guard across the
+  OpenAI-compatible and Anthropic providers and the registry key-resolution helper.
+
 ## [2.2.1] - 2026-11-27
 
 ### Changed

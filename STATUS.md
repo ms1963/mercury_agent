@@ -1,7 +1,7 @@
-# Mercury — Build Status (honest snapshot, 2026-11-28, through v2.2.1)
+# Mercury — Build Status (honest snapshot, 2026-11-28, through v2.2.2)
 
 **Overall:** all 8 packages compile. From a clean build, `npm install && npm run build && npm test`
-passes (**60 files, 1060 passed / 2 skipped**, offline — up from 549 at v1.8.0 as the v1.9.0 through v2.2.1
+passes (**60 files, 1060 passed / 2 skipped**, offline — up from 549 at v1.8.0 as the v1.9.0 through v2.2.2
 subsystems landed with their own offline suites). The v1.4.0 subsystems — multi-agent teams/orchestration
 and the governed long-term memory & knowledge/RAG layer — are covered by the offline suite
 (`tests/teams.test.ts`, `tests/memory.test.ts`). `npx eslint .` exits 0. The CLI, HTTP server and web UI

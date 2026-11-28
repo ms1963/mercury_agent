@@ -2,7 +2,7 @@
 
 # ☿ The Mercury Agent Handbook
 
-### The complete, end-to-end handbook for users, administrators and developers — Mercury Agent v2.2.1
+### The complete, end-to-end handbook for users, administrators and developers — Mercury Agent v2.2.2
 
 ---
 
@@ -19,7 +19,7 @@ This handbook is the single book that takes you from *"I just heard of Mercury"*
 
 ## What's new in v2.2.x
 
-This edition of the handbook documents **Mercury Agent v2.2.1**. If you are coming from the v2.1.0 line, two large capabilities and one quality-of-life change landed in the 2.2 series:
+This edition of the handbook documents **Mercury Agent v2.2.2**. If you are coming from the v2.1.0 line, two large capabilities and one quality-of-life change landed in the 2.2 series:
 
 | Version | Headline change | Where it lives in this book |
 |---|---|---|
@@ -195,7 +195,7 @@ npm run build        # tsc project references → each package's dist/
 `npm run build` runs `tsc -b packages/cli packages/server`, which transitively builds every package through TypeScript project references. When it finishes you can run the binary directly:
 
 ```bash
-node packages/cli/dist/bin.js version      # → "mercury 2.2.1"
+node packages/cli/dist/bin.js version      # → "mercury 2.2.2"
 node packages/cli/dist/bin.js doctor       # environment health check (see Appendix C)
 ```
 
@@ -1755,11 +1755,11 @@ Invoke as `mercury <command>` (after `npm link` or the published bin) or `node p
 | `doctor` | Environment/config health check | — |
 | `update` | Self-update the installation | — |
 | `help [topic]` | Help; with a topic prints that help doc | — |
-| `version`, `-v` | Print the version (**mercury 2.2.1**) | — |
+| `version`, `-v` | Print the version (**mercury 2.2.2**) | — |
 
-> **Version note.** This handbook documents the **Mercury Agent v2.2.1** release (every workspace
-> `package.json` is `2.2.1`). `mercury version` resolves its string dynamically from the CLI
-> package.json, so it reports **mercury 2.2.1** and tracks the release automatically.
+> **Version note.** This handbook documents the **Mercury Agent v2.2.2** release (every workspace
+> `package.json` is `2.2.2`). `mercury version` resolves its string dynamically from the CLI
+> package.json, so it reports **mercury 2.2.2** and tracks the release automatically.
 
 ## Appendix B — Data directory layout
 

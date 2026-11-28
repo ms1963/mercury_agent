@@ -158,7 +158,7 @@ They are part of the `wiki` toolset and are listed in
 
 ## Status: tested vs. untested
 
-Consistent with the honest tone of [STATUS.md](../STATUS.md) — this is v2.2.1, **not**
+Consistent with the honest tone of [STATUS.md](../STATUS.md) — this is v2.2.2, **not**
 "production-ready":
 
 **Tested (offline, deterministic, `tests/wiki.test.ts`):**

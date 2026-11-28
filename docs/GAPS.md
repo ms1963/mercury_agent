@@ -3,7 +3,7 @@
 # Mercury vs Hermes Agent — Capability Gaps
 
 **What this document is.** A grounded, command-level diff between **Hermes Agent** (Nous Research;
-the real installation present on this machine) and **Mercury Agent** (this repository at **v2.2.1**).
+the real installation present on this machine) and **Mercury Agent** (this repository at **v2.2.2**).
 
 **How it was produced (honesty note).**
 
@@ -278,6 +278,8 @@ stray `apiKey: ''` in config or an exported-empty var defeated the env fallback.
 and empty-string normalization; openrouter/openai/anthropic fail-fast with the right env-var name and
 the shadowing caveat in the message; and that a local `ollama` provider is not blocked.
 
+**Status: SHIPPED in v2.2.2** (commit `3e61604`).
+
 ---
 
 ## 3. Vendor-specific (out of scope — match only if you choose to)
@@ -525,5 +527,5 @@ Ordered by value-to-effort for a self-hosted agentic platform. Each tier is inde
   without a dedicated command).
 - The Hermes side is the Nous Research Hermes Agent installed on this host at the time of writing; a
   different Hermes version may expose a different command set.
-- The Mercury side is this repository at **v2.2.1**. Re-run `hermes --help` and `mercury help` to
+- The Mercury side is this repository at **v2.2.2**. Re-run `hermes --help` and `mercury help` to
   refresh this diff after either side changes.

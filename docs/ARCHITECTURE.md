@@ -8,7 +8,7 @@ layer, a typed decision engine (Jev), RBAC, token budgets and an MCP server.
 This document explains *how the system is put together*. For security details see
 [SECURITY.md](SECURITY.md); for writing extensions see [EXTENDING.md](EXTENDING.md).
 
-> **Covers Mercury up to v2.2.1.** Relative to the v2.1.x architecture, v2.2.x adds two
+> **Covers Mercury up to v2.2.2.** Relative to the v2.1.x architecture, v2.2.x adds two
 > subsystems documented below: **self-extending tools / dynamic tool synthesis** (§5.25,
 > shipped in v2.2.0, **disabled by default**) and the **hands-free voice mode** in the web
 > chat (§5.26, shipped in v2.2.1, a progressive-enhancement front end over the existing voice
