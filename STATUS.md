@@ -1,7 +1,7 @@
-# Mercury — Build Status (honest snapshot, 2026-11-27, through v2.1.0)
+# Mercury — Build Status (honest snapshot, 2026-11-28, through v2.2.1)
 
 **Overall:** all 8 packages compile. From a clean build, `npm install && npm run build && npm test`
-passes (**55 files, 955 passed / 2 skipped**, offline — up from 549 at v1.8.0 as the v1.9.0 and v2.0.0
+passes (**60 files, 1060 passed / 2 skipped**, offline — up from 549 at v1.8.0 as the v1.9.0 through v2.2.1
 subsystems landed with their own offline suites). The v1.4.0 subsystems — multi-agent teams/orchestration
 and the governed long-term memory & knowledge/RAG layer — are covered by the offline suite
 (`tests/teams.test.ts`, `tests/memory.test.ts`). `npx eslint .` exits 0. The CLI, HTTP server and web UI
@@ -12,6 +12,24 @@ because that host carries an untracked `deploy/<host>.conf` nginx vhost; the rep
 file, so CI is green — the latest CI run passes build & test on node 22 and node 24 plus the
 docker image build.)
 
+## 0d. New in v2.2.1 — hands-free voice mode in the web chat (offline-tested)
+
+- **What it is.** The web Chat panel gained a ChatLLM-style voice layer: read-aloud of assistant replies
+  (🔊/🔇, `localStorage` `mercury.voice.autospeak`), a hands-free microphone (browser-native
+  `SpeechRecognition` first, with `MediaRecorder` → `POST /api/voice/transcribe` (Whisper) as fallback),
+  and optional auto-send of a finished utterance (🗣/🖐, `localStorage` `mercury.voice.autosend`). **All
+  three toggles are OFF by default.** Speech language follows the UI locale (de → `de-DE`, else `en-US`);
+  the manual per-message 🔊 button is retained.
+- **Code.** Pure/injectable helpers in `packages/server/public/js/voice.js` (markdown→speakable-text
+  stripper, language/voice resolution, capability/fallback selection), consumed by
+  `packages/server/public/js/chat.js`; styles in `packages/server/public/styles.css`; EN+DE i18n keys
+  (`chat.readAloud*`, `chat.listening`, `chat.autoSend*`) at full parity. Server fallbacks: Whisper
+  (`/api/voice/transcribe`) and Piper (`/api/voice/speak`).
+- **Tested.** 23 offline unit tests in `tests/voice-web.test.ts` using fake browser globals (no real
+  mic/speaker/DOM). **NOT CI-verified:** the DOM wiring in `chat.js`, live microphone capture and real
+  `speechSynthesis` playback; browser-support varies (Firefox/older Safari lack `SpeechRecognition`). See
+  `docs/GAPS.md` §2c.
+
 ## 0b. New in v2.1.0 — complete EN/DE internationalization (offline-tested)
 
 - **Full English + German coverage.** Every `docs/help/` topic now has a German counterpart under
@@ -21,7 +39,7 @@ docker image build.)
   `fallback`/`route`/`hooks` command output is routed through the catalog so it localizes. Covered by
   `tests/i18n.test.ts` (resolver, help-topic parity, catalog key parity). Version bumped to 2.1.0.
 
-## 0a. New (Unreleased) — self-extending tools / dynamic tool synthesis (offline-tested, DISABLED by default)
+## 0a. New in v2.2.0 — self-extending tools / dynamic tool synthesis (offline-tested, DISABLED by default)
 
 - **What it is.** Mercury can DRAFT a new tool when a capability is repeatedly missed. It is a Mercury-only
   extra and HIGH-RISK, so it is **disabled by default** behind `selfExtension.enabled = false` — a hard,

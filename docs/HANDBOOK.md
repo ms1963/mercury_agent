@@ -2,18 +2,32 @@
 
 # ☿ The Mercury Agent Handbook
 
-### The complete, end-to-end handbook for users, administrators and developers — Mercury Agent v2.1.0
+### The complete, end-to-end handbook for users, administrators and developers — Mercury Agent v2.2.1
 
 ---
 
 This handbook is the single book that takes you from *"I just heard of Mercury"* to *"I run, govern and extend a fleet of autonomous agents."* It is deliberately long and detailed: it explains the small things (which key to paste where) and the big things (how the agent decides, remembers and improves). If you only read one document about Mercury, read this one — it links out to the specialised references (`GUIDE.md`, `PROVIDERS.md`, `SECURITY.md`, `EXTENDING.md`, …) when you want to go deeper on a single subject.
 
 > **A note on honesty.** Mercury is developed offline-first and tested with a deterministic suite
-> (185 offline tests). Many subsystems that talk to *live external services* — real LLM providers,
+> (1060+ offline tests across 60 files). Many subsystems that talk to *live external services* — real LLM providers,
 > the Jev decisions API, chat-platform adapters, speech services, Docker/SSH terminal backends —
 > have **not** been exercised end-to-end against those live services in the repository. Wherever a
 > feature is in that category, this handbook says so plainly rather than pretending. See
 > [`STATUS.md`](../STATUS.md) for the authoritative tested-vs-untested matrix.
+
+---
+
+## What's new in v2.2.x
+
+This edition of the handbook documents **Mercury Agent v2.2.1**. If you are coming from the v2.1.0 line, two large capabilities and one quality-of-life change landed in the 2.2 series:
+
+| Version | Headline change | Where it lives in this book |
+|---|---|---|
+| **v2.2.0** | **Self-extending tools / dynamic tool synthesis** — when Mercury repeatedly lacks a capability, it can *draft a brand-new tool* (schema, implementation, generated test, capability manifest), validate it out-of-process and hold it for approval before it ever runs. Off by default. | §10.8 (deep dive), §0.1 (at-a-glance), Appendix A (`selfextend` CLI) |
+| **v2.2.1** | **Hands-free voice mode in the web chat UI** — read-aloud of assistant replies, a hands-free microphone (browser-native speech-to-text first, server Whisper/Piper as fallback) and optional auto-send of spoken commands. Progressive enhancement; every toggle is **off by default**. | §3.7 (new), §0.1 (at-a-glance) |
+| **v2.2.1** | **Version & docs truth-up** — every workspace `package.json` now reports `2.2.1`, so `mercury version` prints `mercury 2.2.1`, and the web UI panel count, the voice surface and the self-extension pipeline are documented here rather than only in the changelog. | Throughout; Appendix A version note |
+
+> **Honesty carries over.** Both of the big 2.2 features are **offline-tested** (deterministic suites with stubbed LLMs / fake browser globals) but have **not** been exercised end-to-end against live LLMs, real microphones/speakers or a real browser DOM in CI. Each section below says exactly where the tested boundary stops. See [`docs/GAPS.md`](./GAPS.md) §2b (self-extend) and §2c (voice) for the precise caveats.
 
 ---
 
@@ -56,7 +70,7 @@ The trust in "trustworthy" is earned in movements 8, 9 and 11; the autonomy in "
 - **Part 0 — Understand Mercury** (the mental model, the vocabulary, the architecture)
 - **Part 1 — Give it a home: download & install** (from source, global binary, Docker; macOS/Linux/Windows)
 - **Part 2 — Give it a brain: LLM providers & models** (every provider, switching providers & models, the router)
-- **Part 3 — Give it a voice: chats, sessions, runs & slash commands**
+- **Part 3 — Give it a voice: chats, sessions, runs, slash commands & hands-free voice mode**
 - **Part 4 — Give it hands: the tool system** (catalogue, risk, approvals, polyglot)
 - **Part 5 — Give it a memory and teach it** (the six memories, skills, reflection, **memory lessons**)
 - **Part 6 — Let it work on its own: scheduled agents & workflows**
@@ -84,11 +98,13 @@ What you get, at a glance:
 | You get… | In one line |
 |---|---|
 | A **CLI** | `mercury …` — chat, configure, schedule, manage, everything scriptable |
-| A **web UI** | A no-build single-page app with 17 panels (chat, runs, memory, scheduler, …) |
+| A **web UI** | A no-build single-page app with 26 panels (chat, runs, memory, scheduler, self-extend, governance, …) — several admin-only |
+| A **hands-free voice mode** | *(new in v2.2.1)* read-aloud of replies, a hands-free mic and optional auto-send in the web chat — all off by default (§3.7) |
 | **19 chat gateways** | Telegram, Discord, Slack, WhatsApp, Facebook, X, LinkedIn, Signal, Matrix, Teams, Email, SMS, ... |
 | **Multi-agent workflows** | Nine templates — pipeline, debate, map-reduce, coordinator-worker, … |
 | **Persistent memory** | Six kinds, from working scratch to curated long-term facts |
 | **83 built-in tools** | Files, shell, web, code, git, data, media, scheduling, memory, … |
+| **Self-extending tools** | *(new in v2.2.0)* Mercury can draft, validate and — after approval — register brand-new tools when it keeps hitting a capability gap (§10.8) |
 | **MCP client *and* server** | Consume external tool servers; expose Mercury's own tools to others |
 | A typed **decision engine (Jev)** | Optional; routes models, judges risk, triages, drives reflection |
 
@@ -179,7 +195,7 @@ npm run build        # tsc project references → each package's dist/
 `npm run build` runs `tsc -b packages/cli packages/server`, which transitively builds every package through TypeScript project references. When it finishes you can run the binary directly:
 
 ```bash
-node packages/cli/dist/bin.js version      # → "mercury 2.1.0"
+node packages/cli/dist/bin.js version      # → "mercury 2.2.1"
 node packages/cli/dist/bin.js doctor       # environment health check (see Appendix C)
 ```
 
@@ -269,7 +285,7 @@ mercury model chatllm/route-llm
 mercury serve                                # web UI + API on http://localhost:3000
 mercury doctor                               # checks Node version, data dir, config, providers, keys
 MERCURY_ENABLE_MOCK=1 mercury chat "hello"   # offline smoke test (no provider) → "Echo: hello"
-npm test                                     # the vitest suite (185 tests, offline)
+npm test                                     # the vitest suite (1060+ tests, offline)
 ```
 
 `mercury serve` starts **everything in one process**: the REST/SSE API, the static web UI, the **scheduler**, the **gateway** (if enabled), and the **MCP endpoint** at `/mcp`.
@@ -527,31 +543,38 @@ Useful `chat` flags: `--model <id>` (override the model for this one turn), `--s
 > account (that makes you the admin), pick a provider in **Settings**, and type into the Chat box.
 > That's it — everything else in this handbook is optional depth.
 
-## 3.2 The web UI at a glance (21 panels)
+## 3.2 The web UI at a glance (26 panels)
 
-The web UI is a single no-build page served by `mercury serve`. It has **dark/light themes** and **English/German** locales, and nineteen panels — each panel is explored in the part shown:
+The web UI is a single no-build page served by `mercury serve`. It has **dark/light themes** and **English/German** locales, and **26 panels** — **12 of them admin-only** (hidden entirely for non-admin users, not merely disabled). The panel list is built from the `PANELS` registry in `packages/server/public/js/app.js`, and the admin-only set from the `ADMIN_ONLY` list beside it; each panel is explored in the part shown:
 
 | Panel | What it does | Covered in |
 |---|---|---|
-| **Chat** | streaming conversation, markdown, tool chips, inline approvals, usage, feedback | this part |
+| **Chat** | streaming conversation, markdown, tool chips, inline approvals, usage, feedback, **voice mode** (§3.7) | this part |
 | **Sessions** | browse/search past conversations | this part |
 | **Runs** | every run with its event timeline | this part + [Part 9](#part-9--x-ray-vision-observability-debugging--troubleshooting-the-ninth-movement-seeing-everything) |
 | **Workflows** | define and launch multi-agent workflows | [Part 6](#part-6--autonomy-scheduler--workflows-the-sixth-movement-work-that-runs-itself) |
 | **Memory** | view/edit curated memory, browse facts | [Part 5](#part-5--memory--learning-the-fifth-movement-an-agent-that-remembers-and-improves) |
 | **Skills** | list/view/install skills | [Part 5](#54-skills-reusable-know-how) |
-| **Tools/MCP** | toggle tools, add MCP servers | [Part 4](#part-4--the-hands-tools-the-fourth-movement-doing-not-just-talking) + [Part 7](#part-7--connecting-to-the-world-integrations--mcp-the-seventh-movement-reaching-beyond-the-box) |
+| **Tools** (& MCP) | toggle tools, add MCP servers | [Part 4](#part-4--the-hands-tools-the-fourth-movement-doing-not-just-talking) + [Part 7](#part-7--connecting-to-the-world-integrations--mcp-the-seventh-movement-reaching-beyond-the-box) |
 | **Scheduler** | create/edit/run scheduled tasks | [Part 6](#61-the-scheduler-tasks-that-run-on-their-own) |
 | **Integrations** | gateway: chat-platform adapters, pairing | [Part 7](#part-7--connecting-to-the-world-integrations--mcp-the-seventh-movement-reaching-beyond-the-box) |
-| **Models/Budgets** | per-user/model cost & token caps | [Part 8](#84-budgets-spending-caps-that-actually-stop-spending) |
+| **Models** | model catalogue, per-user/model cost & token budgets | [Part 2](#part-2--the-brain-llm-providers--models-the-second-movement-choosing-and-switching-intelligence) + [Part 8](#84-budgets-spending-caps-that-actually-stop-spending) |
+| **Verification** (admin) | output-verification policies & results | [Part 11](#part-11--the-trust-stack-economics-governance-verification-reliability--proactivity) |
+| **Reliability** (admin) | retries, circuit-breakers, health | [Part 11](#part-11--the-trust-stack-economics-governance-verification-reliability--proactivity) |
+| **Learning** (admin) | routing/pattern learning signals | [Part 5](#55-reflection--memory-lessons-how-mercury-gets-better) + [Part 11](#part-11--the-trust-stack-economics-governance-verification-reliability--proactivity) |
+| **Distilled Skills** (admin) | review/approve/retire self-distilled skills | [Part 5](#57-self-distilling-skills-120) |
+| **Run Replay** (admin) | scrub a run's timeline, inspect state, fork a corrected re-run | [Part 5](#58-run-replay--time-travel-debugging-120) |
+| **Proactive** (admin) | proactive-agent suggestions & triggers | [Part 11](#part-11--the-trust-stack-economics-governance-verification-reliability--proactivity) |
+| **Evaluations & Auto-tune** (admin) | promote runs to cases, run suites, view scores/trends, propose & apply/revert governed tunes | [Part 5](#59-evaluation-driven-self-improvement-130) |
+| **Agent Bundles** (admin) | export/download a signed bundle, install/upload one, list installed bundles | [Part 7](#77-sharable-agent-bundles-130) |
+| **Teams** (admin) | multi-agent teams & orchestration | [Part 6](#part-6--autonomy-scheduler--workflows-the-sixth-movement-work-that-runs-itself) |
+| **Self-Extend** (admin) | review/approve/deny synthesized tools; enable/disable self-extension | [Part 10 §10.8](#108-self-extending-tools-dynamic-tool-synthesis--and-its-threat-model) |
+| **Governance** (admin) | protected-config change requests & approvals | [Part 8](#82-permissions--approvals-the-leash) + [Part 11](#part-11--the-trust-stack-economics-governance-verification-reliability--proactivity) |
 | **Users** (admin) | manage accounts & roles | [Part 8](#83-security-authentication-tokens--rbac) |
 | **Debug** | breakpoints, step-through, resume/skip | [Part 9](#93-live-debugging-breakpoints-for-an-agent) |
 | **Reflections** | post-run scores, lessons, auto-skills | [Part 5](#55-reflection--memory-lessons-how-mercury-gets-better) |
-| **Distilled Skills** (admin) | review/approve/retire self-distilled skills | [Part 5](#57-self-distilling-skills-120) |
-| **Run Replay** (admin) | scrub a run's timeline, inspect state, fork a corrected re-run | [Part 5](#58-run-replay--time-travel-debugging-120) |
-| **Evaluations & Auto-tune** (admin) | promote runs to cases, run suites, view scores/trends, propose & apply/revert governed tunes | [Part 5](#59-evaluation-driven-self-improvement-130) |
-| **Agent Bundles** (admin) | export/download a signed bundle, install/upload one, list installed bundles | [Part 7](#77-sharable-agent-bundles-130) |
 | **Help** | the in-app help pages (also in German) | — |
-| **Settings** | providers, keys, everything else | [Part 2](#part-2--the-brain-llm-providers--models-the-second-movement-choosing-and-switching-intelligence) |
+| **Account** | your profile, keys, preferences & settings | [Part 2](#part-2--the-brain-llm-providers--models-the-second-movement-choosing-and-switching-intelligence) |
 
 ## 3.3 Slash commands (the same everywhere)
 
@@ -602,6 +625,36 @@ You can hand Mercury files and pointers mid-conversation:
 When you send a message, Mercury executes a **run** — one trip through the reasoning loop that may call several tools and the LLM multiple times before it replies. A chat has many sessions over its life; a session has many runs; a run has many steps and events.
 
 Runs are **first-class and fully recorded**. You don't need to think about them as a user, but they are the backbone of everything in [Part 9](#part-9--x-ray-vision-observability-debugging--troubleshooting-the-ninth-movement-seeing-everything): every run has an id, a timeline of events (LLM calls, tool calls, approvals, errors), and can be **replayed** (`mercury replay <runId>`) or inspected in the **Runs** panel. That is the thread we pick up once the agent starts doing things — which is the next movement.
+
+## 3.7 Hands-free voice mode in the web chat *(new in v2.2.1)*
+
+Mercury's web **Chat** panel can **talk and listen**. Voice mode is a ChatLLM-style layer on top of the ordinary text chat: it never changes what the agent does, only how you give it input and receive its answer. It is built as **progressive enhancement** — three independent toggles, **all off by default**, that light up only when your browser (or the server fallback) can support them. Nothing about voice is required, and turning every switch off returns you to the exact text experience of §3.1.
+
+> **👤 For users — the one-paragraph version.** Open the Chat panel and look at the header. The **🔊 / 🔇** button makes Mercury *read its answers aloud*. The **microphone** button lets you *speak instead of type*; while it listens the mic pulses red and a "listening…" hint appears. The **🗣 / 🖐** button decides whether what you dictate is *sent automatically* or just dropped into the input box for you to edit first. All three remember your choice in the browser, and all three start **off** — you opt in.
+
+### The three controls
+
+| Control | Header button | What it does | Default | Remembered as |
+|---|---|---|---|---|
+| **Read-aloud** | 🔊 (on) / 🔇 (off) | Speaks each *completed* assistant reply out loud; toggling it off immediately cancels any speech in progress | **off** | `localStorage` key `mercury.voice.autospeak` |
+| **Hands-free mic** | 🎙 (idle) / pulsing red mic + "listening…" (active) | Captures your speech and turns it into text in the input box | **off** (press to start a turn) | — (press-to-talk) |
+| **Auto-send** | 🗣 (auto-send on) / 🖐 (hold, off) | When on, a finished spoken utterance submits itself; when off, the transcript lands in the input box so you can edit and press enter | **off** | `localStorage` key `mercury.voice.autosend` |
+
+A manual, per-message **🔊 button stays on every assistant message** regardless of the toggles, so you can replay a single answer aloud without turning on blanket read-aloud.
+
+### How it picks an engine (browser-native first, server fallback)
+
+Voice mode prefers your **browser's own speech engines** and falls back to Mercury's server only when the browser can't help:
+
+- **Speech-to-text.** If the browser exposes `SpeechRecognition` / `webkitSpeechRecognition` (Chrome, Edge, and Chromium derivatives), dictation runs **entirely in the browser** — low latency, nothing uploaded. If it doesn't (Firefox, older Safari), Mercury records with `MediaRecorder` and `POST`s the audio to **`/api/voice/transcribe`**, which transcribes it server-side with **Whisper**.
+- **Text-to-speech.** Read-aloud uses the browser's `speechSynthesis` voices when available; where they aren't, it falls back to **`POST /api/voice/speak`**, served by **Piper**.
+- **Language follows the UI.** The speech language is derived from the active interface locale — **German UI → `de-DE`, everything else → `en-US`** — so a German user dictates and is read to in German without any extra setting.
+
+Before the assistant's markdown is spoken it is run through a **"speakable text" filter** that strips code fences, URLs, markdown punctuation and other things that sound like noise when read aloud, so the voice reads the prose, not the syntax.
+
+> **🧑‍💻 For developers — where it lives and how it's tested.** The voice logic is isolated in a new, dependency-free module **`packages/server/public/js/voice.js`** — pure helpers for the markdown→speech stripper (`speakableText`), language resolution (`resolveSpeechLang`), voice selection (`pickVoice`), and capability/fallback selection, plus thin speaker/listener wrappers. `packages/server/public/js/chat.js` consumes it to wire the header buttons; styling (the pulsing-mic animation and toggle states) is in `packages/server/public/styles.css`. The server endpoints `POST /api/voice/transcribe` (Whisper) and `POST /api/voice/speak` (Piper) are the fallbacks. New EN/DE i18n keys — `chat.readAloud*`, `chat.listening`, `chat.autoSend*` — keep both locale catalogs at full parity. The pure helpers are covered by **23 offline unit tests** in `tests/voice-web.test.ts`, which inject *fake* browser globals (no real microphone, speaker or DOM).
+
+> **A note on honesty (voice).** The browser-native path depends on APIs that **vary by browser**: Firefox and older Safari have no `SpeechRecognition` (they take the Whisper fallback), and `speechSynthesis` voice availability differs per OS/browser. The pure helpers are unit-tested offline, but the **DOM wiring in `chat.js` — the actual button clicks, the live mic stream and real `speechSynthesis` playback — is not exercised in CI** (there is no headless browser with a microphone in the suite). Treat voice mode as a tested *core* with a hand-verified *edge*. See [`docs/GAPS.md`](./GAPS.md) §2c for the precise caveat.
 
 ---
 
@@ -1702,11 +1755,11 @@ Invoke as `mercury <command>` (after `npm link` or the published bin) or `node p
 | `doctor` | Environment/config health check | — |
 | `update` | Self-update the installation | — |
 | `help [topic]` | Help; with a topic prints that help doc | — |
-| `version`, `-v` | Print the version (**mercury 2.1.0**) | — |
+| `version`, `-v` | Print the version (**mercury 2.2.1**) | — |
 
-> **Version note.** This handbook documents the **Mercury Agent v2.1.0** release (the root
-> `package.json` is `2.1.0`). `mercury version` resolves its string dynamically from the CLI
-> package.json, so it reports **mercury 2.1.0** and tracks the release automatically.
+> **Version note.** This handbook documents the **Mercury Agent v2.2.1** release (every workspace
+> `package.json` is `2.2.1`). `mercury version` resolves its string dynamically from the CLI
+> package.json, so it reports **mercury 2.2.1** and tracks the release automatically.
 
 ## Appendix B — Data directory layout
 

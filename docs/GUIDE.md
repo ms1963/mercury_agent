@@ -16,7 +16,7 @@ topic files in [`docs/help/`](help/)).
 > accounting — is laid out, honestly scoped and tested-vs-untested, in [COMPARISON.md](COMPARISON.md).
 
 > **Honest-status note.** Mercury's seven packages compile, `npm install && npm run build && npm test`
-> passes **185/185 tests offline**, and the CLI, HTTP server and web UI run end-to-end with the
+> passes **1060+ tests offline across 60 files**, and the CLI, HTTP server and web UI run end-to-end with the
 > deterministic offline mock LLM. **The core agent loop has since been exercised against real LLMs**
 > (Abacus RouteLLM: route-llm, gpt-5.5, claude-sonnet-5 — real chat, tool execution, self-distilling
 > skills, routing-learning, reflection and token/cost accounting; see [STATUS.md](../STATUS.md) §0).
@@ -135,7 +135,7 @@ npm run build        # tsc project references → each package's dist/
 via TypeScript project references. After it finishes you can run the binary directly:
 
 ```bash
-node packages/cli/dist/bin.js version      # → "mercury 2.1.0"
+node packages/cli/dist/bin.js version      # → "mercury 2.2.1"
 node packages/cli/dist/bin.js doctor       # environment check (see Appendix E)
 ```
 
@@ -221,7 +221,7 @@ Copy the documented starting templates if you want them:
 ```bash
 mercury doctor                               # checks Node version, data dir, config, providers, keys
 MERCURY_ENABLE_MOCK=1 mercury chat "hello"   # offline smoke test (no provider needed) → "Echo: hello"
-npm test                                     # run the vitest suite (185 tests, offline)
+npm test                                     # run the vitest suite (1060+ tests, offline)
 ```
 
 The mock provider is **disabled in normal operation**; it is enabled only when
@@ -1186,7 +1186,7 @@ production `transport.ts` exports only `wrap()` and `FetchTransport`). Register 
 
 ```bash
 npm run build      # tsc project references
-npm test           # vitest (offline; 185 tests)
+npm test           # vitest (offline; 1060+ tests)
 npx eslint .       # lint (exits 0)
 ```
 
@@ -1579,11 +1579,11 @@ variables < CLI flags (see Appendix B), and `MERCURY_HOME` overrides the data di
 | `doctor` | Environment / configuration health check (see Appendix E). | — |
 | `update` | Self-update the installation. | — |
 | `help [topic]` | Show help; with a topic, prints the matching help doc. | — |
-| `version`, `-v` | Print the version (prints `mercury 2.1.0`). | — |
+| `version`, `-v` | Print the version (prints `mercury 2.2.1`). | — |
 
-> **Version note.** This guide documents the **2.1.0** release (the root `package.json` is `2.1.0`).
+> **Version note.** This guide documents the **2.2.1** release (every workspace `package.json` is `2.2.1`).
 > `mercury version` in `packages/cli/src/bin.ts` resolves its string dynamically from the CLI
-> package.json, so it reports `mercury 2.1.0` and tracks the release automatically.
+> package.json, so it reports `mercury 2.2.1` and tracks the release automatically.
 
 > Honest-status note: `import-agent`, `update`, and `install.sh` have been exercised only against the
 > offline/mock setup in this repository; they have not been validated against a real Hermes install, a
@@ -2163,7 +2163,7 @@ providers, and provider keys, and reports what is missing.
 | Changes to `mcp.json` not picked up | — | It is hot-reloaded; check the file is valid JSON and the server logs. |
 
 > Honest-status note: the mock LLM and the full offline path are exercised by the test suite
-> (185 tests passing). Real external integrations — live LLM providers, the Jev API, chat-platform
+> (1060+ tests passing). Real external integrations — live LLM providers, the Jev API, chat-platform
 > adapters, STT/TTS engines, Docker/SSH terminal backends, `install.sh`, systemd deployment and
 > `update` — have **not** been validated end-to-end against live services in this repository.
 

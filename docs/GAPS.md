@@ -3,7 +3,7 @@
 # Mercury vs Hermes Agent — Capability Gaps
 
 **What this document is.** A grounded, command-level diff between **Hermes Agent** (Nous Research;
-the real installation present on this machine) and **Mercury Agent** (this repository at **v2.1.0**).
+the real installation present on this machine) and **Mercury Agent** (this repository at **v2.2.1**).
 
 **How it was produced (honesty note).**
 
@@ -173,6 +173,11 @@ detection, `chooseSpeakPath`/`chooseListenPath` fallback selection, and `createS
 `tests/voice-web.test.ts` drive every helper and both wrappers with **fake browser globals** (no real
 microphone, speaker or DOM). EN/DE i18n parity is maintained (new `chat.readAloud*`, `chat.listening`,
 `chat.autoSend*` keys in both catalogs).
+
+**Documentation.** The handbook now documents this end-to-end in **[`HANDBOOK.md`](./HANDBOOK.md) §3.7
+("Hands-free voice mode in the web chat")**, and the v2.2.1 release is reflected across the docs (handbook
+header, GUIDE version note, STATUS §0d, README) alongside every workspace `package.json` now reporting
+`2.2.1`.
 
 **Caveats / untested surface (honest).**
 
@@ -433,5 +438,5 @@ Ordered by value-to-effort for a self-hosted agentic platform. Each tier is inde
   without a dedicated command).
 - The Hermes side is the Nous Research Hermes Agent installed on this host at the time of writing; a
   different Hermes version may expose a different command set.
-- The Mercury side is this repository at **v2.1.0**. Re-run `hermes --help` and `mercury help` to
+- The Mercury side is this repository at **v2.2.1**. Re-run `hermes --help` and `mercury help` to
   refresh this diff after either side changes.
